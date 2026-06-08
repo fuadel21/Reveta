@@ -27,7 +27,10 @@ const Index = () => {
           <Hero />
           <NearbyCTA />
           <Categories />
-          <FeaturedProducts />
+          <section className="container mx-auto px-4 py-8">
+            <h2 className="text-3xl font-bold text-center mb-8">Productos Destacados</h2>
+            <FeaturedProducts limit={8} showViewAll={true} />
+          </section>
           <Stats />
         </main>
         <Footer />
