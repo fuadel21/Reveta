@@ -56,6 +56,11 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
       return;
     }
 
+    if (!selectedShipping) {
+      toast.error('Por favor, selecciona un método de envío.');
+      return;
+    }
+
     const totalAmount = product.price + (selectedShipping?.price || 0);
 
     if (paymentMethod === 'card') {
@@ -72,13 +77,14 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
         });
 
         if (functionError) {
-          throw new Error('Error al conectar con el servidor de pagos');
+          console.error('Function error:', functionError);
+          throw new Error('Error al conectar con el servidor de pagos. Verifica que la Edge Function esté activa.');
         }
 
         const { clientSecret } = data;
 
         if (!clientSecret) {
-          throw new Error('No se pudo obtener el secreto de pago');
+          throw new Error('No se pudo obtener el secreto de pago de Stripe.');
         }
 
         const result = await stripe.confirmCardPayment(clientSecret, {
@@ -96,19 +102,17 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
         } else if (result.paymentIntent?.status === 'succeeded') {
           toast.success('¡Compra realizada con éxito!');
           
-          // Registrar la compra en la base de datos
-          const { error: insertError } = await supabase.from('purchases').insert({
+          // Registrar la compra en la tabla 'transactions' (según Database Types)
+          const { error: insertError } = await supabase.from('transactions').insert({
             product_id: product.id,
             buyer_id: user?.id,
             seller_id: product.user_id,
             amount: totalAmount,
-            payment_method: 'stripe',
             status: 'completed',
-            shipping_method: selectedShipping?.name || 'standard',
           });
 
           if (insertError) {
-            console.error('Error recording purchase:', insertError);
+            console.error('Error recording transaction:', insertError);
           }
 
           // Actualizar estado del producto a vendido
@@ -129,14 +133,12 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
       try {
         toast.success('Se ha registrado tu solicitud de compra por transferencia.');
         
-        await supabase.from('purchases').insert({
+        await supabase.from('transactions').insert({
           product_id: product.id,
           buyer_id: user?.id,
           seller_id: product.user_id,
           amount: totalAmount,
-          payment_method: 'transfer',
           status: 'pending',
-          shipping_method: selectedShipping?.name || 'standard',
         });
 
         setTimeout(() => {
