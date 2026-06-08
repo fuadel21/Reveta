@@ -62,30 +62,30 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
       setProcessingPayment(true);
 
       try {
-        // Crear Payment Intent en el backend
-        const response = await fetch('/api/create-payment-intent', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+        // Invocar la Edge Function de Supabase para crear el Payment Intent
+        const { data, error: functionError } = await supabase.functions.invoke('create-payment-intent', {
+          body: {
             productId: product.id,
-            amount: Math.round(totalAmount * 100),
-            userId: user?.id,
-          }),
+            amount: Math.round(totalAmount * 100), // En céntimos
+            currency: 'eur'
+          }
         });
 
-        if (!response.ok) {
-          throw new Error('Error al crear el Payment Intent');
+        if (functionError) {
+          throw new Error('Error al conectar con el servidor de pagos');
         }
 
-        const { clientSecret } = await response.json();
+        const { clientSecret } = data;
+
+        if (!clientSecret) {
+          throw new Error('No se pudo obtener el secreto de pago');
+        }
 
         const result = await stripe.confirmCardPayment(clientSecret, {
           payment_method: {
             card: elements.getElement(CardElement)!,
             billing_details: {
-              name: user?.email || 'Usuario',
+              name: user?.email || 'Usuario de Reveta',
             },
           },
         });
@@ -96,7 +96,8 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
         } else if (result.paymentIntent?.status === 'succeeded') {
           toast.success('¡Compra realizada con éxito!');
           
-          await supabase.from('purchases').insert({
+          // Registrar la compra en la base de datos
+          const { error: insertError } = await supabase.from('purchases').insert({
             product_id: product.id,
             buyer_id: user?.id,
             seller_id: product.user_id,
@@ -105,6 +106,13 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
             status: 'completed',
             shipping_method: selectedShipping?.name || 'standard',
           });
+
+          if (insertError) {
+            console.error('Error recording purchase:', insertError);
+          }
+
+          // Actualizar estado del producto a vendido
+          await supabase.from('products').update({ status: 'sold' }).eq('id', product.id);
 
           setTimeout(() => {
             navigate('/');
@@ -117,21 +125,28 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
         setProcessingPayment(false);
       }
     } else if (paymentMethod === 'transfer') {
-      toast.success('Se ha registrado tu compra. El vendedor se pondrá en contacto para coordinar la transferencia.');
-      
-      await supabase.from('purchases').insert({
-        product_id: product.id,
-        buyer_id: user?.id,
-        seller_id: product.user_id,
-        amount: totalAmount,
-        payment_method: 'transfer',
-        status: 'pending',
-        shipping_method: selectedShipping?.name || 'standard',
-      });
+      setProcessingPayment(true);
+      try {
+        toast.success('Se ha registrado tu solicitud de compra por transferencia.');
+        
+        await supabase.from('purchases').insert({
+          product_id: product.id,
+          buyer_id: user?.id,
+          seller_id: product.user_id,
+          amount: totalAmount,
+          payment_method: 'transfer',
+          status: 'pending',
+          shipping_method: selectedShipping?.name || 'standard',
+        });
 
-      setTimeout(() => {
-        navigate('/');
-      }, 2000);
+        setTimeout(() => {
+          navigate('/');
+        }, 2000);
+      } catch (error) {
+        toast.error('Error al registrar la transferencia');
+      } finally {
+        setProcessingPayment(false);
+      }
     } else {
       toast.info('PayPal será integrado próximamente');
     }
@@ -171,7 +186,7 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
                 </div>
                 <div className="flex justify-between">
                   <span>Comisión Reveta</span>
-                  <span className="font-semibold">Gratis</span>
+                  <span className="font-semibold text-green-600">Gratis</span>
                 </div>
                 <div className="border-t pt-2 flex justify-between text-lg font-bold">
                   <span>Total</span>
@@ -188,16 +203,20 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-3">
-                  {seller.avatar_url && (
-                    <img 
-                      src={seller.avatar_url} 
-                      alt={seller.full_name}
-                      className="w-12 h-12 rounded-full"
-                    />
-                  )}
+                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                    {seller.avatar_url ? (
+                      <img 
+                        src={seller.avatar_url} 
+                        alt={seller.full_name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-primary font-bold">{seller.full_name[0]}</span>
+                    )}
+                  </div>
                   <div>
                     <p className="font-semibold">{seller.full_name}</p>
-                    <p className="text-sm text-muted-foreground">⭐ 4.8 (124 valoraciones)</p>
+                    <p className="text-sm text-muted-foreground">Vendedor verificado en Reveta</p>
                   </div>
                 </div>
               </CardContent>
@@ -207,7 +226,7 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
           <ShippingInfo
             productId={product.id}
             productPrice={product.price}
-            sellerLocation={product.location || 'Madrid'}
+            sellerLocation={product.location || 'España'}
             onSelectShipping={setSelectedShipping}
           />
         </div>
@@ -219,34 +238,35 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
-                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent">
+                <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${paymentMethod === 'card' ? 'border-primary bg-primary/5' : 'hover:bg-accent'}`}>
                   <input
                     type="radio"
                     name="payment"
                     value="card"
                     checked={paymentMethod === 'card'}
                     onChange={(e) => setPaymentMethod(e.target.value as 'card' | 'paypal' | 'transfer')}
-                    className="w-4 h-4"
+                    className="w-4 h-4 text-primary"
                   />
                   <CreditCard className="h-5 w-5" />
                   <span className="font-medium">Tarjeta de Crédito/Débito</span>
                 </label>
 
                 {paymentMethod === 'card' && (
-                  <div className="p-4 bg-muted rounded-lg space-y-3">
-                    <div className="bg-white p-3 rounded border">
+                  <div className="p-4 bg-muted/50 rounded-lg space-y-3 border border-border">
+                    <div className="bg-white p-3 rounded border border-input shadow-sm">
                       <CardElement
                         options={{
                           style: {
                             base: {
                               fontSize: '16px',
-                              color: '#424770',
+                              color: '#1a1a1a',
+                              fontFamily: 'system-ui, sans-serif',
                               '::placeholder': {
-                                color: '#aab7c4',
+                                color: '#a1a1aa',
                               },
                             },
                             invalid: {
-                              color: '#9e2146',
+                              color: '#ef4444',
                             },
                           },
                         }}
@@ -254,7 +274,7 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
                       />
                     </div>
                     {cardError && (
-                      <div className="flex gap-2 text-red-600 text-sm">
+                      <div className="flex gap-2 text-destructive text-sm font-medium">
                         <AlertCircle className="h-4 w-4 flex-shrink-0" />
                         <span>{cardError}</span>
                       </div>
@@ -262,19 +282,19 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
                   </div>
                 )}
 
-                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent">
+                <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${paymentMethod === 'transfer' ? 'border-primary bg-primary/5' : 'hover:bg-accent'}`}>
                   <input
                     type="radio"
                     name="payment"
                     value="transfer"
                     checked={paymentMethod === 'transfer'}
                     onChange={(e) => setPaymentMethod(e.target.value as 'card' | 'paypal' | 'transfer')}
-                    className="w-4 h-4"
+                    className="w-4 h-4 text-primary"
                   />
                   <span className="font-medium">Transferencia Bancaria</span>
                 </label>
 
-                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent opacity-50">
+                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-not-allowed opacity-50 bg-muted/20">
                   <input
                     type="radio"
                     name="payment"
@@ -288,28 +308,33 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
             </CardContent>
           </Card>
 
-          <Card className="bg-blue-50 border-blue-200">
+          <Card className="bg-primary/5 border-primary/20 shadow-none">
             <CardContent className="pt-6">
               <div className="flex gap-3">
-                <Shield className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                <Shield className="h-5 w-5 text-primary flex-shrink-0" />
                 <div className="text-sm">
-                  <p className="font-semibold text-blue-900">Compra Protegida</p>
-                  <p className="text-blue-800">Tu dinero está protegido hasta que recibas el producto en perfecto estado.</p>
+                  <p className="font-semibold text-primary">Compra Protegida</p>
+                  <p className="text-muted-foreground">Tu dinero está protegido hasta que recibas el producto en perfecto estado.</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <Button
-            onClick={handlePayment}
+            type="submit"
             disabled={processingPayment || !stripe || !elements || !selectedShipping}
-            className="w-full h-12 text-base"
+            className="w-full h-12 text-base font-bold shadow-lg shadow-primary/20"
             size="lg"
           >
-            {processingPayment ? 'Procesando...' : `Confirmar compra - ${(product.price + (selectedShipping?.price || 0)).toFixed(2)} €`}
+            {processingPayment ? (
+              <div className="flex items-center gap-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Procesando...
+              </div>
+            ) : `Confirmar compra - ${(product.price + (selectedShipping?.price || 0)).toFixed(2)} €`}
           </Button>
 
-          <div className="flex gap-2 p-3 bg-blue-50 rounded-lg text-sm text-blue-900">
+          <div className="flex gap-2 p-3 bg-muted rounded-lg text-xs text-muted-foreground">
             <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
             <p>Al confirmar, aceptas los términos de compra y protección de Reveta.</p>
           </div>
@@ -370,16 +395,19 @@ const Checkout = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin">⏳</div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
       </div>
     );
   }
 
   if (!product) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Producto no encontrado</p>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <p className="text-xl font-semibold mb-4">Producto no encontrado</p>
+          <Button onClick={() => navigate('/')}>Volver al inicio</Button>
+        </div>
       </div>
     );
   }
