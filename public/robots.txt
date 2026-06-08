@@ -1,0 +1,41 @@
+User-agent: Googlebot
+Allow: /
+Disallow: /admin
+Disallow: /profile
+Disallow: /upload
+Disallow: /messages
+Disallow: /transactions
+Disallow: /settings
+Disallow: /saved-searches
+Disallow: /reset-password
+Disallow: /forgot-password
+
+User-agent: Bingbot
+Allow: /
+Disallow: /admin
+Disallow: /profile
+Disallow: /upload
+Disallow: /messages
+Disallow: /transactions
+Disallow: /settings
+Disallow: /saved-searches
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /profile
+Disallow: /upload
+Disallow: /messages
+Disallow: /transactions
+Disallow: /settings
+Disallow: /saved-searches
+Disallow: /reset-password
+Disallow: /forgot-password
+
+Sitemap: https://reveta.es/sitemap.xml
