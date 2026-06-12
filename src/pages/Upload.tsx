@@ -81,6 +81,33 @@ const Upload = () => {
     }
   }, [formData.category_id]);
 
+  // Efecto para traducir coordenadas a dirección legible
+  useEffect(() => {
+    if (useCurrentLocation && geolocation.latitude && geolocation.longitude) {
+      reverseGeocode(geolocation.latitude, geolocation.longitude);
+    }
+  }, [useCurrentLocation, geolocation.latitude, geolocation.longitude]);
+
+  const reverseGeocode = async (lat: number, lon: number) => {
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`);
+      const data = await response.json();
+      
+      if (data && data.address) {
+        const city = data.address.city || data.address.town || data.address.village || data.address.suburb || data.address.state;
+        if (city) {
+          setFormData(prev => ({ ...prev, location: city }));
+          toast({
+            title: 'Ubicación detectada',
+            description: `Te encuentras en ${city}`
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error in reverse geocoding:', error);
+    }
+  };
+
   const fetchCategories = async () => {
     const { data, error } = await supabase
       .from('categories')
@@ -278,32 +305,32 @@ const Upload = () => {
                       </div>
                     ))}
                     
-	                    {images.length < 5 && (
-	                      <>
-	                        <label className="aspect-square w-full rounded-lg border-2 border-dashed border-border hover:border-primary cursor-pointer flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
-	                          <ImagePlus className="h-6 w-6" />
-	                          <span className="text-xs">Galería</span>
-	                          <input
-	                            type="file"
-	                            accept="image/*"
-	                            multiple
-	                            onChange={handleImageChange}
-	                            className="hidden"
-	                          />
-	                        </label>
-	                        <label className="aspect-square w-full rounded-lg border-2 border-dashed border-border hover:border-primary cursor-pointer flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
-	                          <UploadIcon className="h-6 w-6" />
-	                          <span className="text-xs">Cámara</span>
-	                          <input
-	                            type="file"
-	                            accept="image/*"
-	                            capture="environment"
-	                            onChange={handleImageChange}
-	                            className="hidden"
-	                          />
-	                        </label>
-	                      </>
-	                    )}
+                    {images.length < 5 && (
+                      <>
+                        <label className="aspect-square w-full rounded-lg border-2 border-dashed border-border hover:border-primary cursor-pointer flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+                          <ImagePlus className="h-6 w-6" />
+                          <span className="text-xs">Galería</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={handleImageChange}
+                            className="hidden"
+                          />
+                        </label>
+                        <label className="aspect-square w-full rounded-lg border-2 border-dashed border-border hover:border-primary cursor-pointer flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+                          <UploadIcon className="h-6 w-6" />
+                          <span className="text-xs">Cámara</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={handleImageChange}
+                            className="hidden"
+                          />
+                        </label>
+                      </>
+                    )}
                   </div>
                 </div>
                 
@@ -396,7 +423,7 @@ const Upload = () => {
                     </div>
                   )}
                 </div>
-                
+
                 {/* Condition and Location */}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
@@ -444,6 +471,7 @@ const Upload = () => {
                             geolocation.requestLocation();
                           } else {
                             setUseCurrentLocation(false);
+                            setFormData(prev => ({ ...prev, location: '' }));
                           }
                         }}
                         disabled={geolocation.loading}
@@ -456,7 +484,7 @@ const Upload = () => {
                         ) : useCurrentLocation && geolocation.hasLocation ? (
                           <>
                             <Locate className="h-4 w-4" />
-                            Ubicación añadida
+                            Ubicación detectada
                           </>
                         ) : (
                           <>

@@ -7,32 +7,42 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // Manejar preflight de CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
+    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!stripeKey) {
+      throw new Error('Falta la variable de entorno STRIPE_SECRET_KEY');
+    }
+
+    const stripe = new Stripe(stripeKey, {
       apiVersion: '2023-10-16',
       httpClient: Stripe.createFetchHttpClient(),
     })
 
-    const { productId, amount, currency = 'eur' } = await req.json()
+    const body = await req.json();
+    const { productId, amount, currency = 'eur' } = body;
 
-    console.log(`Creando PaymentIntent para producto ${productId} por valor de ${amount} ${currency}`)
+    if (!amount || amount <= 0) {
+      throw new Error('El importe debe ser mayor que cero');
+    }
 
-    // Crear el PaymentIntent en Stripe
+    console.log(`Intentando crear PaymentIntent: ${amount} ${currency} para producto ${productId}`);
+
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount,
+      amount: Math.round(amount),
       currency: currency,
       automatic_payment_methods: {
         enabled: true,
       },
       metadata: {
-        productId: productId,
+        productId: productId || 'unknown',
       },
     })
+
+    console.log(`PaymentIntent creado con éxito: ${paymentIntent.id}`);
 
     return new Response(
       JSON.stringify({ clientSecret: paymentIntent.client_secret }),
@@ -42,9 +52,13 @@ serve(async (req) => {
       }
     )
   } catch (error) {
-    console.error('Error en create-payment-intent:', error.message)
+    console.error('ERROR DETECTADO EN EDGE FUNCTION:', error.message);
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: 'Revisa los logs de Supabase para más información'
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,

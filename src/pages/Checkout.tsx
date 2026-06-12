@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { loadStripe } from '@stripe/js';
+import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,7 +13,7 @@ import { Shield, Clock, AlertCircle, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { ShippingInfo } from '@/components/ShippingInfo';
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_live_51TfUZ9IDV23j4dXBoD8XkOEm2tZlC65pF2KB0dWIGI0Y6lAAGAidVtwRwTpJ9hd63h8mvLWH9TuYIhAEQjCY2vyT009pV7MXcP');
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
 interface Product {
   id: string;
