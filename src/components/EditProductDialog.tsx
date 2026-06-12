@@ -55,13 +55,13 @@ const EditProductDialog = ({ product, open, onOpenChange, onProductUpdated }: Ed
   const [categories, setCategories] = useState<Category[]>([]);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
-    title: product.title,
-    description: product.description || '',
-    price: product.price.toString(),
-    location: product.location || '',
-    condition: product.condition || '',
-    category_id: product.category_id || '',
-    status: product.status || 'active'
+    title: '',
+    description: '',
+    price: '',
+    location: '',
+    condition: '',
+    category_id: '',
+    status: 'active'
   });
 
   useEffect(() => {
@@ -69,16 +69,20 @@ const EditProductDialog = ({ product, open, onOpenChange, onProductUpdated }: Ed
   }, []);
 
   useEffect(() => {
-    setFormData({
-      title: product.title,
-      description: product.description || '',
-      price: product.price.toString(),
-      location: product.location || '',
-      condition: product.condition || '',
-      category_id: product.category_id || '',
-      status: product.status || 'active'
-    });
+    if (product) {
+      setFormData({
+        title: product.title,
+        description: product.description || '',
+        price: product.price.toString(),
+        location: product.location || '',
+        condition: product.condition || '',
+        category_id: product.category_id || '',
+        status: product.status || 'active'
+      });
+    }
   }, [product]);
+
+  if (!product) return null;
 
   const fetchCategories = async () => {
     const { data } = await supabase

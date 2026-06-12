@@ -244,6 +244,10 @@ const [formData, setFormData] = useState({
     );
   }
 
+  if (!user) {
+    return null;
+  }
+
   return (
     <>
       <Helmet>
