@@ -189,21 +189,6 @@ const ProductDetail = () => {
     setShowChat(true);
   };
 
-  const handleShare = async () => {
-    if (navigator.share) {
-      await navigator.share({
-        title: product?.title,
-        url: window.location.href
-      });
-    } else {
-      await navigator.clipboard.writeText(window.location.href);
-      toast({
-        title: 'Enlace copiado',
-        description: 'El enlace se ha copiado al portapapeles'
-      });
-    }
-  };
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -441,7 +426,7 @@ const ProductDetail = () => {
                       <ProductStatusBadge status={product.status} />
                     </div>
                     {product.condition && (
-                      <Badge variant="secondary" className="mt-2">
+                      <Badge variant="secondary" className="font-medium">
                         {product.condition}
                       </Badge>
                     )}
@@ -530,13 +515,18 @@ const ProductDetail = () => {
                 )}
 
                 {isOwner && (
-                  <Button 
-                    variant="outline" 
-                    className="w-full"
-                    onClick={() => navigate('/profile')}
-                  >
-                    Gestionar producto
-                  </Button>
+                  <div className="space-y-3">
+                    <Button 
+                      variant="outline" 
+                      className="w-full h-12"
+                      onClick={() => navigate('/profile')}
+                    >
+                      Gestionar producto
+                    </Button>
+                    <p className="text-xs text-center text-muted-foreground italic">
+                      Eres el vendedor de este producto
+                    </p>
+                  </div>
                 )}
               </div>
 
