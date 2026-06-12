@@ -24,12 +24,12 @@ interface Conversation {
     id: string;
     title: string;
     images: string[];
-  };
+  } | null;
   other_profile?: {
     id: string;
     full_name: string;
     avatar_url: string;
-  };
+  } | null;
 }
 
 interface ChatProps {
@@ -85,10 +85,49 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     );
 
     setConversations(convsWithProfiles);
+
+    // If productId and sellerId are provided, try to find or initiate that conversation
+    if (productId && sellerId && user.id !== sellerId) {
+      const existingConv = convsWithProfiles.find(
+        c => c.product_id === productId && 
+        ((c.buyer_id === user.id && c.seller_id === sellerId) || 
+         (c.buyer_id === sellerId && c.seller_id === user.id))
+      );
+
+      if (existingConv) {
+        setSelectedConversation(existingConv);
+      } else {
+        // Prepare a new conversation object (not yet in DB)
+        const { data: productData } = await supabase
+          .from('products')
+          .select('id, title, images')
+          .eq('id', productId)
+          .maybeSingle();
+
+        const { data: sellerProfile } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .eq('id', sellerId)
+          .maybeSingle();
+
+        const newConv: Conversation = {
+          id: 'new', // Temporary ID
+          product_id: productId,
+          buyer_id: user.id,
+          seller_id: sellerId,
+          products: productData,
+          other_profile: sellerProfile
+        };
+        setSelectedConversation(newConv);
+      }
+    }
   };
 
   useEffect(() => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || selectedConversation.id === 'new') {
+      setMessages([]);
+      return;
+    }
 
     const fetchMessages = async () => {
       const { data, error } = await supabase
@@ -132,8 +171,34 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     if (!newMessage.trim() || !selectedConversation || !user) return;
 
     setLoading(true);
+    let conversationId = selectedConversation.id;
+
+    // If it's a new conversation, create it first
+    if (conversationId === 'new') {
+      const { data: newConv, error: convError } = await supabase
+        .from('conversations')
+        .insert({
+          product_id: selectedConversation.product_id,
+          buyer_id: user.id,
+          seller_id: selectedConversation.seller_id,
+        })
+        .select()
+        .single();
+
+      if (convError) {
+        console.error('Error creating conversation:', convError);
+        setLoading(false);
+        return;
+      }
+      conversationId = newConv.id;
+      // Update the selected conversation with the real ID
+      setSelectedConversation({ ...selectedConversation, id: conversationId });
+      // Refresh list in background
+      fetchConversations();
+    }
+
     const { error } = await supabase.from('messages').insert({
-      conversation_id: selectedConversation.id,
+      conversation_id: conversationId,
       sender_id: user.id,
       content: newMessage.trim(),
     });
@@ -145,7 +210,7 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
       await supabase
         .from('conversations')
         .update({ updated_at: new Date().toISOString() })
-        .eq('id', selectedConversation.id);
+        .eq('id', conversationId);
     }
     setLoading(false);
   };
