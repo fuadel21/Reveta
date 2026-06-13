@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Truck, MapPin, Clock, AlertCircle, CheckCircle } from 'lucide-react';
 
 interface ShippingOption {
@@ -17,64 +17,34 @@ interface ShippingInfoProps {
   onSelectShipping?: (option: ShippingOption) => void;
 }
 
-const SHIPPING_OPTIONS: ShippingOption[] = [
-  {
-    id: 'standard',
-    name: 'Envío Estándar',
-    price: 5.99,
-    estimatedDays: 5,
-    description: 'Entrega en 3-5 días laborales',
-  },
-  {
-    id: 'express',
-    name: 'Envío Express',
-    price: 12.99,
-    estimatedDays: 2,
-    description: 'Entrega en 1-2 días laborales',
-  },
-  {
-    id: 'pickup',
-    name: 'Recogida en Persona',
-    price: 0,
-    estimatedDays: 0,
-    description: 'Acuerda una hora y lugar con el vendedor',
-  },
-];
+const SHIPPING_OPTION: ShippingOption = {
+  id: 'national-spain',
+  name: 'Envío nacional España',
+  price: 2.99,
+  estimatedDays: 5,
+  description: 'Entrega nacional en España',
+};
 
 export const ShippingInfo: React.FC<ShippingInfoProps> = ({
-  productId,
   productPrice,
-  sellerLocation = 'Madrid',
-  shippingInfo = 'Envío disponible a toda España',
+  sellerLocation = 'España',
+  shippingInfo = 'Envío nacional disponible en España por 2,99 €',
   onSelectShipping,
 }) => {
-  const [selectedShipping, setSelectedShipping] = useState<string>('standard');
   const [showDetails, setShowDetails] = useState(false);
+  const totalPrice = productPrice + SHIPPING_OPTION.price;
 
-  const handleSelectShipping = (optionId: string) => {
-    setSelectedShipping(optionId);
-    const option = SHIPPING_OPTIONS.find((o) => o.id === optionId);
-    if (option && onSelectShipping) {
-      onSelectShipping(option);
-    }
-  };
-
-  const selectedOption = SHIPPING_OPTIONS.find(
-    (o) => o.id === selectedShipping
-  );
-  const totalPrice = productPrice + (selectedOption?.price || 0);
+  useEffect(() => {
+    onSelectShipping?.(SHIPPING_OPTION);
+  }, [onSelectShipping]);
 
   return (
     <div className="space-y-4 bg-white p-6 rounded-lg border">
-      {/* Header */}
       <div className="flex items-center gap-2">
         <Truck className="text-blue-600" size={24} />
-        <h3 className="text-lg font-semibold text-gray-900">
-          Información de Envío
-        </h3>
+        <h3 className="text-lg font-semibold text-gray-900">Información de envío</h3>
       </div>
 
-      {/* Seller Location */}
       <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg">
         <MapPin className="text-blue-600 flex-shrink-0 mt-1" size={20} />
         <div>
@@ -83,7 +53,6 @@ export const ShippingInfo: React.FC<ShippingInfoProps> = ({
         </div>
       </div>
 
-      {/* Shipping Info */}
       <div className="p-3 bg-green-50 rounded-lg border border-green-200">
         <p className="text-sm text-gray-700">
           <CheckCircle className="inline mr-2 text-green-600" size={16} />
@@ -91,63 +60,46 @@ export const ShippingInfo: React.FC<ShippingInfoProps> = ({
         </p>
       </div>
 
-      {/* Shipping Options */}
       <div className="space-y-3">
-        <p className="font-semibold text-gray-900">Opciones de envío:</p>
+        <p className="font-semibold text-gray-900">Opción de envío:</p>
 
-        {SHIPPING_OPTIONS.map((option) => (
-          <label
-            key={option.id}
-            className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition ${
-              selectedShipping === option.id
-                ? 'border-blue-600 bg-blue-50'
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            <input
-              type="radio"
-              name="shipping"
-              value={option.id}
-              checked={selectedShipping === option.id}
-              onChange={() => handleSelectShipping(option.id)}
-              className="mt-1"
-            />
+        <div className="flex items-start gap-3 p-4 border rounded-lg border-blue-600 bg-blue-50">
+          <input
+            type="radio"
+            name="shipping"
+            value={SHIPPING_OPTION.id}
+            checked
+            readOnly
+            className="mt-1"
+          />
 
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <p className="font-semibold text-gray-900">{option.name}</p>
-                <p className="font-bold text-gray-900">
-                  {option.price === 0 ? 'Gratis' : `+€${option.price.toFixed(2)}`}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
-                <span className="flex items-center gap-1">
-                  <Clock size={16} />
-                  {option.estimatedDays === 0
-                    ? 'Acordar'
-                    : `${option.estimatedDays} día${option.estimatedDays > 1 ? 's' : ''}`}
-                </span>
-                <span>{option.description}</span>
-              </div>
+          <div className="flex-1">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-semibold text-gray-900">{SHIPPING_OPTION.name}</p>
+              <p className="font-bold text-gray-900">+€{SHIPPING_OPTION.price.toFixed(2)}</p>
             </div>
-          </label>
-        ))}
+
+            <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
+              <span className="flex items-center gap-1">
+                <Clock size={16} />
+                {SHIPPING_OPTION.estimatedDays} días
+              </span>
+              <span>{SHIPPING_OPTION.description}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Price Summary */}
       <div className="border-t pt-4 space-y-2">
         <div className="flex justify-between text-gray-700">
           <span>Precio del producto:</span>
           <span>€{productPrice.toFixed(2)}</span>
         </div>
 
-        {selectedOption && selectedOption.price > 0 && (
-          <div className="flex justify-between text-gray-700">
-            <span>Envío ({selectedOption.name}):</span>
-            <span>€{selectedOption.price.toFixed(2)}</span>
-          </div>
-        )}
+        <div className="flex justify-between text-gray-700">
+          <span>Envío ({SHIPPING_OPTION.name}):</span>
+          <span>€{SHIPPING_OPTION.price.toFixed(2)}</span>
+        </div>
 
         <div className="flex justify-between text-lg font-bold text-gray-900 bg-gray-100 p-3 rounded-lg">
           <span>Total:</span>
@@ -155,8 +107,8 @@ export const ShippingInfo: React.FC<ShippingInfoProps> = ({
         </div>
       </div>
 
-      {/* Additional Info */}
       <button
+        type="button"
         onClick={() => setShowDetails(!showDetails)}
         className="w-full text-left text-sm text-blue-600 hover:text-blue-700 font-semibold py-2"
       >
@@ -170,8 +122,7 @@ export const ShippingInfo: React.FC<ShippingInfoProps> = ({
             <div>
               <p className="font-semibold">Nota importante:</p>
               <p>
-                El vendedor puede ofrecer envío gratis o descuentos. Contacta
-                con él para más información.
+                El envío nacional tiene un coste fijo de 2,99 €. Usa el chat para coordinar cualquier detalle adicional con el vendedor.
               </p>
             </div>
           </div>
@@ -188,8 +139,7 @@ export const ShippingInfo: React.FC<ShippingInfoProps> = ({
           <div>
             <p className="font-semibold mb-2">Protección del comprador:</p>
             <p>
-              Reveta protege tus compras. Si no recibes el producto o no es
-              como se describe, puedes solicitar un reembolso.
+              Reveta registra la operación para que comprador y vendedor puedan hacer seguimiento desde Mis transacciones.
             </p>
           </div>
         </div>
