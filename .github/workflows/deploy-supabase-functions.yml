@@ -17,6 +17,9 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      SENDCLOUD_PUBLIC_KEY: ${{ secrets.SENDCLOUD_PUBLIC_KEY }}
+      SENDCLOUD_SECRET_KEY: ${{ secrets.SENDCLOUD_SECRET_KEY }}
+      SENDCLOUD_SHIPPING_METHOD_ID: ${{ secrets.SENDCLOUD_SHIPPING_METHOD_ID }}
 
     steps:
       - name: Checkout repository
@@ -37,7 +40,17 @@ jobs:
       - name: Set Supabase secrets
         run: |
           supabase secrets set STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" --project-ref "$SUPABASE_PROJECT_REF"
+          if [ -n "$SENDCLOUD_PUBLIC_KEY" ] && [ -n "$SENDCLOUD_SECRET_KEY" ]; then
+            supabase secrets set SENDCLOUD_PUBLIC_KEY="$SENDCLOUD_PUBLIC_KEY" --project-ref "$SUPABASE_PROJECT_REF"
+            supabase secrets set SENDCLOUD_SECRET_KEY="$SENDCLOUD_SECRET_KEY" --project-ref "$SUPABASE_PROJECT_REF"
+            if [ -n "$SENDCLOUD_SHIPPING_METHOD_ID" ]; then
+              supabase secrets set SENDCLOUD_SHIPPING_METHOD_ID="$SENDCLOUD_SHIPPING_METHOD_ID" --project-ref "$SUPABASE_PROJECT_REF"
+            fi
+          else
+            echo "Sendcloud secrets not set. Skipping Sendcloud secret configuration."
+          fi
 
-      - name: Deploy Stripe payment function
+      - name: Deploy Edge Functions
         run: |
           supabase functions deploy create-payment-intent --project-ref "$SUPABASE_PROJECT_REF"
+          supabase functions deploy create-sendcloud-parcel --project-ref "$SUPABASE_PROJECT_REF"
