@@ -529,12 +529,14 @@ const [formData, setFormData] = useState({
         
         <Footer />
         
-        <EditProductDialog
-          product={editingProduct}
-          open={editDialogOpen}
-          onOpenChange={setEditDialogOpen}
-          onSuccess={fetchProducts}
-        />
+        {editingProduct && (
+          <EditProductDialog
+            product={editingProduct}
+            open={editDialogOpen}
+            onOpenChange={setEditDialogOpen}
+            onProductUpdated={fetchProducts}
+          />
+        )}
         
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <AlertDialogContent>
