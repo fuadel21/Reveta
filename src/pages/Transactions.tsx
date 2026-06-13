@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ShoppingBag, Package, ArrowUpRight, ArrowDownLeft, MessageCircle, XCircle, CheckCircle2 } from 'lucide-react';
+import { ShoppingBag, Package, ArrowUpRight, ArrowDownLeft, MessageCircle, XCircle, CheckCircle2, Truck, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Transaction {
@@ -21,6 +21,20 @@ interface Transaction {
   status: string;
   completed_at: string;
   created_at?: string;
+  shipping_provider?: string | null;
+  shipping_status?: string | null;
+  sendcloud_parcel_id?: string | null;
+  sendcloud_tracking_number?: string | null;
+  sendcloud_tracking_url?: string | null;
+  shipping_address?: {
+    fullName?: string;
+    phone?: string;
+    address?: string;
+    houseNumber?: string;
+    postalCode?: string;
+    city?: string;
+    country?: string;
+  } | null;
   product?: {
     id: string;
     title: string;
@@ -227,6 +241,10 @@ const Transactions = () => {
   const TransactionCard = ({ transaction, type }: { transaction: Transaction; type: 'purchase' | 'sale' }) => {
     const isPending = transaction.status === 'pending' || transaction.status === 'pending_payment';
     const productImage = transaction.product?.images?.[0] || '/placeholder.svg';
+    const hasSendcloudParcel = Boolean(transaction.sendcloud_parcel_id || transaction.sendcloud_tracking_number || transaction.sendcloud_tracking_url);
+    const shippingAddressText = transaction.shipping_address
+      ? `${transaction.shipping_address.address || ''} ${transaction.shipping_address.houseNumber || ''}, ${transaction.shipping_address.postalCode || ''} ${transaction.shipping_address.city || ''}`.trim()
+      : '';
 
     return (
       <Card className="border-border/50">
@@ -270,6 +288,39 @@ const Transactions = () => {
                   </Badge>
                 </div>
               </div>
+
+              {(hasSendcloudParcel || shippingAddressText) && (
+                <div className="mt-3 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
+                  <div className="flex items-center gap-2 font-medium text-foreground">
+                    <Truck className="h-4 w-4" />
+                    <span>Envío Sendcloud</span>
+                  </div>
+
+                  {transaction.sendcloud_parcel_id && (
+                    <p>ID de envío: {transaction.sendcloud_parcel_id}</p>
+                  )}
+
+                  {transaction.sendcloud_tracking_number && (
+                    <p>Seguimiento: {transaction.sendcloud_tracking_number}</p>
+                  )}
+
+                  {shippingAddressText && (
+                    <p>Dirección: {shippingAddressText}</p>
+                  )}
+
+                  {transaction.sendcloud_tracking_url && (
+                    <a
+                      href={transaction.sendcloud_tracking_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-primary font-medium"
+                    >
+                      Ver seguimiento
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-wrap gap-2 mt-4">
                 <Button size="sm" variant="outline" onClick={() => contactOtherUser(transaction)}>
