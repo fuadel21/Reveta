@@ -58,7 +58,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
   const [processingPayment, setProcessingPayment] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transfer');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(STRIPE_PAYMENTS_ENABLED ? 'card' : 'transfer');
   const [selectedShipping, setSelectedShipping] = useState<any>(null);
 
   const productImage = Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null;
@@ -385,10 +385,20 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
-                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-not-allowed opacity-50 bg-muted/20">
-                  <input type="radio" name="payment" value="card" checked={paymentMethod === 'card'} disabled className="w-4 h-4 text-primary" />
+                <label className={`flex items-center gap-3 p-3 border rounded-lg transition-colors ${paymentMethod === 'card' ? 'border-primary bg-primary/5' : 'hover:bg-accent'} ${!STRIPE_PAYMENTS_ENABLED ? 'cursor-not-allowed opacity-50 bg-muted/20' : 'cursor-pointer'}`}>
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="card"
+                    checked={paymentMethod === 'card'}
+                    disabled={!STRIPE_PAYMENTS_ENABLED}
+                    onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
+                    className="w-4 h-4 text-primary"
+                  />
                   <CreditCard className="h-5 w-5" />
-                  <span className="font-medium">Tarjeta de Crédito/Débito (pendiente de activar)</span>
+                  <span className="font-medium">
+                    {STRIPE_PAYMENTS_ENABLED ? 'Tarjeta de Crédito/Débito' : 'Tarjeta de Crédito/Débito (pendiente de activar)'}
+                  </span>
                 </label>
 
                 {STRIPE_PAYMENTS_ENABLED && paymentMethod === 'card' && (
@@ -415,6 +425,9 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                         <span>{cardError}</span>
                       </div>
                     )}
+                    <p className="text-xs text-muted-foreground">
+                      Pago seguro procesado por Stripe.
+                    </p>
                   </div>
                 )}
 
@@ -444,8 +457,14 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
               <div className="flex gap-3">
                 <Shield className="h-5 w-5 text-primary flex-shrink-0" />
                 <div className="text-sm">
-                  <p className="font-semibold text-primary">Compra registrada</p>
-                  <p className="text-muted-foreground">La operación queda pendiente hasta que comprador y vendedor coordinen el pago y envío.</p>
+                  <p className="font-semibold text-primary">
+                    {paymentMethod === 'card' ? 'Pago seguro con tarjeta' : 'Compra registrada'}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {paymentMethod === 'card'
+                      ? 'El pago se procesa con Stripe y la compra queda registrada al confirmarse correctamente.'
+                      : 'La operación queda pendiente hasta que comprador y vendedor coordinen el pago y envío.'}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -460,13 +479,17 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
             ) : paymentMethod === 'transfer' ? (
               `Registrar compra pendiente - ${totalAmount.toFixed(2)} €`
             ) : (
-              `Confirmar compra - ${totalAmount.toFixed(2)} €`
+              `Pagar con tarjeta - ${totalAmount.toFixed(2)} €`
             )}
           </Button>
 
           <div className="flex gap-2 p-3 bg-muted rounded-lg text-xs text-muted-foreground">
             <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-            <p>La transferencia bancaria se gestiona fuera de Reveta. Usa el chat para coordinar los datos de pago y envío.</p>
+            <p>
+              {paymentMethod === 'card'
+                ? 'Usa una tarjeta válida. En modo pruebas de Stripe puedes usar 4242 4242 4242 4242.'
+                : 'La transferencia bancaria se gestiona fuera de Reveta. Usa el chat para coordinar los datos de pago y envío.'}
+            </p>
           </div>
         </div>
       </div>
