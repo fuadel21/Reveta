@@ -1,158 +1,185 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { loadStripe } from '@stripe/stripe-js';
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { Elements, CardElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Shield, Clock, AlertCircle, CreditCard } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { AlertCircle, CreditCard, ImageOff, Landmark, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { ShippingInfo } from '@/components/ShippingInfo';
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
+const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
+
+type PaymentMethod = 'card' | 'transfer' | 'paypal';
 
 interface Product {
   id: string;
   title: string;
   price: number;
-  images: string[];
+  images: string[] | null;
   user_id: string;
   location: string | null;
+  status: string | null;
 }
 
 interface Seller {
-  full_name: string;
+  full_name: string | null;
   avatar_url: string | null;
 }
 
-const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller: Seller | null; onSuccess: () => void }) => {
+const getFunctionErrorMessage = async (error: any) => {
+  try {
+    if (error?.context && typeof error.context.json === 'function') {
+      const payload = await error.context.json();
+      return payload?.error || payload?.message || error.message;
+    }
+  } catch {
+    // Ignore JSON parsing errors and return the generic message below.
+  }
+
+  return error?.message || 'No se pudo conectar con el servidor de pagos.';
+};
+
+const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | null }) => {
   const stripe = useStripe();
   const elements = useElements();
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+
   const [processingPayment, setProcessingPayment] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'paypal' | 'transfer'>('card');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(STRIPE_PUBLISHABLE_KEY ? 'card' : 'transfer');
   const [selectedShipping, setSelectedShipping] = useState<any>(null);
 
+  const productImage = Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null;
+  const totalAmount = useMemo(() => product.price + (selectedShipping?.price || 0), [product.price, selectedShipping]);
+
   const handleCardChange = (event: any) => {
-    if (event.error) {
-      setCardError(event.error.message);
-    } else {
-      setCardError(null);
-    }
+    setCardError(event.error?.message || null);
   };
 
-  const handlePayment = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const recordTransaction = async (status: 'completed' | 'pending') => {
+    if (!user) throw new Error('Debes iniciar sesión para comprar.');
 
-    if (!stripe || !elements) {
-      toast.error('Stripe no está cargado. Por favor, recarga la página.');
-      return;
+    const { error: transactionError } = await supabase.from('transactions').insert({
+      product_id: product.id,
+      buyer_id: user.id,
+      seller_id: product.user_id,
+      amount: totalAmount,
+      status,
+    });
+
+    if (transactionError) {
+      console.error('Error recording transaction:', transactionError);
+      throw new Error('El pago se procesó, pero no se pudo registrar la compra. Contacta con soporte.');
     }
+
+    await supabase
+      .from('products')
+      .update({ status: status === 'completed' ? 'sold' : 'reserved' })
+      .eq('id', product.id);
+  };
+
+  const handleCardPayment = async () => {
+    if (!stripe || !elements) {
+      throw new Error('Stripe no está cargado. Recarga la página o usa transferencia bancaria.');
+    }
+
+    const card = elements.getElement(CardElement);
+    if (!card) {
+      throw new Error('No se pudo leer la tarjeta. Recarga la página e inténtalo de nuevo.');
+    }
+
+    const { data, error: functionError } = await supabase.functions.invoke('create-payment-intent', {
+      body: {
+        productId: product.id,
+        amount: Math.round(totalAmount * 100),
+        currency: 'eur',
+      },
+    });
+
+    if (functionError) {
+      const message = await getFunctionErrorMessage(functionError);
+      console.error('Payment function error:', functionError);
+      throw new Error(`${message} Puedes continuar con transferencia bancaria mientras se activa Stripe.`);
+    }
+
+    const clientSecret = data?.clientSecret;
+    if (!clientSecret) {
+      throw new Error('La función de pagos no devolvió el secreto de Stripe. Revisa la configuración de Stripe en Supabase.');
+    }
+
+    const result = await stripe.confirmCardPayment(clientSecret, {
+      payment_method: {
+        card,
+        billing_details: {
+          name: user?.email || 'Usuario de Reveta',
+        },
+      },
+    });
+
+    if (result.error) {
+      setCardError(result.error.message || 'Error en el pago');
+      throw new Error(result.error.message || 'Error al procesar el pago');
+    }
+
+    if (result.paymentIntent?.status !== 'succeeded') {
+      throw new Error('El pago no se ha completado. Inténtalo de nuevo.');
+    }
+
+    await recordTransaction('completed');
+    toast.success('¡Compra realizada con éxito!');
+    navigate('/transactions');
+  };
+
+  const handleTransferPayment = async () => {
+    await recordTransaction('pending');
+    toast.success('Solicitud de compra registrada. El vendedor verá la operación como pendiente.');
+    navigate('/transactions');
+  };
+
+  const handlePayment = async (event: React.FormEvent) => {
+    event.preventDefault();
 
     if (!selectedShipping) {
-      toast.error('Por favor, selecciona un método de envío.');
+      toast.error('Selecciona un método de envío antes de confirmar.');
       return;
     }
 
-    const totalAmount = product.price + (selectedShipping?.price || 0);
+    if (product.status && product.status !== 'active') {
+      toast.error('Este producto ya no está disponible.');
+      return;
+    }
 
-    if (paymentMethod === 'card') {
-      setProcessingPayment(true);
+    setProcessingPayment(true);
 
-      try {
-        // Invocar la Edge Function de Supabase para crear el Payment Intent
-        const { data, error: functionError } = await supabase.functions.invoke('create-payment-intent', {
-          body: {
-            productId: product.id,
-            amount: Math.round(totalAmount * 100), // En céntimos
-            currency: 'eur'
-          }
-        });
-
-        if (functionError) {
-          console.error('Function error:', functionError);
-          throw new Error('Error al conectar con el servidor de pagos. Verifica que la Edge Function esté activa.');
-        }
-
-        const { clientSecret } = data;
-
-        if (!clientSecret) {
-          throw new Error('No se pudo obtener el secreto de pago de Stripe.');
-        }
-
-        const result = await stripe.confirmCardPayment(clientSecret, {
-          payment_method: {
-            card: elements.getElement(CardElement)!,
-            billing_details: {
-              name: user?.email || 'Usuario de Reveta',
-            },
-          },
-        });
-
-        if (result.error) {
-          setCardError(result.error.message || 'Error en el pago');
-          toast.error(result.error.message || 'Error al procesar el pago');
-        } else if (result.paymentIntent?.status === 'succeeded') {
-          toast.success('¡Compra realizada con éxito!');
-          
-          // Registrar la compra en la tabla 'transactions' (según Database Types)
-          const { error: insertError } = await supabase.from('transactions').insert({
-            product_id: product.id,
-            buyer_id: user?.id,
-            seller_id: product.user_id,
-            amount: totalAmount,
-            status: 'completed',
-          });
-
-          if (insertError) {
-            console.error('Error recording transaction:', insertError);
-          }
-
-          // Actualizar estado del producto a vendido
-          await supabase.from('products').update({ status: 'sold' }).eq('id', product.id);
-
-          setTimeout(() => {
-            navigate('/');
-          }, 2000);
-        }
-      } catch (error: any) {
-        toast.error(error.message || 'Error al procesar el pago');
-        console.error('Payment error:', error);
-      } finally {
-        setProcessingPayment(false);
+    try {
+      if (paymentMethod === 'card') {
+        await handleCardPayment();
+      } else if (paymentMethod === 'transfer') {
+        await handleTransferPayment();
+      } else {
+        toast.info('PayPal será integrado próximamente.');
       }
-    } else if (paymentMethod === 'transfer') {
-      setProcessingPayment(true);
-      try {
-        toast.success('Se ha registrado tu solicitud de compra por transferencia.');
-        
-        await supabase.from('transactions').insert({
-          product_id: product.id,
-          buyer_id: user?.id,
-          seller_id: product.user_id,
-          amount: totalAmount,
-          status: 'pending',
-        });
-
-        setTimeout(() => {
-          navigate('/');
-        }, 2000);
-      } catch (error) {
-        toast.error('Error al registrar la transferencia');
-      } finally {
-        setProcessingPayment(false);
+    } catch (error: any) {
+      console.error('Checkout error:', error);
+      toast.error(error.message || 'Error al procesar la compra');
+      if (paymentMethod === 'card') {
+        setPaymentMethod('transfer');
       }
-    } else {
-      toast.info('PayPal será integrado próximamente');
+    } finally {
+      setProcessingPayment(false);
     }
   };
+
+  const isCardUnavailable = !STRIPE_PUBLISHABLE_KEY || !stripe || !elements;
+  const buttonDisabled = processingPayment || !selectedShipping || (paymentMethod === 'card' && isCardUnavailable);
 
   return (
     <form onSubmit={handlePayment} className="space-y-6">
@@ -164,16 +191,18 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-4">
-                {product.images && product.images[0] && (
-                  <img 
-                    src={product.images[0]} 
-                    alt={product.title}
-                    className="w-20 h-20 object-cover rounded"
-                  />
-                )}
-                <div className="flex-1">
-                  <h3 className="font-semibold">{product.title}</h3>
-                  <p className="text-sm text-muted-foreground">{product.location}</p>
+                <div className="w-20 h-20 rounded overflow-hidden bg-muted shrink-0">
+                  {productImage ? (
+                    <img src={productImage} alt={product.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                      <ImageOff className="h-6 w-6" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold truncate">{product.title}</h3>
+                  {product.location && <p className="text-sm text-muted-foreground">{product.location}</p>}
                 </div>
               </div>
 
@@ -184,7 +213,7 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
                 </div>
                 <div className="flex justify-between">
                   <span>Envío ({selectedShipping?.name || 'Selecciona uno'})</span>
-                  <span className="font-semibold">{selectedShipping?.price ? `${selectedShipping.price.toFixed(2)} €` : '0.00 €'}</span>
+                  <span className="font-semibold">{(selectedShipping?.price || 0).toFixed(2)} €</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Comisión Reveta</span>
@@ -192,7 +221,7 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
                 </div>
                 <div className="border-t pt-2 flex justify-between text-lg font-bold">
                   <span>Total</span>
-                  <span>{(product.price + (selectedShipping?.price || 0)).toFixed(2)} €</span>
+                  <span>{totalAmount.toFixed(2)} €</span>
                 </div>
               </div>
             </CardContent>
@@ -207,18 +236,14 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
                 <div className="flex items-center gap-3">
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
                     {seller.avatar_url ? (
-                      <img 
-                        src={seller.avatar_url} 
-                        alt={seller.full_name}
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={seller.avatar_url} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-primary font-bold">{seller.full_name[0]}</span>
+                      <span className="text-primary font-bold">{seller.full_name?.[0]?.toUpperCase() || 'U'}</span>
                     )}
                   </div>
                   <div>
-                    <p className="font-semibold">{seller.full_name}</p>
-                    <p className="text-sm text-muted-foreground">Vendedor verificado en Reveta</p>
+                    <p className="font-semibold">{seller.full_name || 'Usuario'}</p>
+                    <p className="text-sm text-muted-foreground">Vendedor en Reveta</p>
                   </div>
                 </div>
               </CardContent>
@@ -240,13 +265,14 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
-                <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${paymentMethod === 'card' ? 'border-primary bg-primary/5' : 'hover:bg-accent'}`}>
+                <label className={`flex items-center gap-3 p-3 border rounded-lg transition-colors ${paymentMethod === 'card' ? 'border-primary bg-primary/5' : 'hover:bg-accent'} ${!STRIPE_PUBLISHABLE_KEY ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
                   <input
                     type="radio"
                     name="payment"
                     value="card"
                     checked={paymentMethod === 'card'}
-                    onChange={(e) => setPaymentMethod(e.target.value as 'card' | 'paypal' | 'transfer')}
+                    disabled={!STRIPE_PUBLISHABLE_KEY}
+                    onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
                     className="w-4 h-4 text-primary"
                   />
                   <CreditCard className="h-5 w-5" />
@@ -263,13 +289,9 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
                               fontSize: '16px',
                               color: '#1a1a1a',
                               fontFamily: 'system-ui, sans-serif',
-                              '::placeholder': {
-                                color: '#a1a1aa',
-                              },
+                              '::placeholder': { color: '#a1a1aa' },
                             },
-                            invalid: {
-                              color: '#ef4444',
-                            },
+                            invalid: { color: '#ef4444' },
                           },
                         }}
                         onChange={handleCardChange}
@@ -281,6 +303,9 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
                         <span>{cardError}</span>
                       </div>
                     )}
+                    <p className="text-xs text-muted-foreground">
+                      Si Stripe aún no está activo en Supabase, selecciona transferencia bancaria para registrar la compra como pendiente.
+                    </p>
                   </div>
                 )}
 
@@ -290,20 +315,15 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
                     name="payment"
                     value="transfer"
                     checked={paymentMethod === 'transfer'}
-                    onChange={(e) => setPaymentMethod(e.target.value as 'card' | 'paypal' | 'transfer')}
+                    onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
                     className="w-4 h-4 text-primary"
                   />
+                  <Landmark className="h-5 w-5" />
                   <span className="font-medium">Transferencia Bancaria</span>
                 </label>
 
                 <label className="flex items-center gap-3 p-3 border rounded-lg cursor-not-allowed opacity-50 bg-muted/20">
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="paypal"
-                    disabled
-                    className="w-4 h-4"
-                  />
+                  <input type="radio" name="payment" value="paypal" disabled className="w-4 h-4" />
                   <span className="font-medium">PayPal (Próximamente)</span>
                 </label>
               </div>
@@ -316,24 +336,23 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
                 <Shield className="h-5 w-5 text-primary flex-shrink-0" />
                 <div className="text-sm">
                   <p className="font-semibold text-primary">Compra Protegida</p>
-                  <p className="text-muted-foreground">Tu dinero está protegido hasta que recibas el producto en perfecto estado.</p>
+                  <p className="text-muted-foreground">Tu operación queda registrada en Reveta para que comprador y vendedor puedan hacer seguimiento.</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Button
-            type="submit"
-            disabled={processingPayment || !stripe || !elements || !selectedShipping}
-            className="w-full h-12 text-base font-bold shadow-lg shadow-primary/20"
-            size="lg"
-          >
+          <Button type="submit" disabled={buttonDisabled} className="w-full h-12 text-base font-bold shadow-lg shadow-primary/20" size="lg">
             {processingPayment ? (
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                 Procesando...
               </div>
-            ) : `Confirmar compra - ${(product.price + (selectedShipping?.price || 0)).toFixed(2)} €`}
+            ) : paymentMethod === 'transfer' ? (
+              `Registrar compra pendiente - ${totalAmount.toFixed(2)} €`
+            ) : (
+              `Confirmar compra - ${totalAmount.toFixed(2)} €`
+            )}
           </Button>
 
           <div className="flex gap-2 p-3 bg-muted rounded-lg text-xs text-muted-foreground">
@@ -349,53 +368,64 @@ const CheckoutForm = ({ product, seller, onSuccess }: { product: Product; seller
 const Checkout = () => {
   const { productId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  
+  const { user, loading: authLoading } = useAuth();
+
   const [product, setProduct] = useState<Product | null>(null);
   const [seller, setSeller] = useState<Seller | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (authLoading) return;
+
     if (!user) {
       navigate('/auth');
       return;
     }
+
     fetchProductAndSeller();
-  }, [productId, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, productId, user?.id]);
 
   const fetchProductAndSeller = async () => {
     if (!productId) return;
+
+    setLoading(true);
 
     try {
       const { data: productData, error: productError } = await supabase
         .from('products')
         .select('*')
         .eq('id', productId)
-        .single();
+        .maybeSingle();
 
       if (productError) throw productError;
-      setProduct(productData);
+      if (!productData) throw new Error('Producto no encontrado');
 
-      if (productData.user_id) {
-        const { data: sellerData, error: sellerError } = await supabase
-          .from('profiles')
-          .select('full_name, avatar_url')
-          .eq('id', productData.user_id)
-          .single();
-
-        if (!sellerError && sellerData) {
-          setSeller(sellerData);
-        }
+      if (productData.user_id === user?.id) {
+        toast.error('No puedes comprar tu propio producto.');
+        navigate(`/product/${productData.id}`);
+        return;
       }
+
+      setProduct(productData as Product);
+
+      const { data: sellerData, error: sellerError } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('id', productData.user_id)
+        .maybeSingle();
+
+      if (sellerError) console.error('Error fetching seller:', sellerError);
+      setSeller((sellerData || null) as Seller | null);
     } catch (error) {
-      console.error('Error fetching product:', error);
+      console.error('Error fetching checkout data:', error);
       toast.error('Error al cargar el producto');
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
@@ -427,13 +457,13 @@ const Checkout = () => {
         <main className="flex-1 container max-w-6xl mx-auto py-8 px-4">
           <h1 className="text-3xl font-bold mb-8">Confirmar compra</h1>
 
-          <Elements stripe={stripePromise}>
-            <CheckoutForm 
-              product={product} 
-              seller={seller}
-              onSuccess={() => navigate('/')}
-            />
-          </Elements>
+          {stripePromise ? (
+            <Elements stripe={stripePromise}>
+              <CheckoutForm product={product} seller={seller} />
+            </Elements>
+          ) : (
+            <CheckoutForm product={product} seller={seller} />
+          )}
         </main>
 
         <Footer />
