@@ -1,4 +1,7 @@
-project_id = "hkzvyjcjwadkglaqnpwf"
+project_id = "dnjjvtjcjfeklgwbhwpy"
 
 [functions.delete-account]
 verify_jwt = false
+
+[functions.create-payment-intent]
+verify_jwt = true
