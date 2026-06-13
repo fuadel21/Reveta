@@ -9,8 +9,18 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ShoppingBag, Package, ArrowUpRight, ArrowDownLeft, MessageCircle, XCircle, CheckCircle2, Truck, ExternalLink } from 'lucide-react';
+import { ShoppingBag, Package, ArrowUpRight, ArrowDownLeft, MessageCircle, XCircle, CheckCircle2, Truck, ExternalLink, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
+
+interface Dispute {
+  id: string;
+  transaction_id: string;
+  reason: string;
+  details: string | null;
+  status: string;
+  opened_by: string;
+  created_at: string;
+}
 
 interface Transaction {
   id: string;
@@ -35,6 +45,7 @@ interface Transaction {
     city?: string;
     country?: string;
   } | null;
+  dispute?: Dispute | null;
   product?: {
     id: string;
     title: string;
@@ -47,6 +58,15 @@ interface Transaction {
     full_name: string | null;
   } | null;
 }
+
+const DISPUTE_REASONS = [
+  'No he recibido el producto',
+  'Producto diferente al anunciado',
+  'Producto dañado',
+  'El vendedor no responde',
+  'El comprador no confirma recepción',
+  'Otro motivo',
+];
 
 const getStatusLabel = (status: string) => {
   switch (status) {
@@ -62,7 +82,9 @@ const getStatusLabel = (status: string) => {
     case 'cancelled':
       return 'Cancelada';
     case 'disputed':
-      return 'Incidencia';
+      return 'Incidencia abierta';
+    case 'under_review':
+      return 'En revisión';
     default:
       return status;
   }
@@ -70,9 +92,26 @@ const getStatusLabel = (status: string) => {
 
 const getStatusVariant = (status: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
   if (status === 'completed' || status === 'paid') return 'default';
-  if (status === 'cancelled' || status === 'disputed') return 'destructive';
+  if (status === 'cancelled' || status === 'disputed' || status === 'under_review') return 'destructive';
   if (status === 'shipped') return 'outline';
   return 'secondary';
+};
+
+const getDisputeStatusLabel = (status: string) => {
+  switch (status) {
+    case 'open':
+      return 'Abierta';
+    case 'under_review':
+      return 'En revisión';
+    case 'resolved_buyer':
+      return 'Resuelta a favor del comprador';
+    case 'resolved_seller':
+      return 'Resuelta a favor del vendedor';
+    case 'closed':
+      return 'Cerrada';
+    default:
+      return status;
+  }
 };
 
 const Transactions = () => {
@@ -103,6 +142,15 @@ const Transactions = () => {
       .eq('id', transaction.product_id)
       .maybeSingle();
 
+    const { data: dispute } = await (supabase as any)
+      .from('disputes')
+      .select('id, transaction_id, reason, details, status, opened_by, created_at')
+      .eq('transaction_id', transaction.id)
+      .in('status', ['open', 'under_review'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
     if (type === 'purchase') {
       const { data: seller } = await supabase
         .from('profiles')
@@ -113,6 +161,7 @@ const Transactions = () => {
       return {
         ...transaction,
         product,
+        dispute: dispute || null,
         seller_profile: seller,
       } as Transaction;
     }
@@ -126,6 +175,7 @@ const Transactions = () => {
     return {
       ...transaction,
       product,
+      dispute: dispute || null,
       buyer_profile: buyer,
     } as Transaction;
   };
@@ -177,12 +227,17 @@ const Transactions = () => {
   const updateTransactionStatus = async (transaction: Transaction, nextStatus: string) => {
     setUpdatingId(transaction.id);
 
+    const updatePayload: any = {
+      status: nextStatus,
+      completed_at: new Date().toISOString(),
+    };
+
+    if (nextStatus === 'shipped') updatePayload.shipping_status = 'shipped';
+    if (nextStatus === 'completed') updatePayload.shipping_status = 'delivered';
+
     const { error } = await supabase
       .from('transactions')
-      .update({
-        status: nextStatus,
-        completed_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', transaction.id);
 
     if (error) {
@@ -201,6 +256,79 @@ const Transactions = () => {
     }
 
     toast.success('Transacción actualizada');
+    await fetchTransactions();
+    setUpdatingId(null);
+  };
+
+  const openDispute = async (transaction: Transaction) => {
+    if (!user) return;
+
+    if (transaction.dispute || transaction.status === 'disputed') {
+      toast.info('Esta transacción ya tiene una incidencia abierta.');
+      return;
+    }
+
+    const reasonList = DISPUTE_REASONS.map((reason, index) => `${index + 1}. ${reason}`).join('\n');
+    const selection = window.prompt(`Selecciona el motivo de la incidencia:\n\n${reasonList}\n\nEscribe un número del 1 al ${DISPUTE_REASONS.length}:`);
+    if (!selection) return;
+
+    const selectedIndex = Number(selection.trim()) - 1;
+    const reason = DISPUTE_REASONS[selectedIndex];
+
+    if (!reason) {
+      toast.error('Motivo no válido.');
+      return;
+    }
+
+    const details = window.prompt('Describe brevemente qué ha pasado. Este texto ayudará a revisar la incidencia:') || '';
+
+    setUpdatingId(transaction.id);
+
+    const { error: disputeError } = await (supabase as any).from('disputes').insert({
+      transaction_id: transaction.id,
+      product_id: transaction.product_id,
+      buyer_id: transaction.buyer_id,
+      seller_id: transaction.seller_id,
+      opened_by: user.id,
+      reason,
+      details,
+      status: 'open',
+    });
+
+    if (disputeError) {
+      console.error('Error creating dispute:', disputeError);
+      toast.error('No se pudo abrir la incidencia. Revisa la tabla disputes y sus políticas RLS.');
+      setUpdatingId(null);
+      return;
+    }
+
+    const { error: transactionError } = await supabase
+      .from('transactions')
+      .update({ status: 'disputed', completed_at: new Date().toISOString() })
+      .eq('id', transaction.id);
+
+    if (transactionError) {
+      console.error('Error marking transaction disputed:', transactionError);
+      toast.warning('Incidencia creada, pero no se pudo actualizar el estado de la transacción.');
+    }
+
+    const { data: conversation } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('product_id', transaction.product_id)
+      .eq('buyer_id', transaction.buyer_id)
+      .eq('seller_id', transaction.seller_id)
+      .maybeSingle();
+
+    if (conversation?.id) {
+      await supabase.from('messages').insert({
+        conversation_id: conversation.id,
+        sender_id: user.id,
+        content: `He abierto una incidencia de Protección Reveta. Motivo: ${reason}. ${details ? `Detalles: ${details}` : ''}`,
+      });
+    }
+
+    toast.success('Incidencia abierta');
     await fetchTransactions();
     setUpdatingId(null);
   };
@@ -240,6 +368,7 @@ const Transactions = () => {
 
   const TransactionCard = ({ transaction, type }: { transaction: Transaction; type: 'purchase' | 'sale' }) => {
     const isPending = transaction.status === 'pending' || transaction.status === 'pending_payment';
+    const canOpenDispute = !['cancelled', 'completed', 'disputed'].includes(transaction.status) && !transaction.dispute;
     const productImage = transaction.product?.images?.[0] || '/placeholder.svg';
     const hasSendcloudParcel = Boolean(transaction.sendcloud_parcel_id || transaction.sendcloud_tracking_number || transaction.sendcloud_tracking_url);
     const shippingAddressText = transaction.shipping_address
@@ -289,6 +418,17 @@ const Transactions = () => {
                 </div>
               </div>
 
+              {transaction.dispute && (
+                <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs space-y-1">
+                  <div className="flex items-center gap-2 font-medium text-destructive">
+                    <ShieldAlert className="h-4 w-4" />
+                    <span>Protección Reveta: {getDisputeStatusLabel(transaction.dispute.status)}</span>
+                  </div>
+                  <p>Motivo: {transaction.dispute.reason}</p>
+                  {transaction.dispute.details && <p>Detalles: {transaction.dispute.details}</p>}
+                </div>
+              )}
+
               {(hasSendcloudParcel || shippingAddressText) && (
                 <div className="mt-3 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
                   <div className="flex items-center gap-2 font-medium text-foreground">
@@ -296,17 +436,10 @@ const Transactions = () => {
                     <span>Envío Sendcloud</span>
                   </div>
 
-                  {transaction.sendcloud_parcel_id && (
-                    <p>ID de envío: {transaction.sendcloud_parcel_id}</p>
-                  )}
-
-                  {transaction.sendcloud_tracking_number && (
-                    <p>Seguimiento: {transaction.sendcloud_tracking_number}</p>
-                  )}
-
-                  {shippingAddressText && (
-                    <p>Dirección: {shippingAddressText}</p>
-                  )}
+                  {transaction.sendcloud_parcel_id && <p>ID de envío: {transaction.sendcloud_parcel_id}</p>}
+                  {transaction.sendcloud_tracking_number && <p>Seguimiento: {transaction.sendcloud_tracking_number}</p>}
+                  {transaction.shipping_status && <p>Estado envío: {transaction.shipping_status}</p>}
+                  {shippingAddressText && <p>Dirección: {shippingAddressText}</p>}
 
                   {transaction.sendcloud_tracking_url && (
                     <a
@@ -328,6 +461,19 @@ const Transactions = () => {
                   Contactar
                 </Button>
 
+                {canOpenDispute && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-destructive/40 text-destructive hover:text-destructive"
+                    disabled={updatingId === transaction.id}
+                    onClick={() => openDispute(transaction)}
+                  >
+                    <ShieldAlert className="h-4 w-4 mr-2" />
+                    Abrir incidencia
+                  </Button>
+                )}
+
                 {type === 'purchase' && isPending && (
                   <Button
                     size="sm"
@@ -342,22 +488,21 @@ const Transactions = () => {
                 )}
 
                 {type === 'sale' && isPending && (
-                  <Button
-                    size="sm"
-                    disabled={updatingId === transaction.id}
-                    onClick={() => updateTransactionStatus(transaction, 'paid')}
-                  >
+                  <Button size="sm" disabled={updatingId === transaction.id} onClick={() => updateTransactionStatus(transaction, 'paid')}>
                     <CheckCircle2 className="h-4 w-4 mr-2" />
                     Confirmar pago recibido
                   </Button>
                 )}
 
-                {type === 'purchase' && transaction.status === 'paid' && (
-                  <Button
-                    size="sm"
-                    disabled={updatingId === transaction.id}
-                    onClick={() => updateTransactionStatus(transaction, 'completed')}
-                  >
+                {type === 'sale' && ['paid', 'pending'].includes(transaction.status) && (
+                  <Button size="sm" variant="outline" disabled={updatingId === transaction.id} onClick={() => updateTransactionStatus(transaction, 'shipped')}>
+                    <Truck className="h-4 w-4 mr-2" />
+                    Marcar como enviado
+                  </Button>
+                )}
+
+                {type === 'purchase' && ['paid', 'shipped'].includes(transaction.status) && (
+                  <Button size="sm" disabled={updatingId === transaction.id} onClick={() => updateTransactionStatus(transaction, 'completed')}>
                     <CheckCircle2 className="h-4 w-4 mr-2" />
                     Confirmar recibido
                   </Button>
