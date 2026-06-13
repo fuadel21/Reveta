@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.create-payment-intent]
 verify_jwt = true
+
+[functions.create-sendcloud-parcel]
+verify_jwt = true
