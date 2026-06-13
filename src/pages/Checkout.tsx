@@ -13,20 +13,11 @@ import { AlertCircle, CreditCard, ImageOff, Landmark, Shield } from 'lucide-reac
 import { toast } from 'sonner';
 import { ShippingInfo } from '@/components/ShippingInfo';
 
-declare global {
-  interface Window {
-    paypal?: any;
-  }
-}
-
 const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
 const STRIPE_PAYMENTS_ENABLED = import.meta.env.VITE_ENABLE_STRIPE_PAYMENTS === 'true' && !!STRIPE_PUBLISHABLE_KEY;
 const stripePromise = STRIPE_PAYMENTS_ENABLED ? loadStripe(STRIPE_PUBLISHABLE_KEY) : Promise.resolve(null);
 
-const PAYPAL_CLIENT_ID = import.meta.env.VITE_PAYPAL_CLIENT_ID || '';
-const PAYPAL_PAYMENTS_ENABLED = import.meta.env.VITE_ENABLE_PAYPAL_PAYMENTS === 'true' && !!PAYPAL_CLIENT_ID;
-
-type PaymentMethod = 'card' | 'transfer' | 'paypal';
+type PaymentMethod = 'card' | 'in_person';
 
 interface Product {
   id: string;
@@ -44,12 +35,6 @@ interface Seller {
 }
 
 const OPEN_TRANSACTION_STATUSES = ['pending', 'pending_payment', 'paid', 'shipped'];
-
-const getDefaultPaymentMethod = (): PaymentMethod => {
-  if (STRIPE_PAYMENTS_ENABLED) return 'card';
-  if (PAYPAL_PAYMENTS_ENABLED) return 'paypal';
-  return 'transfer';
-};
 
 const getFunctionErrorMessage = async (error: any) => {
   try {
@@ -70,39 +55,14 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
   const navigate = useNavigate();
   const { user } = useAuth();
   const submitLockRef = useRef(false);
-  const paypalButtonsRef = useRef<HTMLDivElement | null>(null);
 
   const [processingPayment, setProcessingPayment] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
-  const [paypalReady, setPaypalReady] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(getDefaultPaymentMethod());
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(STRIPE_PAYMENTS_ENABLED ? 'card' : 'in_person');
   const [selectedShipping, setSelectedShipping] = useState<any>(null);
 
   const productImage = Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null;
   const totalAmount = useMemo(() => product.price + (selectedShipping?.price || 0), [product.price, selectedShipping]);
-
-  useEffect(() => {
-    if (!PAYPAL_PAYMENTS_ENABLED) return;
-
-    if (window.paypal) {
-      setPaypalReady(true);
-      return;
-    }
-
-    const existingScript = document.querySelector<HTMLScriptElement>('script[data-reveta-paypal="true"]');
-    if (existingScript) {
-      existingScript.addEventListener('load', () => setPaypalReady(true));
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(PAYPAL_CLIENT_ID)}&currency=EUR&intent=capture`;
-    script.async = true;
-    script.dataset.revetaPaypal = 'true';
-    script.onload = () => setPaypalReady(true);
-    script.onerror = () => toast.error('No se pudo cargar PayPal. Usa tarjeta o transferencia.');
-    document.body.appendChild(script);
-  }, []);
 
   const handleCardChange = (event: any) => {
     setCardError(event.error?.message || null);
@@ -145,13 +105,13 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     return createdConversation?.id || null;
   };
 
-  const sendTransactionMessage = async (conversationId: string, content?: string) => {
+  const sendTransactionMessage = async (conversationId: string, content: string) => {
     if (!user) return;
 
     const { error } = await supabase.from('messages').insert({
       conversation_id: conversationId,
       sender_id: user.id,
-      content: content || `He registrado una compra pendiente por transferencia bancaria para “${product.title}” por ${totalAmount.toFixed(2)} €.`,
+      content,
     });
 
     if (error) {
@@ -217,28 +177,28 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     return { created: true, transactionId: insertedTransaction?.id || null };
   };
 
-  const completeOnlinePayment = async (provider: 'Stripe' | 'PayPal') => {
+  const completeCardPayment = async () => {
     await recordTransaction('completed');
 
     const conversationId = await ensureConversation();
     if (conversationId) {
       await sendTransactionMessage(
         conversationId,
-        `He pagado “${product.title}” con ${provider} por ${totalAmount.toFixed(2)} €.`,
+        `He pagado “${product.title}” con tarjeta por ${totalAmount.toFixed(2)} €.`,
       );
     }
 
-    toast.success(`Pago con ${provider} completado`);
+    toast.success('Pago con tarjeta completado');
     navigate('/transactions', { replace: true });
   };
 
   const handleCardPayment = async () => {
     if (!STRIPE_PAYMENTS_ENABLED) {
-      throw new Error('El pago con tarjeta todavía no está activo. Usa PayPal o transferencia bancaria.');
+      throw new Error('El pago con tarjeta todavía no está activo. Usa pago en persona.');
     }
 
     if (!stripe || !elements) {
-      throw new Error('Stripe no está cargado. Recarga la página o usa PayPal/transferencia bancaria.');
+      throw new Error('Stripe no está cargado. Recarga la página o usa pago en persona.');
     }
 
     const card = elements.getElement(CardElement);
@@ -257,7 +217,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     if (functionError) {
       const message = await getFunctionErrorMessage(functionError);
       console.error('Payment function error:', functionError);
-      throw new Error(`${message} Puedes continuar con PayPal o transferencia bancaria.`);
+      throw new Error(`${message} Puedes continuar con pago en persona.`);
     }
 
     const clientSecret = data?.clientSecret;
@@ -283,10 +243,10 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
       throw new Error('El pago no se ha completado. Inténtalo de nuevo.');
     }
 
-    await completeOnlinePayment('Stripe');
+    await completeCardPayment();
   };
 
-  const handleTransferPayment = async () => {
+  const handleInPersonPayment = async () => {
     const transactionResult = await recordTransaction('pending');
 
     if (!transactionResult.created) {
@@ -297,101 +257,15 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
     const conversationId = await ensureConversation();
     if (conversationId) {
-      await sendTransactionMessage(conversationId);
+      await sendTransactionMessage(
+        conversationId,
+        `He reservado “${product.title}” para pagar en persona por ${totalAmount.toFixed(2)} €.`,
+      );
     }
 
-    toast.success('Compra pendiente registrada. Revisa Mis transacciones para continuar.');
+    toast.success('Reserva registrada para pago en persona.');
     navigate('/transactions', { replace: true });
   };
-
-  useEffect(() => {
-    if (!PAYPAL_PAYMENTS_ENABLED || !paypalReady || paymentMethod !== 'paypal' || !paypalButtonsRef.current) return;
-
-    paypalButtonsRef.current.innerHTML = '';
-
-    const buttons = window.paypal.Buttons({
-      style: {
-        layout: 'vertical',
-        color: 'gold',
-        shape: 'rect',
-        label: 'paypal',
-      },
-      onClick: async () => {
-        if (!selectedShipping) {
-          toast.error('Selecciona un método de envío antes de pagar con PayPal.');
-          return false;
-        }
-
-        const existingTransaction = await findExistingOpenTransaction();
-        if (existingTransaction?.id) {
-          toast.info('Ya tienes una compra pendiente para este producto.');
-          navigate('/transactions', { replace: true });
-          return false;
-        }
-
-        if (product.status && product.status !== 'active') {
-          toast.error('Este producto ya no está disponible.');
-          return false;
-        }
-
-        return true;
-      },
-      createOrder: async () => {
-        const { data, error } = await supabase.functions.invoke('create-paypal-order', {
-          body: {
-            productId: product.id,
-            amount: totalAmount.toFixed(2),
-            currency: 'EUR',
-          },
-        });
-
-        if (error) {
-          const message = await getFunctionErrorMessage(error);
-          throw new Error(message);
-        }
-
-        if (!data?.orderID) {
-          throw new Error('PayPal no devolvió un ID de orden.');
-        }
-
-        return data.orderID;
-      },
-      onApprove: async (data: any) => {
-        try {
-          setProcessingPayment(true);
-
-          const { error } = await supabase.functions.invoke('capture-paypal-order', {
-            body: { orderID: data.orderID },
-          });
-
-          if (error) {
-            const message = await getFunctionErrorMessage(error);
-            throw new Error(message);
-          }
-
-          await completeOnlinePayment('PayPal');
-        } catch (error: any) {
-          console.error('PayPal checkout error:', error);
-          toast.error(error.message || 'Error al procesar PayPal');
-        } finally {
-          setProcessingPayment(false);
-        }
-      },
-      onError: (error: any) => {
-        console.error('PayPal button error:', error);
-        toast.error('PayPal no pudo procesar el pago.');
-      },
-    });
-
-    buttons.render(paypalButtonsRef.current);
-
-    return () => {
-      if (paypalButtonsRef.current) {
-        paypalButtonsRef.current.innerHTML = '';
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paypalReady, paymentMethod, selectedShipping, totalAmount, product.id]);
 
   const handlePayment = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -401,7 +275,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     }
 
     if (!selectedShipping) {
-      toast.error('Selecciona un método de envío antes de confirmar.');
+      toast.error('Selecciona un método de entrega antes de confirmar.');
       return;
     }
 
@@ -423,18 +297,14 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     try {
       if (paymentMethod === 'card') {
         await handleCardPayment();
-      } else if (paymentMethod === 'transfer') {
-        await handleTransferPayment();
       } else {
-        toast.info('Usa el botón de PayPal para completar el pago.');
+        await handleInPersonPayment();
       }
     } catch (error: any) {
       console.error('Checkout error:', error);
       toast.error(error.message || 'Error al procesar la compra');
-      if (paymentMethod === 'card' && PAYPAL_PAYMENTS_ENABLED) {
-        setPaymentMethod('paypal');
-      } else if (paymentMethod === 'card') {
-        setPaymentMethod('transfer');
+      if (paymentMethod === 'card') {
+        setPaymentMethod('in_person');
       }
     } finally {
       setProcessingPayment(false);
@@ -444,7 +314,6 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
   const isCardUnavailable = !STRIPE_PAYMENTS_ENABLED || !stripe || !elements;
   const buttonDisabled = processingPayment || !selectedShipping || (paymentMethod === 'card' && isCardUnavailable);
-  const showSubmitButton = paymentMethod !== 'paypal';
 
   return (
     <form onSubmit={handlePayment} className="space-y-6">
@@ -477,7 +346,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                   <span className="font-semibold">{product.price.toFixed(2)} €</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Envío ({selectedShipping?.name || 'Selecciona uno'})</span>
+                  <span>Entrega ({selectedShipping?.name || 'Selecciona una opción'})</span>
                   <span className="font-semibold">{(selectedShipping?.price || 0).toFixed(2)} €</span>
                 </div>
                 <div className="flex justify-between">
@@ -574,42 +443,17 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                   </div>
                 )}
 
-                <label className={`flex items-center gap-3 p-3 border rounded-lg transition-colors ${paymentMethod === 'paypal' ? 'border-primary bg-primary/5' : 'hover:bg-accent'} ${!PAYPAL_PAYMENTS_ENABLED ? 'cursor-not-allowed opacity-50 bg-muted/20' : 'cursor-pointer'}`}>
+                <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${paymentMethod === 'in_person' ? 'border-primary bg-primary/5' : 'hover:bg-accent'}`}>
                   <input
                     type="radio"
                     name="payment"
-                    value="paypal"
-                    checked={paymentMethod === 'paypal'}
-                    disabled={!PAYPAL_PAYMENTS_ENABLED}
-                    onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
-                    className="w-4 h-4 text-primary"
-                  />
-                  <span className="font-medium">
-                    {PAYPAL_PAYMENTS_ENABLED ? 'PayPal' : 'PayPal (pendiente de activar)'}
-                  </span>
-                </label>
-
-                {PAYPAL_PAYMENTS_ENABLED && paymentMethod === 'paypal' && (
-                  <div className="p-4 bg-muted/50 rounded-lg space-y-3 border border-border">
-                    {!selectedShipping && (
-                      <p className="text-sm text-muted-foreground">Selecciona un método de envío para mostrar el botón de PayPal.</p>
-                    )}
-                    <div ref={paypalButtonsRef} className={!selectedShipping ? 'pointer-events-none opacity-50' : ''} />
-                    {!paypalReady && <p className="text-sm text-muted-foreground">Cargando PayPal...</p>}
-                  </div>
-                )}
-
-                <label className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${paymentMethod === 'transfer' ? 'border-primary bg-primary/5' : 'hover:bg-accent'}`}>
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="transfer"
-                    checked={paymentMethod === 'transfer'}
+                    value="in_person"
+                    checked={paymentMethod === 'in_person'}
                     onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
                     className="w-4 h-4 text-primary"
                   />
                   <Landmark className="h-5 w-5" />
-                  <span className="font-medium">Transferencia Bancaria</span>
+                  <span className="font-medium">Pago en persona</span>
                 </label>
               </div>
             </CardContent>
@@ -621,43 +465,37 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                 <Shield className="h-5 w-5 text-primary flex-shrink-0" />
                 <div className="text-sm">
                   <p className="font-semibold text-primary">
-                    {paymentMethod === 'card' ? 'Pago seguro con tarjeta' : paymentMethod === 'paypal' ? 'Pago seguro con PayPal' : 'Compra registrada'}
+                    {paymentMethod === 'card' ? 'Pago seguro con tarjeta' : 'Reserva para pago en persona'}
                   </p>
                   <p className="text-muted-foreground">
                     {paymentMethod === 'card'
                       ? 'El pago se procesa con Stripe y la compra queda registrada al confirmarse correctamente.'
-                      : paymentMethod === 'paypal'
-                        ? 'El pago se procesa con PayPal y la compra queda registrada al capturarse correctamente.'
-                        : 'La operación queda pendiente hasta que comprador y vendedor coordinen el pago y envío.'}
+                      : 'La operación queda pendiente hasta que comprador y vendedor coordinen entrega y pago en persona.'}
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {showSubmitButton && (
-            <Button type="submit" disabled={buttonDisabled} className="w-full h-12 text-base font-bold shadow-lg shadow-primary/20" size="lg">
-              {processingPayment ? (
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Procesando...
-                </div>
-              ) : paymentMethod === 'transfer' ? (
-                `Registrar compra pendiente - ${totalAmount.toFixed(2)} €`
-              ) : (
-                `Pagar con tarjeta - ${totalAmount.toFixed(2)} €`
-              )}
-            </Button>
-          )}
+          <Button type="submit" disabled={buttonDisabled} className="w-full h-12 text-base font-bold shadow-lg shadow-primary/20" size="lg">
+            {processingPayment ? (
+              <div className="flex items-center gap-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Procesando...
+              </div>
+            ) : paymentMethod === 'in_person' ? (
+              `Reservar para pago en persona - ${totalAmount.toFixed(2)} €`
+            ) : (
+              `Pagar con tarjeta - ${totalAmount.toFixed(2)} €`
+            )}
+          </Button>
 
           <div className="flex gap-2 p-3 bg-muted rounded-lg text-xs text-muted-foreground">
             <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
             <p>
               {paymentMethod === 'card'
                 ? 'Usa una tarjeta válida. En modo pruebas de Stripe puedes usar 4242 4242 4242 4242.'
-                : paymentMethod === 'paypal'
-                  ? 'En modo sandbox, inicia sesión con una cuenta personal de prueba de PayPal.'
-                  : 'La transferencia bancaria se gestiona fuera de Reveta. Usa el chat para coordinar los datos de pago y envío.'}
+                : 'El pago en persona se gestiona fuera de Reveta. Usa el chat para coordinar entrega, lugar y forma de pago.'}
             </p>
           </div>
         </div>
