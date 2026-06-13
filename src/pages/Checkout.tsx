@@ -237,15 +237,48 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     return data?.parcel || null;
   };
 
+  const saveShippingDetails = async (transactionId: string | null, parcel: any) => {
+    if (!transactionId) return;
+
+    const updatePayload = {
+      shipping_provider: 'sendcloud',
+      shipping_status: parcel?.status?.message || parcel?.status || 'created',
+      sendcloud_parcel_id: parcel?.id ? String(parcel.id) : null,
+      sendcloud_tracking_number: parcel?.tracking_number || parcel?.tracking_code || null,
+      sendcloud_tracking_url: parcel?.tracking_url || parcel?.tracking_url_provider || null,
+      shipping_address: {
+        fullName: shippingAddress.fullName,
+        phone: shippingAddress.phone,
+        address: shippingAddress.address,
+        houseNumber: shippingAddress.houseNumber,
+        postalCode: shippingAddress.postalCode,
+        city: shippingAddress.city,
+        country: 'ES',
+      },
+    };
+
+    const { error } = await supabase
+      .from('transactions')
+      .update(updatePayload)
+      .eq('id', transactionId);
+
+    if (error) {
+      console.error('Error saving Sendcloud details:', error);
+    }
+  };
+
   const createParcelAfterTransaction = async (transactionId: string | null, conversationId: string | null) => {
     try {
       const parcel = await createSendcloudParcel(transactionId);
+      await saveShippingDetails(transactionId, parcel);
+
       const parcelId = parcel?.id ? ` ID de envío: ${parcel.id}.` : '';
+      const tracking = parcel?.tracking_number ? ` Seguimiento: ${parcel.tracking_number}.` : '';
 
       if (conversationId) {
         await sendTransactionMessage(
           conversationId,
-          `Envío nacional España creado con Sendcloud para “${product.title}”.${parcelId}`,
+          `Envío nacional España creado con Sendcloud para “${product.title}”.${parcelId}${tracking}`,
         );
       }
     } catch (error: any) {
