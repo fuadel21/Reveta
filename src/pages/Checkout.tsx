@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { loadStripe } from '@stripe/stripe-js';
@@ -34,6 +34,8 @@ interface Seller {
   avatar_url: string | null;
 }
 
+const OPEN_TRANSACTION_STATUSES = ['pending', 'pending_payment', 'paid', 'shipped'];
+
 const getFunctionErrorMessage = async (error: any) => {
   try {
     if (error?.context && typeof error.context.json === 'function') {
@@ -52,6 +54,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
   const elements = useElements();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const submitLockRef = useRef(false);
 
   const [processingPayment, setProcessingPayment] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
@@ -116,16 +119,46 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     }
   };
 
+  const findExistingOpenTransaction = async () => {
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('id, status')
+      .eq('product_id', product.id)
+      .eq('buyer_id', user.id)
+      .in('status', OPEN_TRANSACTION_STATUSES)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error checking existing transaction:', error);
+      return null;
+    }
+
+    return data;
+  };
+
   const recordTransaction = async (status: 'completed' | 'pending') => {
     if (!user) throw new Error('Debes iniciar sesión para comprar.');
 
-    const { error: transactionError } = await supabase.from('transactions').insert({
-      product_id: product.id,
-      buyer_id: user.id,
-      seller_id: product.user_id,
-      amount: totalAmount,
-      status,
-    });
+    const existingTransaction = await findExistingOpenTransaction();
+    if (existingTransaction?.id) {
+      return { created: false, transactionId: existingTransaction.id };
+    }
+
+    const { data: insertedTransaction, error: transactionError } = await supabase
+      .from('transactions')
+      .insert({
+        product_id: product.id,
+        buyer_id: user.id,
+        seller_id: product.user_id,
+        amount: totalAmount,
+        status,
+      })
+      .select('id')
+      .single();
 
     if (transactionError) {
       console.error('Error recording transaction:', transactionError);
@@ -140,6 +173,8 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     if (productError) {
       console.error('Error updating product status:', productError);
     }
+
+    return { created: true, transactionId: insertedTransaction?.id || null };
   };
 
   const handleCardPayment = async () => {
@@ -195,11 +230,17 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
     await recordTransaction('completed');
     toast.success('¡Compra realizada con éxito!');
-    navigate('/transactions');
+    navigate('/transactions', { replace: true });
   };
 
   const handleTransferPayment = async () => {
-    await recordTransaction('pending');
+    const transactionResult = await recordTransaction('pending');
+
+    if (!transactionResult.created) {
+      toast.info('Ya tienes una compra pendiente para este producto.');
+      navigate('/transactions', { replace: true });
+      return;
+    }
 
     const conversationId = await ensureConversation();
     if (conversationId) {
@@ -213,8 +254,19 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
   const handlePayment = async (event: React.FormEvent) => {
     event.preventDefault();
 
+    if (submitLockRef.current || processingPayment) {
+      return;
+    }
+
     if (!selectedShipping) {
       toast.error('Selecciona un método de envío antes de confirmar.');
+      return;
+    }
+
+    const existingTransaction = await findExistingOpenTransaction();
+    if (existingTransaction?.id) {
+      toast.info('Ya tienes una compra pendiente para este producto.');
+      navigate('/transactions', { replace: true });
       return;
     }
 
@@ -223,6 +275,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
       return;
     }
 
+    submitLockRef.current = true;
     setProcessingPayment(true);
 
     try {
@@ -241,6 +294,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
       }
     } finally {
       setProcessingPayment(false);
+      submitLockRef.current = false;
     }
   };
 
