@@ -14,7 +14,8 @@ import { toast } from 'sonner';
 import { ShippingInfo } from '@/components/ShippingInfo';
 
 const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
-const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : Promise.resolve(null);
+const STRIPE_PAYMENTS_ENABLED = import.meta.env.VITE_ENABLE_STRIPE_PAYMENTS === 'true' && !!STRIPE_PUBLISHABLE_KEY;
+const stripePromise = STRIPE_PAYMENTS_ENABLED ? loadStripe(STRIPE_PUBLISHABLE_KEY) : Promise.resolve(null);
 
 type PaymentMethod = 'card' | 'transfer' | 'paypal';
 
@@ -54,7 +55,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
   const [processingPayment, setProcessingPayment] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(STRIPE_PUBLISHABLE_KEY ? 'card' : 'transfer');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('transfer');
   const [selectedShipping, setSelectedShipping] = useState<any>(null);
 
   const productImage = Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null;
@@ -87,6 +88,10 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
   };
 
   const handleCardPayment = async () => {
+    if (!STRIPE_PAYMENTS_ENABLED) {
+      throw new Error('El pago con tarjeta todavía no está activo. Usa transferencia bancaria.');
+    }
+
     if (!stripe || !elements) {
       throw new Error('Stripe no está cargado. Recarga la página o usa transferencia bancaria.');
     }
@@ -178,7 +183,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     }
   };
 
-  const isCardUnavailable = !STRIPE_PUBLISHABLE_KEY || !stripe || !elements;
+  const isCardUnavailable = !STRIPE_PAYMENTS_ENABLED || !stripe || !elements;
   const buttonDisabled = processingPayment || !selectedShipping || (paymentMethod === 'card' && isCardUnavailable);
 
   return (
@@ -265,21 +270,21 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
-                <label className={`flex items-center gap-3 p-3 border rounded-lg transition-colors ${paymentMethod === 'card' ? 'border-primary bg-primary/5' : 'hover:bg-accent'} ${!STRIPE_PUBLISHABLE_KEY ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-not-allowed opacity-50 bg-muted/20">
                   <input
                     type="radio"
                     name="payment"
                     value="card"
                     checked={paymentMethod === 'card'}
-                    disabled={!STRIPE_PUBLISHABLE_KEY}
+                    disabled
                     onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
                     className="w-4 h-4 text-primary"
                   />
                   <CreditCard className="h-5 w-5" />
-                  <span className="font-medium">Tarjeta de Crédito/Débito</span>
+                  <span className="font-medium">Tarjeta de Crédito/Débito (pendiente de activar)</span>
                 </label>
 
-                {paymentMethod === 'card' && (
+                {STRIPE_PAYMENTS_ENABLED && paymentMethod === 'card' && (
                   <div className="p-4 bg-muted/50 rounded-lg space-y-3 border border-border">
                     <div className="bg-white p-3 rounded border border-input shadow-sm">
                       <CardElement
@@ -303,9 +308,6 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                         <span>{cardError}</span>
                       </div>
                     )}
-                    <p className="text-xs text-muted-foreground">
-                      Si Stripe aún no está activo en Supabase, selecciona transferencia bancaria para registrar la compra como pendiente.
-                    </p>
                   </div>
                 )}
 
