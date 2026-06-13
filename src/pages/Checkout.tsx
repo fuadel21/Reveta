@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { ShippingInfo } from '@/components/ShippingInfo';
 
 const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
-const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
+const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : Promise.resolve(null);
 
 type PaymentMethod = 'card' | 'transfer' | 'paypal';
 
@@ -77,7 +77,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
     if (transactionError) {
       console.error('Error recording transaction:', transactionError);
-      throw new Error('El pago se procesó, pero no se pudo registrar la compra. Contacta con soporte.');
+      throw new Error('No se pudo registrar la compra. Revisa los permisos de la tabla transactions.');
     }
 
     await supabase
@@ -457,13 +457,9 @@ const Checkout = () => {
         <main className="flex-1 container max-w-6xl mx-auto py-8 px-4">
           <h1 className="text-3xl font-bold mb-8">Confirmar compra</h1>
 
-          {stripePromise ? (
-            <Elements stripe={stripePromise}>
-              <CheckoutForm product={product} seller={seller} />
-            </Elements>
-          ) : (
+          <Elements stripe={stripePromise}>
             <CheckoutForm product={product} seller={seller} />
-          )}
+          </Elements>
         </main>
 
         <Footer />
