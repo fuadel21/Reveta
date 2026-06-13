@@ -9,7 +9,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, CreditCard, ImageOff, Landmark, Shield } from 'lucide-react';
+import { AlertCircle, CreditCard, ImageOff, Landmark, MapPin, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { ShippingInfo } from '@/components/ShippingInfo';
 
@@ -34,6 +34,15 @@ interface Seller {
   avatar_url: string | null;
 }
 
+interface ShippingAddress {
+  fullName: string;
+  phone: string;
+  address: string;
+  houseNumber: string;
+  postalCode: string;
+  city: string;
+}
+
 const OPEN_TRANSACTION_STATUSES = ['pending', 'pending_payment', 'paid', 'shipped'];
 
 const getFunctionErrorMessage = async (error: any) => {
@@ -46,7 +55,7 @@ const getFunctionErrorMessage = async (error: any) => {
     // Ignore JSON parsing errors and return the generic message below.
   }
 
-  return error?.message || 'No se pudo conectar con el servidor de pagos.';
+  return error?.message || 'No se pudo conectar con el servidor.';
 };
 
 const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | null }) => {
@@ -60,12 +69,36 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
   const [cardError, setCardError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(STRIPE_PAYMENTS_ENABLED ? 'card' : 'in_person');
   const [selectedShipping, setSelectedShipping] = useState<any>(null);
+  const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
+    fullName: '',
+    phone: '',
+    address: '',
+    houseNumber: '',
+    postalCode: '',
+    city: '',
+  });
 
   const productImage = Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null;
   const totalAmount = useMemo(() => product.price + (selectedShipping?.price || 0), [product.price, selectedShipping]);
 
   const handleCardChange = (event: any) => {
     setCardError(event.error?.message || null);
+  };
+
+  const updateAddressField = (field: keyof ShippingAddress, value: string) => {
+    setShippingAddress((current) => ({ ...current, [field]: value }));
+  };
+
+  const validateShippingAddress = () => {
+    const requiredFields: Array<keyof ShippingAddress> = ['fullName', 'phone', 'address', 'houseNumber', 'postalCode', 'city'];
+    const missingField = requiredFields.find((field) => !shippingAddress[field].trim());
+
+    if (missingField) {
+      toast.error('Completa todos los datos de envío antes de continuar.');
+      return false;
+    }
+
+    return true;
   };
 
   const ensureConversation = async () => {
@@ -177,16 +210,62 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     return { created: true, transactionId: insertedTransaction?.id || null };
   };
 
-  const completeCardPayment = async () => {
-    await recordTransaction('completed');
+  const createSendcloudParcel = async (transactionId: string | null) => {
+    const { data, error } = await supabase.functions.invoke('create-sendcloud-parcel', {
+      body: {
+        transactionId,
+        productTitle: product.title,
+        buyerName: shippingAddress.fullName,
+        buyerEmail: user?.email || '',
+        buyerPhone: shippingAddress.phone,
+        address: shippingAddress.address,
+        houseNumber: shippingAddress.houseNumber,
+        postalCode: shippingAddress.postalCode,
+        city: shippingAddress.city,
+        country: 'ES',
+        weight: '0.5',
+        requestLabel: false,
+      },
+    });
 
+    if (error) {
+      const message = await getFunctionErrorMessage(error);
+      console.error('Sendcloud function error:', error);
+      throw new Error(message);
+    }
+
+    return data?.parcel || null;
+  };
+
+  const createParcelAfterTransaction = async (transactionId: string | null, conversationId: string | null) => {
+    try {
+      const parcel = await createSendcloudParcel(transactionId);
+      const parcelId = parcel?.id ? ` ID de envío: ${parcel.id}.` : '';
+
+      if (conversationId) {
+        await sendTransactionMessage(
+          conversationId,
+          `Envío nacional España creado con Sendcloud para “${product.title}”.${parcelId}`,
+        );
+      }
+    } catch (error: any) {
+      console.error('Sendcloud parcel error:', error);
+      toast.warning('Compra registrada, pero no se pudo crear el envío en Sendcloud. Revisa la configuración de Sendcloud.');
+    }
+  };
+
+  const completeCardPayment = async () => {
+    const transactionResult = await recordTransaction('completed');
     const conversationId = await ensureConversation();
+
     if (conversationId) {
       await sendTransactionMessage(
         conversationId,
-        `He pagado “${product.title}” con tarjeta por ${totalAmount.toFixed(2)} €.`,
+        `He pagado “${product.title}” con tarjeta por ${totalAmount.toFixed(2)} €. Dirección de envío: ${shippingAddress.address} ${shippingAddress.houseNumber}, ${shippingAddress.postalCode} ${shippingAddress.city}, España.`,
       );
     }
+
+    await createParcelAfterTransaction(transactionResult.transactionId, conversationId);
 
     toast.success('Pago con tarjeta completado');
     navigate('/transactions', { replace: true });
@@ -259,9 +338,11 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     if (conversationId) {
       await sendTransactionMessage(
         conversationId,
-        `He reservado “${product.title}” para pagar en persona por ${totalAmount.toFixed(2)} €.`,
+        `He reservado “${product.title}” para pagar en persona por ${totalAmount.toFixed(2)} €. Dirección de envío: ${shippingAddress.address} ${shippingAddress.houseNumber}, ${shippingAddress.postalCode} ${shippingAddress.city}, España.`,
       );
     }
+
+    await createParcelAfterTransaction(transactionResult.transactionId, conversationId);
 
     toast.success('Reserva registrada para pago en persona.');
     navigate('/transactions', { replace: true });
@@ -276,6 +357,10 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
     if (!selectedShipping) {
       toast.error('Selecciona un método de entrega antes de confirmar.');
+      return;
+    }
+
+    if (!validateShippingAddress()) {
       return;
     }
 
@@ -390,6 +475,70 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
             sellerLocation={product.location || 'España'}
             onSelectShipping={setSelectedShipping}
           />
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <MapPin className="h-5 w-5" />
+                Dirección de envío
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input
+                  value={shippingAddress.fullName}
+                  onChange={(event) => updateAddressField('fullName', event.target.value)}
+                  placeholder="Nombre completo"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+                <input
+                  value={shippingAddress.phone}
+                  onChange={(event) => updateAddressField('phone', event.target.value)}
+                  placeholder="Teléfono"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input
+                  value={shippingAddress.address}
+                  onChange={(event) => updateAddressField('address', event.target.value)}
+                  placeholder="Calle"
+                  className="w-full rounded-md border px-3 py-2 text-sm md:col-span-2"
+                />
+                <input
+                  value={shippingAddress.houseNumber}
+                  onChange={(event) => updateAddressField('houseNumber', event.target.value)}
+                  placeholder="Número"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input
+                  value={shippingAddress.postalCode}
+                  onChange={(event) => updateAddressField('postalCode', event.target.value)}
+                  placeholder="Código postal"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+                <input
+                  value={shippingAddress.city}
+                  onChange={(event) => updateAddressField('city', event.target.value)}
+                  placeholder="Ciudad"
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                />
+                <input
+                  value="España"
+                  readOnly
+                  className="w-full rounded-md border px-3 py-2 text-sm bg-muted"
+                />
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Estos datos se usan para crear el envío nacional con Sendcloud.
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="space-y-6">
@@ -469,8 +618,8 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                   </p>
                   <p className="text-muted-foreground">
                     {paymentMethod === 'card'
-                      ? 'El pago se procesa con Stripe y la compra queda registrada al confirmarse correctamente.'
-                      : 'La operación queda pendiente hasta que comprador y vendedor coordinen entrega y pago en persona.'}
+                      ? 'El pago se procesa con Stripe y después se crea el envío nacional con Sendcloud.'
+                      : 'La operación queda pendiente y se crea el envío nacional para coordinar entrega y pago.'}
                   </p>
                 </div>
               </div>
