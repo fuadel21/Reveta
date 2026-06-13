@@ -5,9 +5,3 @@ verify_jwt = false
 
 [functions.create-payment-intent]
 verify_jwt = true
-
-[functions.create-paypal-order]
-verify_jwt = true
-
-[functions.capture-paypal-order]
-verify_jwt = true
