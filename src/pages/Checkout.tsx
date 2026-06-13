@@ -65,6 +65,57 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     setCardError(event.error?.message || null);
   };
 
+  const ensureConversation = async () => {
+    if (!user) return null;
+
+    const { data: existingConversation, error: findError } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('product_id', product.id)
+      .eq('buyer_id', user.id)
+      .eq('seller_id', product.user_id)
+      .maybeSingle();
+
+    if (findError) {
+      console.error('Error finding checkout conversation:', findError);
+    }
+
+    if (existingConversation?.id) {
+      return existingConversation.id;
+    }
+
+    const { data: createdConversation, error: createError } = await supabase
+      .from('conversations')
+      .insert({
+        product_id: product.id,
+        buyer_id: user.id,
+        seller_id: product.user_id,
+      })
+      .select('id')
+      .single();
+
+    if (createError) {
+      console.error('Error creating checkout conversation:', createError);
+      return null;
+    }
+
+    return createdConversation?.id || null;
+  };
+
+  const sendTransactionMessage = async (conversationId: string) => {
+    if (!user) return;
+
+    const { error } = await supabase.from('messages').insert({
+      conversation_id: conversationId,
+      sender_id: user.id,
+      content: `He registrado una compra pendiente por transferencia bancaria para “${product.title}” por ${totalAmount.toFixed(2)} €.`,
+    });
+
+    if (error) {
+      console.error('Error sending transaction message:', error);
+    }
+  };
+
   const recordTransaction = async (status: 'completed' | 'pending') => {
     if (!user) throw new Error('Debes iniciar sesión para comprar.');
 
@@ -81,10 +132,14 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
       throw new Error('No se pudo registrar la compra. Revisa los permisos de la tabla transactions.');
     }
 
-    await supabase
+    const { error: productError } = await supabase
       .from('products')
       .update({ status: status === 'completed' ? 'sold' : 'reserved' })
       .eq('id', product.id);
+
+    if (productError) {
+      console.error('Error updating product status:', productError);
+    }
   };
 
   const handleCardPayment = async () => {
@@ -145,8 +200,14 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
   const handleTransferPayment = async () => {
     await recordTransaction('pending');
-    toast.success('Solicitud de compra registrada. El vendedor verá la operación como pendiente.');
-    navigate('/transactions');
+
+    const conversationId = await ensureConversation();
+    if (conversationId) {
+      await sendTransactionMessage(conversationId);
+    }
+
+    toast.success('Compra pendiente registrada. Revisa Mis transacciones para continuar.');
+    navigate('/transactions', { replace: true });
   };
 
   const handlePayment = async (event: React.FormEvent) => {
@@ -271,15 +332,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
             <CardContent className="space-y-4">
               <div className="space-y-3">
                 <label className="flex items-center gap-3 p-3 border rounded-lg cursor-not-allowed opacity-50 bg-muted/20">
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="card"
-                    checked={paymentMethod === 'card'}
-                    disabled
-                    onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}
-                    className="w-4 h-4 text-primary"
-                  />
+                  <input type="radio" name="payment" value="card" checked={paymentMethod === 'card'} disabled className="w-4 h-4 text-primary" />
                   <CreditCard className="h-5 w-5" />
                   <span className="font-medium">Tarjeta de Crédito/Débito (pendiente de activar)</span>
                 </label>
@@ -337,8 +390,8 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
               <div className="flex gap-3">
                 <Shield className="h-5 w-5 text-primary flex-shrink-0" />
                 <div className="text-sm">
-                  <p className="font-semibold text-primary">Compra Protegida</p>
-                  <p className="text-muted-foreground">Tu operación queda registrada en Reveta para que comprador y vendedor puedan hacer seguimiento.</p>
+                  <p className="font-semibold text-primary">Compra registrada</p>
+                  <p className="text-muted-foreground">La operación queda pendiente hasta que comprador y vendedor coordinen el pago y envío.</p>
                 </div>
               </div>
             </CardContent>
@@ -359,7 +412,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
           <div className="flex gap-2 p-3 bg-muted rounded-lg text-xs text-muted-foreground">
             <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-            <p>Al confirmar, aceptas los términos de compra y protección de Reveta.</p>
+            <p>La transferencia bancaria se gestiona fuera de Reveta. Usa el chat para coordinar los datos de pago y envío.</p>
           </div>
         </div>
       </div>
