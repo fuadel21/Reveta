@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Send, X, Image as ImageIcon, ArrowLeft, MessageCircle } from 'lucide-react';
@@ -7,17 +7,25 @@ import { TypingIndicator } from '@/components/chat/TypingIndicator';
 import { useTypingIndicator } from '@/hooks/useTypingIndicator';
 import { useToast } from '@/hooks/use-toast';
 
+interface Profile {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+}
+
+interface ProductSummary {
+  id: string;
+  title: string;
+  images: string[] | null;
+}
+
 interface Message {
   id: string;
+  conversation_id?: string;
   sender_id: string;
   content: string;
   created_at: string;
-  read?: boolean;
-  sender?: {
-    id: string;
-    full_name: string;
-    avatar_url: string;
-  };
+  read?: boolean | null;
 }
 
 interface Conversation {
@@ -25,21 +33,10 @@ interface Conversation {
   product_id: string;
   buyer_id: string;
   seller_id: string;
-  product?: {
-    id: string;
-    title: string;
-    images?: string[];
-  };
-  buyer?: {
-    id: string;
-    full_name: string;
-    avatar_url: string;
-  };
-  seller?: {
-    id: string;
-    full_name: string;
-    avatar_url: string;
-  };
+  updated_at?: string;
+  product?: ProductSummary | null;
+  buyer?: Profile | null;
+  seller?: Profile | null;
 }
 
 interface ChatProps {
@@ -66,6 +63,64 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     user?.id
   );
 
+  const hydrateConversation = useCallback(async (conversation: Conversation): Promise<Conversation> => {
+    const [productResult, buyerResult, sellerResult] = await Promise.all([
+      supabase
+        .from('products')
+        .select('id, title, images')
+        .eq('id', conversation.product_id)
+        .maybeSingle(),
+      supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .eq('id', conversation.buyer_id)
+        .maybeSingle(),
+      supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .eq('id', conversation.seller_id)
+        .maybeSingle(),
+    ]);
+
+    if (productResult.error) console.error('Error fetching chat product:', productResult.error);
+    if (buyerResult.error) console.error('Error fetching chat buyer:', buyerResult.error);
+    if (sellerResult.error) console.error('Error fetching chat seller:', sellerResult.error);
+
+    return {
+      ...conversation,
+      product: productResult.data || null,
+      buyer: buyerResult.data || null,
+      seller: sellerResult.data || null,
+    };
+  }, []);
+
+  const fetchConversations = useCallback(async () => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
+        .order('updated_at', { ascending: false });
+
+      if (error) throw error;
+
+      const hydrated = await Promise.all((data || []).map((conversation) => hydrateConversation(conversation)));
+      setConversations(hydrated);
+    } catch (error) {
+      console.error('Error fetching conversations:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudieron cargar tus conversaciones',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [hydrateConversation, toast, user]);
+
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -73,61 +128,95 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
 
   // Fetch conversations
   useEffect(() => {
-    if (!user) return;
-
-    const fetchConversations = async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('conversations')
-          .select(`
-            *,
-            product:products(id, title, images),
-            buyer:profiles!buyer_id(id, full_name, avatar_url),
-            seller:profiles!seller_id(id, full_name, avatar_url)
-          `)
-          .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
-          .order('updated_at', { ascending: false });
-
-        if (error) throw error;
-        setConversations(data || []);
-      } catch (error) {
-        console.error('Error fetching conversations:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchConversations();
-  }, [user]);
+  }, [fetchConversations]);
 
-  // Si se abre desde un producto (modal), seleccionar/crear conversación automáticamente.
+  const getOrCreateConversation = useCallback(async (targetProductId: string, buyerId: string, targetSellerId: string) => {
+    try {
+      const { data: existing, error: existingError } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('product_id', targetProductId)
+        .eq('buyer_id', buyerId)
+        .eq('seller_id', targetSellerId)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+      if (existing) return hydrateConversation(existing);
+
+      const { data: created, error: createError } = await supabase
+        .from('conversations')
+        .insert({ product_id: targetProductId, buyer_id: buyerId, seller_id: targetSellerId })
+        .select('*')
+        .single();
+
+      if (createError) {
+        console.error('Error creating conversation:', createError);
+
+        // Fallback: if another request created the conversation at the same time, read it again.
+        const { data: fallback, error: fallbackError } = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('product_id', targetProductId)
+          .eq('buyer_id', buyerId)
+          .eq('seller_id', targetSellerId)
+          .maybeSingle();
+
+        if (fallbackError) throw fallbackError;
+        return fallback ? hydrateConversation(fallback) : null;
+      }
+
+      return created ? hydrateConversation(created) : null;
+    } catch (err) {
+      console.error('Exception in getOrCreateConversation:', err);
+      return null;
+    }
+  }, [hydrateConversation]);
+
+  // Si se abre desde un producto, seleccionar/crear conversación automáticamente.
   useEffect(() => {
     if (!user || !productId || !sellerId) return;
-    if (sellerId === user.id) return;
+
+    if (sellerId === user.id) {
+      toast({
+        title: 'Este producto es tuyo',
+        description: 'No puedes abrir un chat contigo mismo.',
+      });
+      onClose?.();
+      return;
+    }
 
     const initChat = async () => {
       setInitLoading(true);
       try {
-        const conv = await getOrCreateConversation(productId, user.id, sellerId);
-        if (conv) {
-          setSelectedConversation(conv);
+        const conversation = await getOrCreateConversation(productId, user.id, sellerId);
+        if (conversation) {
+          setSelectedConversation(conversation);
+          setConversations((prev) => {
+            const withoutDuplicate = prev.filter((item) => item.id !== conversation.id);
+            return [conversation, ...withoutDuplicate];
+          });
         } else {
           toast({
-            title: "Error",
-            description: "No se pudo iniciar la conversación",
-            variant: "destructive"
+            title: 'Error',
+            description: 'No se pudo iniciar la conversación',
+            variant: 'destructive',
           });
         }
       } catch (error) {
         console.error('Error initializing chat:', error);
+        toast({
+          title: 'Error',
+          description: 'No se pudo iniciar la conversación',
+          variant: 'destructive',
+        });
       } finally {
         setInitLoading(false);
       }
     };
 
     initChat();
-  }, [user, productId, sellerId]);
+  }, [getOrCreateConversation, onClose, productId, sellerId, toast, user]);
 
   // Fetch messages for selected conversation
   useEffect(() => {
@@ -136,15 +225,17 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     const fetchMessages = async () => {
       const { data, error } = await supabase
         .from('messages')
-        .select(`
-          *,
-          sender:profiles(id, full_name, avatar_url)
-        `)
+        .select('*')
         .eq('conversation_id', selectedConversation.id)
         .order('created_at', { ascending: true });
 
       if (error) {
         console.error('Error fetching messages:', error);
+        toast({
+          title: 'Error',
+          description: 'No se pudieron cargar los mensajes',
+          variant: 'destructive',
+        });
         return;
       }
 
@@ -173,83 +264,22 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
           table: 'messages',
           filter: `conversation_id=eq.${selectedConversation.id}`,
         },
-        async (payload) => {
+        (payload) => {
           if (payload.eventType === 'INSERT') {
-            const newMsg = payload.new as Message;
-            // Fetch sender profile for the new message
-            const { data: senderData } = await supabase
-              .from('profiles')
-              .select('id, full_name, avatar_url')
-              .eq('id', newMsg.sender_id)
-              .single();
-            
-            setMessages((prev) => [...prev, { ...newMsg, sender: senderData }]);
+            const incoming = payload.new as Message;
+            setMessages((prev) => (prev.some((message) => message.id === incoming.id) ? prev : [...prev, incoming]));
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as Message;
-            setMessages((prev) => prev.map((m) => (m.id === updated.id ? { ...m, ...updated } : m)));
+            setMessages((prev) => prev.map((message) => (message.id === updated.id ? { ...message, ...updated } : message)));
           }
         }
       )
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
+      supabase.removeChannel(subscription);
     };
-  }, [selectedConversation, user]);
-
-  const getOrCreateConversation = async (productId: string, buyerId: string, sellerId: string) => {
-    try {
-      // 1) Intentar obtenerla
-      const { data: existing, error: existingError } = await supabase
-        .from('conversations')
-        .select(`
-          *,
-          product:products(id, title, images),
-          buyer:profiles!buyer_id(id, full_name, avatar_url),
-          seller:profiles!seller_id(id, full_name, avatar_url)
-        `)
-        .eq('product_id', productId)
-        .eq('buyer_id', buyerId)
-        .eq('seller_id', sellerId)
-        .maybeSingle();
-
-      if (existing) return existing as Conversation;
-
-      // 2) Crear si no existe
-      const { data: created, error: createError } = await supabase
-        .from('conversations')
-        .insert({ product_id: productId, buyer_id: buyerId, seller_id: sellerId })
-        .select(`
-          *,
-          product:products(id, title, images),
-          buyer:profiles!buyer_id(id, full_name, avatar_url),
-          seller:profiles!seller_id(id, full_name, avatar_url)
-        `)
-        .single();
-
-      if (createError) {
-        // Fallback: re-intentar obtener por si hubo una condición de carrera
-        const { data: fallback } = await supabase
-          .from('conversations')
-          .select(`
-            *,
-            product:products(id, title, images),
-            buyer:profiles!buyer_id(id, full_name, avatar_url),
-            seller:profiles!seller_id(id, full_name, avatar_url)
-          `)
-          .eq('product_id', productId)
-          .eq('buyer_id', buyerId)
-          .eq('seller_id', sellerId)
-          .maybeSingle();
-        return fallback as Conversation | null;
-      }
-
-      return created as Conversation;
-    } catch (err) {
-      console.error('Exception in getOrCreateConversation:', err);
-      return null;
-    }
-  };
+  }, [selectedConversation, toast, user]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -263,22 +293,28 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     const { error } = await supabase.from('messages').insert({
       conversation_id: selectedConversation.id,
       sender_id: user.id,
-      content: content,
+      content,
     });
 
     if (error) {
       console.error('Error sending message:', error);
       toast({
-        title: "Error",
-        description: "No se pudo enviar el mensaje",
-        variant: "destructive"
+        title: 'Error',
+        description: 'No se pudo enviar el mensaje',
+        variant: 'destructive',
       });
-      setNewMessage(content); // Restore message
+      setNewMessage(content);
     } else {
+      const updatedAt = new Date().toISOString();
       await supabase
         .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
+        .update({ updated_at: updatedAt })
         .eq('id', selectedConversation.id);
+
+      setSelectedConversation((prev) => (prev ? { ...prev, updated_at: updatedAt } : prev));
+      setConversations((prev) => prev.map((conversation) => (
+        conversation.id === selectedConversation.id ? { ...conversation, updated_at: updatedAt } : conversation
+      )));
     }
 
     setLoading(false);
@@ -317,9 +353,9 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     } catch (err) {
       console.error('Error uploading image:', err);
       toast({
-        title: "Error",
-        description: "No se pudo subir la imagen",
-        variant: "destructive"
+        title: 'Error',
+        description: 'No se pudo subir la imagen',
+        variant: 'destructive',
       });
     } finally {
       setUploadingImage(false);
@@ -378,6 +414,7 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
           <button
             onClick={onClose}
             className="hover:bg-primary-foreground/10 p-2 rounded-lg transition"
+            aria-label="Cerrar chat"
           >
             <X size={20} />
           </button>
