@@ -32,6 +32,14 @@ interface ActiveFiltersProps {
   onRemovePrice: () => void;
 }
 
+const CONDITION_LABELS: Record<string, string> = {
+  new: 'Nuevo',
+  like_new: 'Como nuevo',
+  good: 'Buen estado',
+  fair: 'Aceptable',
+  poor: 'Necesita reparación',
+};
+
 export const ActiveFilters = ({
   useGeoFilter,
   distanceRadius,
@@ -104,7 +112,7 @@ export const ActiveFilters = ({
       )}
       {condition && (
         <FilterChip 
-          label={condition}
+          label={CONDITION_LABELS[condition] || condition}
           onRemove={onRemoveCondition}
         />
       )}
