@@ -40,7 +40,7 @@ const MobileSellButton = () => {
     return (
       <Link
         to={`/boost/${boostProductId}`}
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 lg:hidden"
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
       >
         <div className="flex flex-col items-center gap-1">
           <div className="h-14 px-5 rounded-full bg-primary text-primary-foreground shadow-2xl flex items-center justify-center gap-2 hover:scale-105 transition-transform active:scale-95 border-4 border-background">
