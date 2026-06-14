@@ -25,6 +25,7 @@ import Privacy from "./pages/Privacy";
 import Cookies from "./pages/Cookies";
 import NotFound from "./pages/NotFound";
 import Checkout from "./pages/Checkout";
+import CallRoom from "./pages/CallRoom";
 import MobileSellButton from "@/components/MobileSellButton";
 
 const queryClient = new QueryClient();
@@ -49,6 +50,7 @@ const App = () => (
                 <Route path="/messages" element={<Messages />} />
                 <Route path="/product/:id" element={<ProductDetail />} />
                 <Route path="/checkout/:productId" element={<Checkout />} />
+                <Route path="/call/:id" element={<CallRoom />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/admin/disputes/:id" element={<AdminDisputeDetail />} />
