@@ -11,38 +11,7 @@ const FALLBACK_CITIES: Record<string, { latitude: number; longitude: number; dis
   zaragoza: { latitude: 41.6488, longitude: -0.8891, displayName: 'Zaragoza' },
   malaga: { latitude: 36.7213, longitude: -4.4214, displayName: 'Málaga' },
   murcia: { latitude: 37.9922, longitude: -1.1307, displayName: 'Murcia' },
-  palma: { latitude: 39.5696, longitude: 2.6502, displayName: 'Palma' },
-  'palma de mallorca': { latitude: 39.5696, longitude: 2.6502, displayName: 'Palma de Mallorca' },
-  'las palmas': { latitude: 28.1235, longitude: -15.4363, displayName: 'Las Palmas de Gran Canaria' },
-  bilbao: { latitude: 43.263, longitude: -2.935, displayName: 'Bilbao' },
-  alicante: { latitude: 38.3452, longitude: -0.481, displayName: 'Alicante' },
-  cordoba: { latitude: 37.8882, longitude: -4.7794, displayName: 'Córdoba' },
-  valladolid: { latitude: 41.6523, longitude: -4.7245, displayName: 'Valladolid' },
-  vigo: { latitude: 42.2406, longitude: -8.7207, displayName: 'Vigo' },
-  gijon: { latitude: 43.5322, longitude: -5.6611, displayName: 'Gijón' },
-  'a coruna': { latitude: 43.3623, longitude: -8.4115, displayName: 'A Coruña' },
-  coruna: { latitude: 43.3623, longitude: -8.4115, displayName: 'A Coruña' },
-  granada: { latitude: 37.1773, longitude: -3.5986, displayName: 'Granada' },
-  elche: { latitude: 38.2699, longitude: -0.7126, displayName: 'Elche' },
-  oviedo: { latitude: 43.3619, longitude: -5.8494, displayName: 'Oviedo' },
-  badalona: { latitude: 41.4500, longitude: 2.2474, displayName: 'Badalona' },
-  cartagena: { latitude: 37.6257, longitude: -0.9966, displayName: 'Cartagena' },
-  terrassa: { latitude: 41.5632, longitude: 2.0089, displayName: 'Terrassa' },
-  jerez: { latitude: 36.685, longitude: -6.1261, displayName: 'Jerez de la Frontera' },
-  sabadell: { latitude: 41.5463, longitude: 2.1086, displayName: 'Sabadell' },
-  mostoles: { latitude: 40.3223, longitude: -3.8649, displayName: 'Móstoles' },
-  alcala: { latitude: 40.48198, longitude: -3.36354, displayName: 'Alcalá de Henares' },
-  'alcala de henares': { latitude: 40.48198, longitude: -3.36354, displayName: 'Alcalá de Henares' },
-  pamplona: { latitude: 42.8125, longitude: -1.6458, displayName: 'Pamplona' },
-  santander: { latitude: 43.4623, longitude: -3.8099, displayName: 'Santander' },
-  burgos: { latitude: 42.3439, longitude: -3.6969, displayName: 'Burgos' },
-  almeria: { latitude: 36.8340, longitude: -2.4637, displayName: 'Almería' },
-  salamanca: { latitude: 40.9701, longitude: -5.6635, displayName: 'Salamanca' },
-  leon: { latitude: 42.5987, longitude: -5.5671, displayName: 'León' },
-  cadiz: { latitude: 36.5271, longitude: -6.2886, displayName: 'Cádiz' },
-  huelva: { latitude: 37.2614, longitude: -6.9447, displayName: 'Huelva' },
-  logrono: { latitude: 42.4627, longitude: -2.4449, displayName: 'Logroño' },
-  badajoz: { latitude: 38.8794, longitude: -6.9707, displayName: 'Badajoz' },
+  pineda: { latitude: 41.627222, longitude: 2.691111, displayName: 'Pineda de Mar' },
   'pineda de mar': { latitude: 41.627222, longitude: 2.691111, displayName: 'Pineda de Mar' },
 };
 
@@ -51,8 +20,51 @@ const normalize = (value: string) => value
   .toLowerCase()
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
-  .replace(/^(ciudad|municipio|localidad|pueblo)\s+/, '')
+  .replace(/[.,;:()\[\]]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .replace(/^(ciudad|municipio|localidad|pueblo|villa|zona|area)\s+(de\s+)?/, '')
   .trim();
+
+const buildSearchQueries = (rawLocation: string) => {
+  const cleaned = normalize(rawLocation);
+  const withoutProvince = normalize(cleaned.split(',')[0] || cleaned);
+  const queries = [
+    rawLocation,
+    cleaned,
+    withoutProvince,
+    `${cleaned}, España`,
+    `${withoutProvince}, España`,
+  ];
+
+  return Array.from(new Set(queries.map((query) => query.trim()).filter(Boolean)));
+};
+
+const geocodeWithNominatim = async (query: string) => {
+  const encodedQuery = encodeURIComponent(query);
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=es&addressdetails=1&q=${encodedQuery}`;
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Reveta geocoder / reveta.es',
+      'Accept-Language': 'es',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Geocoder error ${response.status}`);
+  }
+
+  const results = await response.json();
+  if (!Array.isArray(results)) return null;
+
+  return results.find((result) => {
+    const type = String(result?.type || '').toLowerCase();
+    const category = String(result?.class || '').toLowerCase();
+    return result?.lat && result?.lon && (
+      category === 'place' ||
+      ['city', 'town', 'village', 'municipality', 'administrative', 'suburb', 'hamlet'].includes(type)
+    );
+  }) || results.find((result) => result?.lat && result?.lon) || null;
+};
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -83,35 +95,24 @@ Deno.serve(async (req) => {
       });
     }
 
-    const query = encodeURIComponent(`${normalizedLocation || rawLocation}, España`);
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=es&q=${query}`;
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Reveta geocoder / reveta.es',
-        'Accept-Language': 'es',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Geocoder error ${response.status}`);
+    const queries = buildSearchQueries(rawLocation);
+    for (const query of queries) {
+      const result = await geocodeWithNominatim(query);
+      if (result?.lat && result?.lon) {
+        return new Response(JSON.stringify({
+          latitude: Number(result.lat),
+          longitude: Number(result.lon),
+          displayName: result.display_name,
+          source: 'nominatim',
+          query,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
-    const results = await response.json();
-    const result = Array.isArray(results) ? results[0] : null;
-
-    if (!result?.lat || !result?.lon) {
-      return new Response(JSON.stringify({ error: 'No se encontró la ubicación' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    return new Response(JSON.stringify({
-      latitude: Number(result.lat),
-      longitude: Number(result.lon),
-      displayName: result.display_name,
-      source: 'nominatim',
-    }), {
+    return new Response(JSON.stringify({ error: 'No se encontró la ubicación' }), {
+      status: 404,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
