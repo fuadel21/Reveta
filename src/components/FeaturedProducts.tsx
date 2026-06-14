@@ -12,11 +12,26 @@ interface Product {
   location: string | null;
   created_at: string;
   condition: string | null;
+  boosted_until?: string | null;
 }
 
 interface Favorite {
   product_id: string;
 }
+
+const productIsFeatured = (product: Product) => {
+  return !!product.boosted_until && new Date(product.boosted_until).getTime() > Date.now();
+};
+
+const prioritizeFeatured = (items: Product[]) => {
+  return [...items].sort((a, b) => {
+    const aFeatured = productIsFeatured(a);
+    const bFeatured = productIsFeatured(b);
+    if (aFeatured && !bFeatured) return -1;
+    if (!aFeatured && bFeatured) return 1;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+};
 
 const FeaturedProducts = () => {
   const navigate = useNavigate();
@@ -30,9 +45,7 @@ const FeaturedProducts = () => {
   }, []);
 
   useEffect(() => {
-    if (user) {
-      fetchFavorites();
-    }
+    if (user) fetchFavorites();
   }, [user]);
 
   const fetchProducts = async () => {
@@ -41,12 +54,12 @@ const FeaturedProducts = () => {
       .select('*')
       .eq('status', 'active')
       .order('created_at', { ascending: false })
-      .limit(8);
+      .limit(24);
 
     if (error) {
       console.error('Error fetching products:', error);
     } else {
-      setProducts(data || []);
+      setProducts(prioritizeFeatured((data || []) as Product[]).slice(0, 8));
     }
     setLoading(false);
   };
@@ -89,7 +102,7 @@ const FeaturedProducts = () => {
           <div className="flex items-center justify-between mb-8">
             <div>
               <h2 className="text-2xl font-bold text-foreground md:text-3xl">Productos destacados</h2>
-              <p className="mt-1 text-muted-foreground">Las mejores ofertas cerca de ti</p>
+              <p className="mt-1 text-muted-foreground">Anuncios con más visibilidad en Reveta</p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:gap-6">
@@ -108,9 +121,7 @@ const FeaturedProducts = () => {
         <div className="container">
           <div className="text-center py-12">
             <h2 className="text-2xl font-bold text-foreground mb-4">Aún no hay productos</h2>
-            <p className="text-muted-foreground mb-6">
-              Sé el primero en publicar algo
-            </p>
+            <p className="text-muted-foreground mb-6">Sé el primero en publicar algo</p>
           </div>
         </div>
       </section>
@@ -119,16 +130,14 @@ const FeaturedProducts = () => {
 
   return (
     <section className="py-16 md:py-20 bg-gradient-to-b from-muted/50 to-background relative overflow-hidden">
-      {/* Background decoration */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/3 rounded-full blur-3xl pointer-events-none" />
-      
       <div className="container relative">
         <div className="flex items-center justify-between mb-10">
           <div className="animate-fade-in">
             <h2 className="text-2xl font-bold text-foreground md:text-3xl">Productos destacados</h2>
-            <p className="mt-2 text-muted-foreground">Las mejores ofertas cerca de ti</p>
+            <p className="mt-2 text-muted-foreground">Anuncios con más visibilidad en Reveta</p>
           </div>
-          <button 
+          <button
             onClick={() => navigate('/search')}
             className="text-sm font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1 group animate-fade-in"
           >
@@ -136,7 +145,7 @@ const FeaturedProducts = () => {
             <span className="transition-transform group-hover:translate-x-1">→</span>
           </button>
         </div>
-        
+
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:gap-6">
           {products.map((product, index) => (
             <div
@@ -154,6 +163,7 @@ const FeaturedProducts = () => {
                 time={formatDate(product.created_at)}
                 isNew={product.condition === 'Nuevo'}
                 isFavorite={favorites.has(product.id)}
+                isFeatured={productIsFeatured(product)}
               />
             </div>
           ))}
