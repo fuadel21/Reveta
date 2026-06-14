@@ -8,17 +8,7 @@ import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  Heart, 
-  MapPin, 
-  Clock, 
-  MessageCircle,
-  Phone,
-  ChevronLeft, 
-  ChevronRight,
-  Shield,
-  Eye,
-} from 'lucide-react';
+import { Heart, MapPin, Clock, MessageCircle, Phone, ChevronLeft, ChevronRight, Shield, Eye } from 'lucide-react';
 import SellerRating from '@/components/SellerRating';
 import { Reviews } from '@/components/Reviews';
 import ReportDialog from '@/components/ReportDialog';
@@ -49,7 +39,6 @@ interface Profile {
   avatar_url: string | null;
   created_at: string;
   verified: boolean | null;
-  phone?: string | null;
 }
 
 interface Category {
@@ -62,7 +51,7 @@ const ProductDetail = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
-  
+
   const [product, setProduct] = useState<Product | null>(null);
   const [seller, setSeller] = useState<Profile | null>(null);
   const [category, setCategory] = useState<Category | null>(null);
@@ -70,17 +59,14 @@ const ProductDetail = () => {
   const [loading, setLoading] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showChat, setShowChat] = useState(false);
+  const [requestingCall, setRequestingCall] = useState(false);
 
   useEffect(() => {
-    if (id) {
-      fetchProduct();
-    }
+    if (id) fetchProduct();
   }, [id]);
 
   useEffect(() => {
-    if (product && user) {
-      checkFavorite();
-    }
+    if (product && user) checkFavorite();
   }, [product, user]);
 
   const fetchProduct = async () => {
@@ -111,9 +97,7 @@ const ProductDetail = () => {
       .eq('id', data.user_id)
       .maybeSingle();
 
-    if (sellerData) {
-      setSeller(sellerData);
-    }
+    if (sellerData) setSeller(sellerData);
 
     if (data.category_id) {
       const { data: categoryData } = await supabase
@@ -122,9 +106,7 @@ const ProductDetail = () => {
         .eq('id', data.category_id)
         .maybeSingle();
 
-      if (categoryData) {
-        setCategory(categoryData);
-      }
+      if (categoryData) setCategory(categoryData);
     }
 
     setLoading(false);
@@ -159,23 +141,14 @@ const ProductDetail = () => {
         .eq('product_id', product.id);
 
       setIsFavorite(false);
-      toast({
-        title: 'Eliminado de favoritos',
-        description: 'El producto se ha eliminado de tus favoritos'
-      });
+      toast({ title: 'Eliminado de favoritos', description: 'El producto se ha eliminado de tus favoritos' });
     } else {
       await supabase
         .from('favorites')
-        .insert({
-          user_id: user.id,
-          product_id: product.id
-        });
+        .insert({ user_id: user.id, product_id: product.id });
 
       setIsFavorite(true);
-      toast({
-        title: 'Añadido a favoritos',
-        description: 'El producto se ha añadido a tus favoritos'
-      });
+      toast({ title: 'Añadido a favoritos', description: 'El producto se ha añadido a tus favoritos' });
     }
   };
 
@@ -187,64 +160,74 @@ const ProductDetail = () => {
     setShowChat(true);
   };
 
-  const getCleanPhone = () => {
-    const rawPhone = seller?.phone?.trim();
-    if (!rawPhone) return '';
+  const getOrCreateConversation = async () => {
+    if (!user || !product || !seller) return null;
 
-    let phone = rawPhone.replace(/[^0-9+]/g, '');
-    if (phone.startsWith('+')) phone = phone.slice(1);
-    if (phone.startsWith('00')) phone = phone.slice(2);
+    const { data: existing, error: existingError } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('product_id', product.id)
+      .eq('buyer_id', user.id)
+      .eq('seller_id', seller.id)
+      .maybeSingle();
 
-    if (phone.length === 9 && /^[679]/.test(phone)) {
-      phone = `34${phone}`;
-    }
+    if (existingError) throw existingError;
+    if (existing) return existing;
 
-    return phone;
+    const { data: created, error: createError } = await supabase
+      .from('conversations')
+      .insert({ product_id: product.id, buyer_id: user.id, seller_id: seller.id })
+      .select('*')
+      .single();
+
+    if (createError) throw createError;
+    return created;
   };
 
-  const getWhatsAppMessage = () => {
-    if (!product) return '';
-    const productUrl = `https://reveta.es/product/${product.id}`;
-    return `Hola, he visto tu producto "${product.title}" en Reveta por ${product.price} €. ¿Sigue disponible? ${productUrl}`;
-  };
-
-  const handleWhatsAppSeller = () => {
+  const handleRequestPrivateCall = async () => {
     if (!user) {
       navigate('/auth');
       return;
     }
 
-    const phone = getCleanPhone();
-    if (!phone) {
+    if (!product || !seller) return;
+
+    setRequestingCall(true);
+
+    try {
+      const conversation = await getOrCreateConversation();
+      if (!conversation?.id) throw new Error('No se pudo crear la conversación');
+
+      const content = `📞 Solicitud de llamada privada\n\nHola, me interesa tu producto "${product.title}". ¿Podemos hacer una llamada privada por Reveta sin compartir números de teléfono?`;
+
+      const { error: messageError } = await supabase.from('messages').insert({
+        conversation_id: conversation.id,
+        sender_id: user.id,
+        content,
+      });
+
+      if (messageError) throw messageError;
+
+      await supabase
+        .from('conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', conversation.id);
+
       toast({
-        title: 'Teléfono no disponible',
-        description: 'Este vendedor no ha añadido teléfono. Usa el chat de Reveta.',
+        title: 'Solicitud enviada',
+        description: 'Se ha enviado una solicitud de llamada privada por el chat de Reveta.',
+      });
+      setShowChat(true);
+    } catch (error) {
+      console.error('Error requesting private call:', error);
+      toast({
+        title: 'No se pudo solicitar la llamada',
+        description: 'Inténtalo de nuevo o usa el chat.',
         variant: 'destructive',
       });
-      return;
+    } finally {
+      setRequestingCall(false);
     }
-
-    const message = encodeURIComponent(getWhatsAppMessage());
-    window.open(`https://wa.me/${phone}?text=${message}`, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleCallSeller = () => {
-    if (!user) {
-      navigate('/auth');
-      return;
-    }
-
-    const phone = getCleanPhone();
-    if (!phone) {
-      toast({
-        title: 'Teléfono no disponible',
-        description: 'Este vendedor no ha añadido teléfono. Usa el chat de Reveta.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    window.location.href = `tel:+${phone}`;
   };
 
   const formatDate = (dateString: string) => {
@@ -255,9 +238,7 @@ const ProductDetail = () => {
 
     if (diffDays === 0) {
       const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-      if (diffHours === 0) {
-        return 'Hace unos minutos';
-      }
+      if (diffHours === 0) return 'Hace unos minutos';
       return `Hace ${diffHours}h`;
     } else if (diffDays === 1) {
       return 'Ayer';
@@ -269,25 +250,18 @@ const ProductDetail = () => {
   };
 
   const getMemberSince = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-ES', {
-      month: 'long',
-      year: 'numeric'
-    });
+    return new Date(dateString).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
   };
 
   const nextImage = () => {
     if (product && product.images.length > 1) {
-      setCurrentImageIndex((prev) => 
-        prev === product.images.length - 1 ? 0 : prev + 1
-      );
+      setCurrentImageIndex((prev) => (prev === product.images.length - 1 ? 0 : prev + 1));
     }
   };
 
   const prevImage = () => {
     if (product && product.images.length > 1) {
-      setCurrentImageIndex((prev) => 
-        prev === 0 ? product.images.length - 1 : prev - 1
-      );
+      setCurrentImageIndex((prev) => (prev === 0 ? product.images.length - 1 : prev - 1));
     }
   };
 
@@ -299,12 +273,9 @@ const ProductDetail = () => {
     );
   }
 
-  if (!product) {
-    return null;
-  }
+  if (!product) return null;
 
   const isOwner = user?.id === product.user_id;
-
   const canonicalUrl = `https://reveta.es/product/${product.id}`;
   const cleanDescription = (product.description || `${product.title} de segunda mano por ${product.price}€${product.location ? ` en ${product.location}` : ''}. Compra y vende en Reveta.`)
     .replace(/\s+/g, ' ')
@@ -338,9 +309,7 @@ const ProductDetail = () => {
       price: product.price,
       availability,
       itemCondition,
-      ...(seller?.full_name && {
-        seller: { '@type': 'Person', name: seller.full_name },
-      }),
+      ...(seller?.full_name && { seller: { '@type': 'Person', name: seller.full_name } }),
     },
   };
 
@@ -350,9 +319,7 @@ const ProductDetail = () => {
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: 'Inicio', item: 'https://reveta.es/' },
       { '@type': 'ListItem', position: 2, name: 'Buscar', item: 'https://reveta.es/search' },
-      ...(category
-        ? [{ '@type': 'ListItem', position: 3, name: category.name, item: `https://reveta.es/search?category=${category.id}` }]
-        : []),
+      ...(category ? [{ '@type': 'ListItem', position: 3, name: category.name, item: `https://reveta.es/search?category=${category.id}` }] : []),
       { '@type': 'ListItem', position: category ? 4 : 3, name: product.title, item: canonicalUrl },
     ],
   };
@@ -383,12 +350,8 @@ const ProductDetail = () => {
 
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
-
         <main className="flex-1 container py-6">
-          <Link 
-            to="/" 
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
-          >
+          <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
             <ChevronLeft className="h-4 w-4" />
             Volver
           </Link>
@@ -398,38 +361,18 @@ const ProductDetail = () => {
               <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-muted">
                 {product.images && product.images.length > 0 ? (
                   <>
-                    <img
-                      src={product.images[currentImageIndex]}
-                      alt={product.title}
-                      className="h-full w-full object-cover"
-                    />
-                    
+                    <img src={product.images[currentImageIndex]} alt={product.title} className="h-full w-full object-cover" />
                     {product.images.length > 1 && (
                       <>
-                        <button
-                          onClick={prevImage}
-                          className="absolute left-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors"
-                        >
+                        <button onClick={prevImage} className="absolute left-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors">
                           <ChevronLeft className="h-5 w-5" />
                         </button>
-                        <button
-                          onClick={nextImage}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors"
-                        >
+                        <button onClick={nextImage} className="absolute right-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors">
                           <ChevronRight className="h-5 w-5" />
                         </button>
-                        
                         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
                           {product.images.map((_, index) => (
-                            <button
-                              key={index}
-                              onClick={() => setCurrentImageIndex(index)}
-                              className={`h-2 w-2 rounded-full transition-colors ${
-                                index === currentImageIndex 
-                                  ? 'bg-primary' 
-                                  : 'bg-card/80'
-                              }`}
-                            />
+                            <button key={index} onClick={() => setCurrentImageIndex(index)} className={`h-2 w-2 rounded-full transition-colors ${index === currentImageIndex ? 'bg-primary' : 'bg-card/80'}`} />
                           ))}
                         </div>
                       </>
@@ -445,15 +388,7 @@ const ProductDetail = () => {
               {product.images && product.images.length > 1 && (
                 <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
                   {product.images.map((img, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setCurrentImageIndex(index)}
-                      className={`shrink-0 h-20 w-20 rounded-lg overflow-hidden border-2 transition-colors ${
-                        index === currentImageIndex
-                          ? 'border-primary'
-                          : 'border-transparent hover:border-border'
-                      }`}
-                    >
+                    <button key={index} onClick={() => setCurrentImageIndex(index)} className={`shrink-0 h-20 w-20 rounded-lg overflow-hidden border-2 transition-colors ${index === currentImageIndex ? 'border-primary' : 'border-transparent hover:border-border'}`}>
                       <img src={img} alt="" className="h-full w-full object-cover" />
                     </button>
                   ))}
@@ -462,9 +397,7 @@ const ProductDetail = () => {
 
               <div className="mt-8">
                 <h2 className="text-lg font-semibold mb-4">Descripción</h2>
-                <p className="text-muted-foreground whitespace-pre-wrap">
-                  {product.description || 'Sin descripción'}
-                </p>
+                <p className="text-muted-foreground whitespace-pre-wrap">{product.description || 'Sin descripción'}</p>
               </div>
             </div>
 
@@ -473,58 +406,29 @@ const ProductDetail = () => {
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <p className="text-3xl font-bold text-foreground">
-                        {product.price.toLocaleString('es-ES')} €
-                      </p>
+                      <p className="text-3xl font-bold text-foreground">{product.price.toLocaleString('es-ES')} €</p>
                       <ProductStatusBadge status={product.status} />
                     </div>
-                    {product.condition && (
-                      <Badge variant="secondary" className="font-medium">
-                        {product.condition}
-                      </Badge>
-                    )}
+                    {product.condition && <Badge variant="secondary" className="font-medium">{product.condition}</Badge>}
                   </div>
                   <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={toggleFavorite}
-                      className={isFavorite ? 'text-destructive' : ''}
-                    >
+                    <Button variant="outline" size="icon" onClick={toggleFavorite} className={isFavorite ? 'text-destructive' : ''}>
                       <Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} />
                     </Button>
-                    <SocialShareButtons 
-                      title={product.title}
-                      description={`${product.title} por ${product.price}€ en Reveta`}
-                      compact
-                    />
+                    <SocialShareButtons title={product.title} description={`${product.title} por ${product.price}€ en Reveta`} compact />
                   </div>
                 </div>
 
                 <h1 className="text-xl font-semibold mb-4">{product.title}</h1>
 
                 <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-6">
-                  {product.location && (
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4" />
-                      {product.location}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" />
-                    {formatDate(product.created_at)}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Eye className="h-4 w-4" />
-                    {product.views || 0} visitas
-                  </div>
+                  {product.location && <div className="flex items-center gap-1"><MapPin className="h-4 w-4" />{product.location}</div>}
+                  <div className="flex items-center gap-1"><Clock className="h-4 w-4" />{formatDate(product.created_at)}</div>
+                  <div className="flex items-center gap-1"><Eye className="h-4 w-4" />{product.views || 0} visitas</div>
                 </div>
 
                 {category && (
-                  <Link 
-                    to={`/search?category=${category.id}`}
-                    className="inline-block text-sm text-primary hover:underline mb-6"
-                  >
+                  <Link to={`/search?category=${category.id}`} className="inline-block text-sm text-primary hover:underline mb-6">
                     {category.name}
                   </Link>
                 )}
@@ -532,34 +436,19 @@ const ProductDetail = () => {
                 {!isOwner && product.status === 'active' && (
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-2">
-                      <Button 
-                        className="h-14 text-base font-bold"
-                        onClick={handleContactSeller}
-                      >
+                      <Button className="h-14 text-base font-bold" onClick={handleContactSeller}>
                         <MessageCircle className="h-5 w-5 mr-2" />
                         Chat
                       </Button>
-                      <Button 
-                        className="h-14 text-base font-bold bg-green-600 hover:bg-green-700 text-white"
-                        onClick={handleWhatsAppSeller}
-                      >
-                        <MessageCircle className="h-5 w-5 mr-2" />
-                        WhatsApp
+                      <Button variant="outline" className="h-14 text-base font-bold border-primary/30" onClick={handleRequestPrivateCall} disabled={requestingCall}>
+                        <Phone className="h-5 w-5 mr-2" />
+                        {requestingCall ? 'Enviando...' : 'Solicitar llamada'}
                       </Button>
                     </div>
-                    <Button 
-                      variant="outline"
-                      className="w-full h-12 text-base font-semibold"
-                      onClick={handleCallSeller}
-                    >
-                      <Phone className="h-5 w-5 mr-2" />
-                      Llamar
-                    </Button>
-                    <Button 
-                      variant="secondary"
-                      className="w-full h-14 text-lg font-bold border-2 border-primary/20"
-                      onClick={() => navigate(`/checkout/${product.id}`)}
-                    >
+                    <p className="text-xs text-muted-foreground text-center">
+                      La llamada privada se solicita por chat y no muestra números de teléfono.
+                    </p>
+                    <Button variant="secondary" className="w-full h-14 text-lg font-bold border-2 border-primary/20" onClick={() => navigate(`/checkout/${product.id}`)}>
                       Comprar ahora
                     </Button>
                     <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 mt-4">
@@ -567,9 +456,7 @@ const ProductDetail = () => {
                         <Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                         <div>
                           <p className="text-sm font-bold text-foreground">Compra Protegida</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Paga a través de Reveta y protegemos tu dinero hasta que recibas el producto.
-                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">Paga a través de Reveta y protegemos tu dinero hasta que recibas el producto.</p>
                         </div>
                       </div>
                     </div>
@@ -578,24 +465,14 @@ const ProductDetail = () => {
 
                 {!isOwner && product.status !== 'active' && (
                   <div className="text-center p-4 bg-muted rounded-lg">
-                    <p className="text-muted-foreground">
-                      {product.status === 'sold' ? 'Este producto ya ha sido vendido' : 'Este producto está reservado'}
-                    </p>
+                    <p className="text-muted-foreground">{product.status === 'sold' ? 'Este producto ya ha sido vendido' : 'Este producto está reservado'}</p>
                   </div>
                 )}
 
                 {isOwner && (
                   <div className="space-y-3">
-                    <Button 
-                      variant="outline" 
-                      className="w-full h-12"
-                      onClick={() => navigate('/profile')}
-                    >
-                      Gestionar producto
-                    </Button>
-                    <p className="text-xs text-center text-muted-foreground italic">
-                      Eres el vendedor de este producto
-                    </p>
+                    <Button variant="outline" className="w-full h-12" onClick={() => navigate('/profile')}>Gestionar producto</Button>
+                    <p className="text-xs text-center text-muted-foreground italic">Eres el vendedor de este producto</p>
                   </div>
                 )}
               </div>
@@ -612,45 +489,25 @@ const ProductDetail = () => {
                         {seller.verified && <VerifiedBadge size="sm" />}
                       </div>
                       <SellerRating sellerId={seller.id} size="sm" />
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Miembro desde {getMemberSince(seller.created_at)}
-                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">Miembro desde {getMemberSince(seller.created_at)}</p>
                     </div>
                   </div>
 
-                  {seller.verified && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-                      <Shield className="h-4 w-4 text-primary" />
-                      <span>Vendedor verificado</span>
-                    </div>
-                  )}
+                  {seller.verified && <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4"><Shield className="h-4 w-4 text-primary" /><span>Vendedor verificado</span></div>}
 
                   {!isOwner && (
                     <div className="flex flex-col gap-2">
-                      <ReportDialog 
-                        productId={product.id} 
-                        userId={seller.id}
-                      />
-                      <BlockUserButton 
-                        userId={seller.id}
-                        userName={seller.full_name || 'este usuario'}
-                      />
+                      <ReportDialog productId={product.id} userId={seller.id} />
+                      <BlockUserButton userId={seller.id} userName={seller.full_name || 'este usuario'} />
                     </div>
                   )}
                 </div>
               )}
 
-              {seller && (
-                <div className="bg-card rounded-xl p-6 shadow-card border border-border/50">
-                  <Reviews userId={seller.id} productId={product.id} />
-                </div>
-              )}
+              {seller && <div className="bg-card rounded-xl p-6 shadow-card border border-border/50"><Reviews userId={seller.id} productId={product.id} /></div>}
 
               <div className="bg-muted/50 rounded-xl p-6">
-                <h3 className="font-medium mb-3 flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-primary" />
-                  Consejos de seguridad
-                </h3>
+                <h3 className="font-medium mb-3 flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />Consejos de seguridad</h3>
                 <ul className="text-sm text-muted-foreground space-y-2">
                   <li>• Queda en lugares públicos</li>
                   <li>• Verifica el producto antes de pagar</li>
@@ -668,11 +525,7 @@ const ProductDetail = () => {
       {showChat && seller && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-2xl h-[600px] flex flex-col relative overflow-hidden">
-            <Chat 
-              productId={product.id} 
-              sellerId={seller.id} 
-              onClose={() => setShowChat(false)} 
-            />
+            <Chat productId={product.id} sellerId={seller.id} onClose={() => setShowChat(false)} />
           </div>
         </div>
       )}
