@@ -16,6 +16,7 @@ import Messages from "./pages/Messages";
 import ProductDetail from "./pages/ProductDetail";
 import Search from "./pages/Search";
 import Admin from "./pages/Admin";
+import AdminDisputeDetail from "./pages/AdminDisputeDetail";
 import Transactions from "./pages/Transactions";
 import Settings from "./pages/Settings";
 import SavedSearches from "./pages/SavedSearches";
@@ -46,22 +47,17 @@ const App = () => (
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/upload" element={<Upload />} />
                 <Route path="/messages" element={<Messages />} />
-                                <Route path="/product/:id" element={<ProductDetail />} />
-                <Route path="/checkout/:productId" element={<Checkout />} />
-                <Route path="/search" element={<Search />} />
                 <Route path="/product/:id" element={<ProductDetail />} />
                 <Route path="/checkout/:productId" element={<Checkout />} />
                 <Route path="/search" element={<Search />} />
-                
-                 <Route path="/search" element={<Search />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/admin/disputes/:id" element={<AdminDisputeDetail />} />
                 <Route path="/transactions" element={<Transactions />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/saved-searches" element={<SavedSearches />} />
                 <Route path="/terms" element={<Terms />} />
                 <Route path="/privacy" element={<Privacy />} />
                 <Route path="/cookies" element={<Cookies />} />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>
