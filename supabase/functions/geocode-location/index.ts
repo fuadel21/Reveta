@@ -43,13 +43,16 @@ const FALLBACK_CITIES: Record<string, { latitude: number; longitude: number; dis
   huelva: { latitude: 37.2614, longitude: -6.9447, displayName: 'Huelva' },
   logrono: { latitude: 42.4627, longitude: -2.4449, displayName: 'Logroño' },
   badajoz: { latitude: 38.8794, longitude: -6.9707, displayName: 'Badajoz' },
+  'pineda de mar': { latitude: 41.627222, longitude: 2.691111, displayName: 'Pineda de Mar' },
 };
 
 const normalize = (value: string) => value
   .trim()
   .toLowerCase()
   .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '');
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/^(ciudad|municipio|localidad|pueblo)\s+/, '')
+  .trim();
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -67,7 +70,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const fallback = FALLBACK_CITIES[normalize(rawLocation)];
+    const normalizedLocation = normalize(rawLocation);
+    const fallback = FALLBACK_CITIES[normalizedLocation];
     if (fallback) {
       return new Response(JSON.stringify({
         latitude: fallback.latitude,
@@ -79,7 +83,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const query = encodeURIComponent(`${rawLocation}, España`);
+    const query = encodeURIComponent(`${normalizedLocation || rawLocation}, España`);
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=es&q=${query}`;
     const response = await fetch(url, {
       headers: {
