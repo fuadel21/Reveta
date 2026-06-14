@@ -198,7 +198,22 @@ const ProductDetail = () => {
       const conversation = await getOrCreateConversation();
       if (!conversation?.id) throw new Error('No se pudo crear la conversación');
 
-      const content = `📞 Solicitud de llamada privada\n\nHola, me interesa tu producto "${product.title}". ¿Podemos hacer una llamada privada por Reveta sin compartir números de teléfono?`;
+      const { data: callSession, error: callError } = await (supabase as any)
+        .from('call_sessions')
+        .insert({
+          conversation_id: conversation.id,
+          product_id: product.id,
+          caller_id: user.id,
+          callee_id: seller.id,
+          status: 'requested',
+        })
+        .select('*')
+        .single();
+
+      if (callError || !callSession?.id) throw callError || new Error('No se pudo crear la sala de llamada');
+
+      const callUrl = `${window.location.origin}/call/${callSession.id}`;
+      const content = `📞 Solicitud de llamada privada\n\nHola, me interesa tu producto "${product.title}". Te envío una sala de llamada privada de Reveta. No compartiremos números de teléfono.\n\nEntrar en la llamada: ${callUrl}`;
 
       const { error: messageError } = await supabase.from('messages').insert({
         conversation_id: conversation.id,
@@ -214,15 +229,15 @@ const ProductDetail = () => {
         .eq('id', conversation.id);
 
       toast({
-        title: 'Solicitud enviada',
-        description: 'Se ha enviado una solicitud de llamada privada por el chat de Reveta.',
+        title: 'Sala de llamada creada',
+        description: 'Se ha enviado el enlace privado por el chat de Reveta.',
       });
-      setShowChat(true);
+      navigate(`/call/${callSession.id}`);
     } catch (error) {
       console.error('Error requesting private call:', error);
       toast({
-        title: 'No se pudo solicitar la llamada',
-        description: 'Inténtalo de nuevo o usa el chat.',
+        title: 'No se pudo crear la llamada',
+        description: 'Ejecuta la migración de llamadas o inténtalo de nuevo.',
         variant: 'destructive',
       });
     } finally {
@@ -249,9 +264,7 @@ const ProductDetail = () => {
     }
   };
 
-  const getMemberSince = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-  };
+  const getMemberSince = (dateString: string) => new Date(dateString).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   const nextImage = () => {
     if (product && product.images.length > 1) {
@@ -266,11 +279,7 @@ const ProductDetail = () => {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
   }
 
   if (!product) return null;
@@ -284,14 +293,8 @@ const ProductDetail = () => {
   const rawTitle = `${product.title} · ${product.price}€${product.location ? ` en ${product.location}` : ''} | Reveta`;
   const seoTitle = rawTitle.length > 60 ? `${product.title.slice(0, 40)} · ${product.price}€ | Reveta` : rawTitle;
   const primaryImage = product.images?.[0];
-  const availability = product.status === 'sold'
-    ? 'https://schema.org/SoldOut'
-    : product.status === 'reserved'
-    ? 'https://schema.org/LimitedAvailability'
-    : 'https://schema.org/InStock';
-  const itemCondition = product.condition === 'Nuevo'
-    ? 'https://schema.org/NewCondition'
-    : 'https://schema.org/UsedCondition';
+  const availability = product.status === 'sold' ? 'https://schema.org/SoldOut' : product.status === 'reserved' ? 'https://schema.org/LimitedAvailability' : 'https://schema.org/InStock';
+  const itemCondition = product.condition === 'Nuevo' ? 'https://schema.org/NewCondition' : 'https://schema.org/UsedCondition';
 
   const productJsonLd = {
     '@context': 'https://schema.org',
@@ -351,10 +354,7 @@ const ProductDetail = () => {
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <main className="flex-1 container py-6">
-          <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
-            <ChevronLeft className="h-4 w-4" />
-            Volver
-          </Link>
+          <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"><ChevronLeft className="h-4 w-4" />Volver</Link>
 
           <div className="grid gap-8 lg:grid-cols-3">
             <div className="lg:col-span-2">
@@ -364,157 +364,55 @@ const ProductDetail = () => {
                     <img src={product.images[currentImageIndex]} alt={product.title} className="h-full w-full object-cover" />
                     {product.images.length > 1 && (
                       <>
-                        <button onClick={prevImage} className="absolute left-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors">
-                          <ChevronLeft className="h-5 w-5" />
-                        </button>
-                        <button onClick={nextImage} className="absolute right-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors">
-                          <ChevronRight className="h-5 w-5" />
-                        </button>
-                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                          {product.images.map((_, index) => (
-                            <button key={index} onClick={() => setCurrentImageIndex(index)} className={`h-2 w-2 rounded-full transition-colors ${index === currentImageIndex ? 'bg-primary' : 'bg-card/80'}`} />
-                          ))}
-                        </div>
+                        <button onClick={prevImage} className="absolute left-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors"><ChevronLeft className="h-5 w-5" /></button>
+                        <button onClick={nextImage} className="absolute right-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors"><ChevronRight className="h-5 w-5" /></button>
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">{product.images.map((_, index) => <button key={index} onClick={() => setCurrentImageIndex(index)} className={`h-2 w-2 rounded-full transition-colors ${index === currentImageIndex ? 'bg-primary' : 'bg-card/80'}`} />)}</div>
                       </>
                     )}
                   </>
-                ) : (
-                  <div className="h-full w-full flex items-center justify-center">
-                    <span className="text-muted-foreground">Sin imagen</span>
-                  </div>
-                )}
+                ) : <div className="h-full w-full flex items-center justify-center"><span className="text-muted-foreground">Sin imagen</span></div>}
               </div>
 
-              {product.images && product.images.length > 1 && (
-                <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                  {product.images.map((img, index) => (
-                    <button key={index} onClick={() => setCurrentImageIndex(index)} className={`shrink-0 h-20 w-20 rounded-lg overflow-hidden border-2 transition-colors ${index === currentImageIndex ? 'border-primary' : 'border-transparent hover:border-border'}`}>
-                      <img src={img} alt="" className="h-full w-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              )}
+              {product.images && product.images.length > 1 && <div className="flex gap-2 mt-4 overflow-x-auto pb-2">{product.images.map((img, index) => <button key={index} onClick={() => setCurrentImageIndex(index)} className={`shrink-0 h-20 w-20 rounded-lg overflow-hidden border-2 transition-colors ${index === currentImageIndex ? 'border-primary' : 'border-transparent hover:border-border'}`}><img src={img} alt="" className="h-full w-full object-cover" /></button>)}</div>}
 
-              <div className="mt-8">
-                <h2 className="text-lg font-semibold mb-4">Descripción</h2>
-                <p className="text-muted-foreground whitespace-pre-wrap">{product.description || 'Sin descripción'}</p>
-              </div>
+              <div className="mt-8"><h2 className="text-lg font-semibold mb-4">Descripción</h2><p className="text-muted-foreground whitespace-pre-wrap">{product.description || 'Sin descripción'}</p></div>
             </div>
 
             <div className="space-y-6">
               <div className="bg-card rounded-xl p-6 shadow-card border border-border/50">
                 <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <p className="text-3xl font-bold text-foreground">{product.price.toLocaleString('es-ES')} €</p>
-                      <ProductStatusBadge status={product.status} />
-                    </div>
-                    {product.condition && <Badge variant="secondary" className="font-medium">{product.condition}</Badge>}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="icon" onClick={toggleFavorite} className={isFavorite ? 'text-destructive' : ''}>
-                      <Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} />
-                    </Button>
-                    <SocialShareButtons title={product.title} description={`${product.title} por ${product.price}€ en Reveta`} compact />
-                  </div>
+                  <div><div className="flex items-center gap-2 mb-2"><p className="text-3xl font-bold text-foreground">{product.price.toLocaleString('es-ES')} €</p><ProductStatusBadge status={product.status} /></div>{product.condition && <Badge variant="secondary" className="font-medium">{product.condition}</Badge>}</div>
+                  <div className="flex gap-2"><Button variant="outline" size="icon" onClick={toggleFavorite} className={isFavorite ? 'text-destructive' : ''}><Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} /></Button><SocialShareButtons title={product.title} description={`${product.title} por ${product.price}€ en Reveta`} compact /></div>
                 </div>
 
                 <h1 className="text-xl font-semibold mb-4">{product.title}</h1>
 
-                <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-6">
-                  {product.location && <div className="flex items-center gap-1"><MapPin className="h-4 w-4" />{product.location}</div>}
-                  <div className="flex items-center gap-1"><Clock className="h-4 w-4" />{formatDate(product.created_at)}</div>
-                  <div className="flex items-center gap-1"><Eye className="h-4 w-4" />{product.views || 0} visitas</div>
-                </div>
+                <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-6">{product.location && <div className="flex items-center gap-1"><MapPin className="h-4 w-4" />{product.location}</div>}<div className="flex items-center gap-1"><Clock className="h-4 w-4" />{formatDate(product.created_at)}</div><div className="flex items-center gap-1"><Eye className="h-4 w-4" />{product.views || 0} visitas</div></div>
 
-                {category && (
-                  <Link to={`/search?category=${category.id}`} className="inline-block text-sm text-primary hover:underline mb-6">
-                    {category.name}
-                  </Link>
-                )}
+                {category && <Link to={`/search?category=${category.id}`} className="inline-block text-sm text-primary hover:underline mb-6">{category.name}</Link>}
 
                 {!isOwner && product.status === 'active' && (
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-2">
-                      <Button className="h-14 text-base font-bold" onClick={handleContactSeller}>
-                        <MessageCircle className="h-5 w-5 mr-2" />
-                        Chat
-                      </Button>
-                      <Button variant="outline" className="h-14 text-base font-bold border-primary/30" onClick={handleRequestPrivateCall} disabled={requestingCall}>
-                        <Phone className="h-5 w-5 mr-2" />
-                        {requestingCall ? 'Enviando...' : 'Solicitar llamada'}
-                      </Button>
+                      <Button className="h-14 text-base font-bold" onClick={handleContactSeller}><MessageCircle className="h-5 w-5 mr-2" />Chat</Button>
+                      <Button variant="outline" className="h-14 text-base font-bold border-primary/30" onClick={handleRequestPrivateCall} disabled={requestingCall}><Phone className="h-5 w-5 mr-2" />{requestingCall ? 'Creando...' : 'Llamada privada'}</Button>
                     </div>
-                    <p className="text-xs text-muted-foreground text-center">
-                      La llamada privada se solicita por chat y no muestra números de teléfono.
-                    </p>
-                    <Button variant="secondary" className="w-full h-14 text-lg font-bold border-2 border-primary/20" onClick={() => navigate(`/checkout/${product.id}`)}>
-                      Comprar ahora
-                    </Button>
-                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 mt-4">
-                      <div className="flex items-start gap-3">
-                        <Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-sm font-bold text-foreground">Compra Protegida</p>
-                          <p className="text-xs text-muted-foreground mt-1">Paga a través de Reveta y protegemos tu dinero hasta que recibas el producto.</p>
-                        </div>
-                      </div>
-                    </div>
+                    <p className="text-xs text-muted-foreground text-center">Crea una sala de audio dentro de Reveta. No se muestran números de teléfono.</p>
+                    <Button variant="secondary" className="w-full h-14 text-lg font-bold border-2 border-primary/20" onClick={() => navigate(`/checkout/${product.id}`)}>Comprar ahora</Button>
+                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 mt-4"><div className="flex items-start gap-3"><Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" /><div><p className="text-sm font-bold text-foreground">Compra Protegida</p><p className="text-xs text-muted-foreground mt-1">Paga a través de Reveta y protegemos tu dinero hasta que recibas el producto.</p></div></div></div>
                   </div>
                 )}
 
-                {!isOwner && product.status !== 'active' && (
-                  <div className="text-center p-4 bg-muted rounded-lg">
-                    <p className="text-muted-foreground">{product.status === 'sold' ? 'Este producto ya ha sido vendido' : 'Este producto está reservado'}</p>
-                  </div>
-                )}
+                {!isOwner && product.status !== 'active' && <div className="text-center p-4 bg-muted rounded-lg"><p className="text-muted-foreground">{product.status === 'sold' ? 'Este producto ya ha sido vendido' : 'Este producto está reservado'}</p></div>}
 
-                {isOwner && (
-                  <div className="space-y-3">
-                    <Button variant="outline" className="w-full h-12" onClick={() => navigate('/profile')}>Gestionar producto</Button>
-                    <p className="text-xs text-center text-muted-foreground italic">Eres el vendedor de este producto</p>
-                  </div>
-                )}
+                {isOwner && <div className="space-y-3"><Button variant="outline" className="w-full h-12" onClick={() => navigate('/profile')}>Gestionar producto</Button><p className="text-xs text-center text-muted-foreground italic">Eres el vendedor de este producto</p></div>}
               </div>
 
-              {seller && (
-                <div className="bg-card rounded-xl p-6 shadow-card border border-border/50">
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="h-14 w-14 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-xl font-bold text-primary-foreground">
-                      {seller.full_name?.[0]?.toUpperCase() || 'U'}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold">{seller.full_name || 'Usuario'}</p>
-                        {seller.verified && <VerifiedBadge size="sm" />}
-                      </div>
-                      <SellerRating sellerId={seller.id} size="sm" />
-                      <p className="text-sm text-muted-foreground mt-1">Miembro desde {getMemberSince(seller.created_at)}</p>
-                    </div>
-                  </div>
-
-                  {seller.verified && <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4"><Shield className="h-4 w-4 text-primary" /><span>Vendedor verificado</span></div>}
-
-                  {!isOwner && (
-                    <div className="flex flex-col gap-2">
-                      <ReportDialog productId={product.id} userId={seller.id} />
-                      <BlockUserButton userId={seller.id} userName={seller.full_name || 'este usuario'} />
-                    </div>
-                  )}
-                </div>
-              )}
+              {seller && <div className="bg-card rounded-xl p-6 shadow-card border border-border/50"><div className="flex items-center gap-4 mb-4"><div className="h-14 w-14 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-xl font-bold text-primary-foreground">{seller.full_name?.[0]?.toUpperCase() || 'U'}</div><div><div className="flex items-center gap-2"><p className="font-semibold">{seller.full_name || 'Usuario'}</p>{seller.verified && <VerifiedBadge size="sm" />}</div><SellerRating sellerId={seller.id} size="sm" /><p className="text-sm text-muted-foreground mt-1">Miembro desde {getMemberSince(seller.created_at)}</p></div></div>{seller.verified && <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4"><Shield className="h-4 w-4 text-primary" /><span>Vendedor verificado</span></div>}{!isOwner && <div className="flex flex-col gap-2"><ReportDialog productId={product.id} userId={seller.id} /><BlockUserButton userId={seller.id} userName={seller.full_name || 'este usuario'} /></div>}</div>}
 
               {seller && <div className="bg-card rounded-xl p-6 shadow-card border border-border/50"><Reviews userId={seller.id} productId={product.id} /></div>}
 
-              <div className="bg-muted/50 rounded-xl p-6">
-                <h3 className="font-medium mb-3 flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />Consejos de seguridad</h3>
-                <ul className="text-sm text-muted-foreground space-y-2">
-                  <li>• Queda en lugares públicos</li>
-                  <li>• Verifica el producto antes de pagar</li>
-                  <li>• Nunca envíes dinero por adelantado</li>
-                  <li>• Usa el chat de la plataforma</li>
-                </ul>
-              </div>
+              <div className="bg-muted/50 rounded-xl p-6"><h3 className="font-medium mb-3 flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />Consejos de seguridad</h3><ul className="text-sm text-muted-foreground space-y-2"><li>• Queda en lugares públicos</li><li>• Verifica el producto antes de pagar</li><li>• Nunca envíes dinero por adelantado</li><li>• Usa el chat de la plataforma</li></ul></div>
             </div>
           </div>
         </main>
@@ -522,13 +420,7 @@ const ProductDetail = () => {
         <Footer />
       </div>
 
-      {showChat && seller && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-2xl h-[600px] flex flex-col relative overflow-hidden">
-            <Chat productId={product.id} sellerId={seller.id} onClose={() => setShowChat(false)} />
-          </div>
-        </div>
-      )}
+      {showChat && seller && <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"><div className="bg-white rounded-xl w-full max-w-2xl h-[600px] flex flex-col relative overflow-hidden"><Chat productId={product.id} sellerId={seller.id} onClose={() => setShowChat(false)} /></div></div>}
     </>
   );
 };
