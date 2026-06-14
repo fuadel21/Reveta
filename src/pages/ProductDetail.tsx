@@ -12,12 +12,12 @@ import {
   Heart, 
   MapPin, 
   Clock, 
-  MessageCircle, 
+  MessageCircle,
+  Phone,
   ChevronLeft, 
   ChevronRight,
   Shield,
   Eye,
-  X,
 } from 'lucide-react';
 import SellerRating from '@/components/SellerRating';
 import { Reviews } from '@/components/Reviews';
@@ -49,6 +49,7 @@ interface Profile {
   avatar_url: string | null;
   created_at: string;
   verified: boolean | null;
+  phone?: string | null;
 }
 
 interface Category {
@@ -99,13 +100,11 @@ const ProductDetail = () => {
 
     setProduct(data);
 
-    // Increment views
     await supabase
       .from('products')
       .update({ views: (data.views || 0) + 1 })
       .eq('id', id);
 
-    // Fetch seller profile
     const { data: sellerData } = await supabase
       .from('profiles')
       .select('*')
@@ -116,7 +115,6 @@ const ProductDetail = () => {
       setSeller(sellerData);
     }
 
-    // Fetch category
     if (data.category_id) {
       const { data: categoryData } = await supabase
         .from('categories')
@@ -187,6 +185,66 @@ const ProductDetail = () => {
       return;
     }
     setShowChat(true);
+  };
+
+  const getCleanPhone = () => {
+    const rawPhone = seller?.phone?.trim();
+    if (!rawPhone) return '';
+
+    let phone = rawPhone.replace(/[^0-9+]/g, '');
+    if (phone.startsWith('+')) phone = phone.slice(1);
+    if (phone.startsWith('00')) phone = phone.slice(2);
+
+    if (phone.length === 9 && /^[679]/.test(phone)) {
+      phone = `34${phone}`;
+    }
+
+    return phone;
+  };
+
+  const getWhatsAppMessage = () => {
+    if (!product) return '';
+    const productUrl = `https://reveta.es/product/${product.id}`;
+    return `Hola, he visto tu producto "${product.title}" en Reveta por ${product.price} €. ¿Sigue disponible? ${productUrl}`;
+  };
+
+  const handleWhatsAppSeller = () => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+
+    const phone = getCleanPhone();
+    if (!phone) {
+      toast({
+        title: 'Teléfono no disponible',
+        description: 'Este vendedor no ha añadido teléfono. Usa el chat de Reveta.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const message = encodeURIComponent(getWhatsAppMessage());
+    window.open(`https://wa.me/${phone}?text=${message}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleCallSeller = () => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+
+    const phone = getCleanPhone();
+    if (!phone) {
+      toast({
+        title: 'Teléfono no disponible',
+        description: 'Este vendedor no ha añadido teléfono. Usa el chat de Reveta.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    window.location.href = `tel:+${phone}`;
   };
 
   const formatDate = (dateString: string) => {
@@ -336,7 +394,6 @@ const ProductDetail = () => {
           </Link>
 
           <div className="grid gap-8 lg:grid-cols-3">
-            {/* Images */}
             <div className="lg:col-span-2">
               <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-muted">
                 {product.images && product.images.length > 0 ? (
@@ -385,7 +442,6 @@ const ProductDetail = () => {
                 )}
               </div>
 
-              {/* Thumbnails */}
               {product.images && product.images.length > 1 && (
                 <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
                   {product.images.map((img, index) => (
@@ -404,7 +460,6 @@ const ProductDetail = () => {
                 </div>
               )}
 
-              {/* Description */}
               <div className="mt-8">
                 <h2 className="text-lg font-semibold mb-4">Descripción</h2>
                 <p className="text-muted-foreground whitespace-pre-wrap">
@@ -413,9 +468,7 @@ const ProductDetail = () => {
               </div>
             </div>
 
-            {/* Details Sidebar */}
             <div className="space-y-6">
-              {/* Price and Actions */}
               <div className="bg-card rounded-xl p-6 shadow-card border border-border/50">
                 <div className="flex items-start justify-between mb-4">
                   <div>
@@ -478,12 +531,29 @@ const ProductDetail = () => {
 
                 {!isOwner && product.status === 'active' && (
                   <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button 
+                        className="h-14 text-base font-bold"
+                        onClick={handleContactSeller}
+                      >
+                        <MessageCircle className="h-5 w-5 mr-2" />
+                        Chat
+                      </Button>
+                      <Button 
+                        className="h-14 text-base font-bold bg-green-600 hover:bg-green-700 text-white"
+                        onClick={handleWhatsAppSeller}
+                      >
+                        <MessageCircle className="h-5 w-5 mr-2" />
+                        WhatsApp
+                      </Button>
+                    </div>
                     <Button 
-                      className="w-full gradient-accent text-accent-foreground border-0 h-14 text-lg font-bold shadow-lg"
-                      onClick={handleContactSeller}
+                      variant="outline"
+                      className="w-full h-12 text-base font-semibold"
+                      onClick={handleCallSeller}
                     >
-                      <MessageCircle className="h-5 w-5 mr-2" />
-                      Chat
+                      <Phone className="h-5 w-5 mr-2" />
+                      Llamar
                     </Button>
                     <Button 
                       variant="secondary"
@@ -530,7 +600,6 @@ const ProductDetail = () => {
                 )}
               </div>
 
-              {/* Seller Card */}
               {seller && (
                 <div className="bg-card rounded-xl p-6 shadow-card border border-border/50">
                   <div className="flex items-center gap-4 mb-4">
@@ -571,14 +640,12 @@ const ProductDetail = () => {
                 </div>
               )}
 
-              {/* Reviews Section */}
               {seller && (
                 <div className="bg-card rounded-xl p-6 shadow-card border border-border/50">
                   <Reviews userId={seller.id} productId={product.id} />
                 </div>
               )}
 
-              {/* Safety Tips */}
               <div className="bg-muted/50 rounded-xl p-6">
                 <h3 className="font-medium mb-3 flex items-center gap-2">
                   <Shield className="h-4 w-4 text-primary" />
@@ -598,7 +665,6 @@ const ProductDetail = () => {
         <Footer />
       </div>
 
-      {/* Chat Modal */}
       {showChat && seller && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-2xl h-[600px] flex flex-col relative overflow-hidden">
