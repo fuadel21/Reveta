@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
-import { Navigation, MapPin, Locate, X, ChevronRight } from 'lucide-react';
+import { Navigation, MapPin, Locate, X, ChevronRight, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Category {
@@ -35,6 +35,14 @@ const DISTANCE_OPTIONS = [
   { value: 50, label: '50 km' },
   { value: 100, label: '100 km' },
   { value: 200, label: '200 km' },
+];
+
+const CONDITION_OPTIONS = [
+  { value: 'new', label: 'Nuevo' },
+  { value: 'like_new', label: 'Como nuevo' },
+  { value: 'good', label: 'Buen estado' },
+  { value: 'fair', label: 'Aceptable' },
+  { value: 'poor', label: 'Necesita reparación' },
 ];
 
 interface SearchFiltersProps {
@@ -98,7 +106,7 @@ export const SearchFilters = ({
       .select('*')
       .eq('category_id', categoryId)
       .order('name');
-    
+
     if (!error && data) {
       setSubcategories(data);
     } else {
@@ -110,104 +118,109 @@ export const SearchFilters = ({
   const handleCategoryChange = (value: string) => {
     const newValue = value === 'all' ? '' : value;
     setSelectedCategory(newValue);
-    if (setSelectedSubcategory) {
-      setSelectedSubcategory('');
+    setSelectedSubcategory?.('');
+  };
+
+  const handleGeoToggle = (checked: boolean) => {
+    setUseGeoFilter(checked);
+    if (checked) {
+      setLocation('');
+      if (!geolocation.hasLocation) {
+        geolocation.requestLocation();
+      }
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Geolocation Filter */}
       <div className="space-y-4 p-4 rounded-lg bg-primary/5 border border-primary/20">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Navigation className="h-4 w-4 text-primary" />
-            <Label className="font-medium">Buscar cerca de mí</Label>
+            <div>
+              <Label className="font-medium">Buscar cerca de mí</Label>
+              <p className="text-xs text-muted-foreground">Usa tu ubicación real para ordenar por distancia.</p>
+            </div>
           </div>
-          <Switch 
-            checked={useGeoFilter} 
-            onCheckedChange={(checked) => {
-              setUseGeoFilter(checked);
-              if (checked && !geolocation.hasLocation) {
-                geolocation.requestLocation();
-              }
-            }}
-          />
+          <Switch checked={useGeoFilter} onCheckedChange={handleGeoToggle} />
         </div>
-        
+
         {useGeoFilter && (
-          <>
+          <div className="space-y-3">
             {geolocation.loading && (
               <p className="text-sm text-muted-foreground animate-pulse">Obteniendo ubicación...</p>
             )}
+
             {geolocation.error && (
-              <p className="text-sm text-destructive">{geolocation.error}</p>
+              <div className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p>{geolocation.error}</p>
+                  <p className="text-xs opacity-80">Activa el permiso de ubicación del navegador y vuelve a intentarlo.</p>
+                </div>
+              </div>
             )}
+
             {geolocation.hasLocation && (
-              <div className="space-y-3">
+              <>
                 <p className="text-sm text-primary flex items-center gap-1">
                   <Locate className="h-3 w-3" />
                   Ubicación obtenida
                 </p>
                 <div className="space-y-2">
                   <Label className="text-sm">Distancia máxima: {distanceRadius} km</Label>
-                  <Select 
-                    value={distanceRadius.toString()} 
-                    onValueChange={(val) => setDistanceRadius(Number(val))}
-                  >
+                  <Select value={distanceRadius.toString()} onValueChange={(val) => setDistanceRadius(Number(val))}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {DISTANCE_OPTIONS.map(opt => (
-                        <SelectItem key={opt.value} value={opt.value.toString()}>
-                          {opt.label}
+                      {DISTANCE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value.toString()}>
+                          {option.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
+              </>
             )}
-          </>
+          </div>
         )}
       </div>
 
-      {/* Category */}
       <div className="space-y-2">
         <Label>Categoría</Label>
-        <Select value={selectedCategory || "all"} onValueChange={handleCategoryChange}>
+        <Select value={selectedCategory || 'all'} onValueChange={handleCategoryChange}>
           <SelectTrigger>
             <SelectValue placeholder="Todas las categorías" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas las categorías</SelectItem>
-            {categories.map((cat) => (
-              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+            {categories.map((category) => (
+              <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
-      {/* Subcategory */}
       {selectedCategory && subcategories.length > 0 && (
         <div className="space-y-2 animate-fade-in">
           <Label className="flex items-center gap-1 text-sm text-muted-foreground">
             <ChevronRight className="h-3 w-3" />
             Subcategoría
           </Label>
-          <Select 
-            value={selectedSubcategory || "all"} 
-            onValueChange={(val) => setSelectedSubcategory?.(val === 'all' ? '' : val)}
+          <Select
+            value={selectedSubcategory || 'all'}
+            onValueChange={(value) => setSelectedSubcategory?.(value === 'all' ? '' : value)}
             disabled={loadingSubcategories}
           >
             <SelectTrigger>
-              <SelectValue placeholder={loadingSubcategories ? "Cargando..." : "Todas las subcategorías"} />
+              <SelectValue placeholder={loadingSubcategories ? 'Cargando...' : 'Todas las subcategorías'} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas las subcategorías</SelectItem>
-              {subcategories.map((sub) => (
-                <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
+              {subcategories.map((subcategory) => (
+                <SelectItem key={subcategory.id} value={subcategory.id}>{subcategory.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -221,7 +234,7 @@ export const SearchFilters = ({
             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               value={location}
-              onChange={(e) => setLocation(e.target.value)}
+              onChange={(event) => setLocation(event.target.value)}
               placeholder="Ciudad o provincia"
               className="pl-10"
             />
@@ -242,26 +255,23 @@ export const SearchFilters = ({
 
       <div className="space-y-2">
         <Label>Estado</Label>
-        <Select value={condition || "all"} onValueChange={(val) => setCondition(val === "all" ? "" : val)}>
+        <Select value={condition || 'all'} onValueChange={(value) => setCondition(value === 'all' ? '' : value)}>
           <SelectTrigger>
             <SelectValue placeholder="Cualquier estado" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Cualquier estado</SelectItem>
-            <SelectItem value="Nuevo">Nuevo</SelectItem>
-            <SelectItem value="Como nuevo">Como nuevo</SelectItem>
-            <SelectItem value="Buen estado">Buen estado</SelectItem>
-            <SelectItem value="Usado">Usado</SelectItem>
+            {CONDITION_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={onApply} className="flex-1">
-          Aplicar filtros
-        </Button>
+        <Button onClick={onApply} className="flex-1">Aplicar filtros</Button>
         {hasActiveFilters && (
-          <Button variant="outline" onClick={onClear}>
+          <Button variant="outline" onClick={onClear} aria-label="Limpiar filtros">
             <X className="h-4 w-4" />
           </Button>
         )}
