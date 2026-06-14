@@ -18,9 +18,9 @@ const STRIPE_PAYMENTS_ENABLED = import.meta.env.VITE_ENABLE_STRIPE_PAYMENTS === 
 const stripePromise = STRIPE_PAYMENTS_ENABLED ? loadStripe(STRIPE_PUBLISHABLE_KEY) : Promise.resolve(null);
 
 const BOOST_PLANS = [
-  { id: '7d', days: 7, price: 2.99, label: '7 días', description: 'Ideal para probar' },
-  { id: '14d', days: 14, price: 4.99, label: '14 días', description: 'Más visibilidad' },
-  { id: '30d', days: 30, price: 7.99, label: '30 días', description: 'Máxima duración' },
+  { id: '7d', days: 7, price: 5, label: '7 días', description: 'Impulso básico' },
+  { id: '14d', days: 14, price: 7, label: '14 días', description: 'Más tiempo visible' },
+  { id: '30d', days: 30, price: 10, label: '30 días', description: 'Máxima duración' },
 ] as const;
 
 type BoostPlan = typeof BOOST_PLANS[number]['id'];
@@ -180,7 +180,7 @@ const BoostPaymentForm = ({ product }: { product: Product }) => {
               <CreditCard className="h-5 w-5" />
               Pago con tarjeta
             </CardTitle>
-            <CardDescription>Pago seguro con Stripe. Reveta no guarda los datos de tu tarjeta.</CardDescription>
+            <CardDescription>Pago con Stripe. Reveta no guarda los datos de tu tarjeta.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {!STRIPE_PAYMENTS_ENABLED ? (
