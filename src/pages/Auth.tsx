@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +14,22 @@ import { z } from 'zod';
 const emailSchema = z.string().email('Email inválido');
 const passwordSchema = z.string().min(6, 'La contraseña debe tener al menos 6 caracteres');
 
+const getPostLoginPath = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .eq('role', 'admin')
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error checking admin role after login:', error);
+    return '/';
+  }
+
+  return data?.role === 'admin' ? '/admin' : '/';
+};
+
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -20,6 +37,7 @@ const Auth = () => {
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [checkingRedirect, setCheckingRedirect] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   
   const { signIn, signUp, user } = useAuth();
@@ -27,10 +45,16 @@ const Auth = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (user) {
-      navigate('/');
-    }
-  }, [user, navigate]);
+    const redirectLoggedUser = async () => {
+      if (!user || checkingRedirect) return;
+
+      setCheckingRedirect(true);
+      const path = await getPostLoginPath(user.id);
+      navigate(path, { replace: true });
+    };
+
+    redirectLoggedUser();
+  }, [user, navigate, checkingRedirect]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -78,6 +102,12 @@ const Auth = () => {
             title: '¡Bienvenido!',
             description: 'Has iniciado sesión correctamente'
           });
+
+          const { data: { user: signedUser } } = await supabase.auth.getUser();
+          if (signedUser) {
+            const path = await getPostLoginPath(signedUser.id);
+            navigate(path, { replace: true });
+          }
         }
       } else {
         const { error } = await signUp(email, password, fullName);
