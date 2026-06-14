@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
@@ -8,24 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from '@/components/ui/table';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   Select,
   SelectContent,
@@ -34,19 +25,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { 
-  Users, 
-  Package, 
-  Flag, 
-  Star, 
+import {
+  Users,
+  Package,
+  Flag,
+  ShieldAlert,
   Grid3X3,
-  Shield,
   ShieldCheck,
-  Trash2,
   Eye,
   Search,
   Loader2,
-  ArrowLeft
+  ArrowLeft,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -55,7 +46,6 @@ interface Profile {
   id: string;
   username: string | null;
   full_name: string | null;
-  email?: string;
   verified: boolean | null;
   created_at: string;
   hasAdminRole?: boolean;
@@ -68,7 +58,7 @@ interface Product {
   status: string | null;
   created_at: string;
   user_id: string;
-  profiles?: { username: string | null; full_name: string | null };
+  profiles?: { username: string | null; full_name: string | null } | null;
 }
 
 interface Report {
@@ -77,23 +67,6 @@ interface Report {
   description: string | null;
   status: string;
   created_at: string;
-  reporter_id: string;
-  reported_user_id: string | null;
-  reported_product_id: string | null;
-  reporter?: { username: string | null };
-  reported_user?: { username: string | null };
-  reported_product?: { title: string };
-}
-
-interface Review {
-  id: string;
-  rating: number;
-  comment: string | null;
-  created_at: string;
-  reviewer_id: string;
-  seller_id: string;
-  reviewer?: { username: string | null };
-  seller?: { username: string | null };
 }
 
 interface Category {
@@ -103,27 +76,38 @@ interface Category {
   created_at: string;
 }
 
+interface Dispute {
+  id: string;
+  transaction_id: string;
+  product_id: string;
+  buyer_id: string;
+  seller_id: string;
+  opened_by: string;
+  reason: string;
+  details: string | null;
+  status: string;
+  resolution: string | null;
+  created_at: string;
+  closed_at: string | null;
+  product_title?: string;
+  buyer_name?: string | null;
+  seller_name?: string | null;
+  transaction_status?: string | null;
+  amount?: number | null;
+}
+
 const Admin = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdmin();
-  
+
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
-  const [reviews, setReviews] = useState<Review[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [deleteDialog, setDeleteDialog] = useState<{
-    open: boolean;
-    type: 'product' | 'review' | 'category' | null;
-    id: string | null;
-    title: string;
-  }>({ open: false, type: null, id: null, title: '' });
-
-  const [newCategory, setNewCategory] = useState({ name: '', icon: '' });
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -150,8 +134,8 @@ const Admin = () => {
       fetchProfiles(),
       fetchProducts(),
       fetchReports(),
-      fetchReviews(),
-      fetchCategories()
+      fetchCategories(),
+      fetchDisputes(),
     ]);
     setLoading(false);
   };
@@ -161,26 +145,23 @@ const Admin = () => {
       .from('profiles')
       .select('*')
       .order('created_at', { ascending: false });
-    
+
     if (error) {
       console.error('Error fetching profiles:', error);
       return;
     }
 
-    // Fetch admin roles for all users
     const { data: rolesData } = await supabase
       .from('user_roles')
       .select('user_id, role')
       .eq('role', 'admin');
-    
-    const adminUserIds = new Set((rolesData || []).map(r => r.user_id));
-    
-    const profilesWithRoles = (data || []).map(p => ({
-      ...p,
-      hasAdminRole: adminUserIds.has(p.id)
-    }));
-    
-    setProfiles(profilesWithRoles);
+
+    const adminUserIds = new Set((rolesData || []).map((role: any) => role.user_id));
+
+    setProfiles((data || []).map((profile: any) => ({
+      ...profile,
+      hasAdminRole: adminUserIds.has(profile.id),
+    })));
   };
 
   const fetchProducts = async () => {
@@ -188,27 +169,27 @@ const Admin = () => {
       .from('products')
       .select('*')
       .order('created_at', { ascending: false });
-    
+
     if (error) {
       console.error('Error fetching products:', error);
       return;
     }
-    
-    // Fetch seller info separately
+
     const productsWithProfiles = await Promise.all(
-      (data || []).map(async (product) => {
+      (data || []).map(async (product: any) => {
         const { data: profileData } = await supabase
           .from('profiles')
           .select('username, full_name')
           .eq('id', product.user_id)
-          .single();
+          .maybeSingle();
+
         return {
           ...product,
-          profiles: profileData || undefined
+          profiles: profileData || null,
         };
-      })
+      }),
     );
-    
+
     setProducts(productsWithProfiles);
   };
 
@@ -217,25 +198,13 @@ const Admin = () => {
       .from('reports')
       .select('*')
       .order('created_at', { ascending: false });
-    
+
     if (error) {
       console.error('Error fetching reports:', error);
       return;
     }
-    setReports(data || []);
-  };
 
-  const fetchReviews = async () => {
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (error) {
-      console.error('Error fetching reviews:', error);
-      return;
-    }
-    setReviews(data || []);
+    setReports(data || []);
   };
 
   const fetchCategories = async () => {
@@ -243,18 +212,53 @@ const Admin = () => {
       .from('categories')
       .select('*')
       .order('name', { ascending: true });
-    
+
     if (error) {
       console.error('Error fetching categories:', error);
       return;
     }
+
     setCategories(data || []);
+  };
+
+  const fetchDisputes = async () => {
+    const { data, error } = await (supabase as any)
+      .from('disputes')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching disputes:', error);
+      return;
+    }
+
+    const enrichedDisputes = await Promise.all(
+      (data || []).map(async (dispute: any) => {
+        const [{ data: product }, { data: buyer }, { data: seller }, { data: transaction }] = await Promise.all([
+          supabase.from('products').select('title').eq('id', dispute.product_id).maybeSingle(),
+          supabase.from('profiles').select('full_name, username').eq('id', dispute.buyer_id).maybeSingle(),
+          supabase.from('profiles').select('full_name, username').eq('id', dispute.seller_id).maybeSingle(),
+          supabase.from('transactions').select('status, amount').eq('id', dispute.transaction_id).maybeSingle(),
+        ]);
+
+        return {
+          ...dispute,
+          product_title: product?.title || 'Producto eliminado',
+          buyer_name: buyer?.full_name || buyer?.username || 'Comprador',
+          seller_name: seller?.full_name || seller?.username || 'Vendedor',
+          transaction_status: transaction?.status || null,
+          amount: transaction?.amount || null,
+        } as Dispute;
+      }),
+    );
+
+    setDisputes(enrichedDisputes);
   };
 
   const handleVerifyUser = async (userId: string, verified: boolean) => {
     const { error } = await supabase
       .from('profiles')
-      .update({ verified, verified_at: verified ? new Date().toISOString() : null })
+      .update({ verified, verified_at: verified ? new Date().toISOString() : null } as any)
       .eq('id', userId);
 
     if (error) {
@@ -268,17 +272,12 @@ const Admin = () => {
 
   const handleToggleAdmin = async (userId: string, makeAdmin: boolean) => {
     if (makeAdmin) {
-      // Add admin role
-      const { error } = await supabase
-        .from('user_roles')
-        .insert({ user_id: userId, role: 'admin' });
-
+      const { error } = await supabase.from('user_roles').insert({ user_id: userId, role: 'admin' });
       if (error) {
         toast.error('Error al actualizar permisos');
         return;
       }
     } else {
-      // Remove admin role
       const { error } = await supabase
         .from('user_roles')
         .delete()
@@ -296,10 +295,7 @@ const Admin = () => {
   };
 
   const handleUpdateProductStatus = async (productId: string, status: string) => {
-    const { error } = await supabase
-      .from('products')
-      .update({ status })
-      .eq('id', productId);
+    const { error } = await supabase.from('products').update({ status }).eq('id', productId);
 
     if (error) {
       toast.error('Error al actualizar estado');
@@ -310,29 +306,8 @@ const Admin = () => {
     fetchProducts();
   };
 
-  const handleDeleteProduct = async () => {
-    if (!deleteDialog.id) return;
-
-    const { error } = await supabase
-      .from('products')
-      .delete()
-      .eq('id', deleteDialog.id);
-
-    if (error) {
-      toast.error('Error al eliminar producto');
-      return;
-    }
-
-    toast.success('Producto eliminado');
-    setDeleteDialog({ open: false, type: null, id: null, title: '' });
-    fetchProducts();
-  };
-
   const handleUpdateReportStatus = async (reportId: string, status: string) => {
-    const { error } = await supabase
-      .from('reports')
-      .update({ status })
-      .eq('id', reportId);
+    const { error } = await supabase.from('reports').update({ status }).eq('id', reportId);
 
     if (error) {
       toast.error('Error al actualizar reporte');
@@ -343,74 +318,50 @@ const Admin = () => {
     fetchReports();
   };
 
-  const handleDeleteReview = async () => {
-    if (!deleteDialog.id) return;
+  const handleResolveDispute = async (dispute: Dispute, nextStatus: string) => {
+    const now = new Date().toISOString();
+    const resolutionMap: Record<string, string | null> = {
+      open: null,
+      under_review: 'En revisión por Reveta',
+      resolved_buyer: 'Resuelta a favor del comprador',
+      resolved_seller: 'Resuelta a favor del vendedor',
+      closed: 'Cerrada por Reveta',
+    };
 
-    const { error } = await supabase
-      .from('reviews')
-      .delete()
-      .eq('id', deleteDialog.id);
+    const { error: disputeError } = await (supabase as any)
+      .from('disputes')
+      .update({
+        status: nextStatus,
+        resolution: resolutionMap[nextStatus] || null,
+        updated_at: now,
+        closed_at: ['resolved_buyer', 'resolved_seller', 'closed'].includes(nextStatus) ? now : null,
+      })
+      .eq('id', dispute.id);
 
-    if (error) {
-      toast.error('Error al eliminar reseña');
+    if (disputeError) {
+      console.error('Error updating dispute:', disputeError);
+      toast.error('No se pudo actualizar la incidencia');
       return;
     }
 
-    toast.success('Reseña eliminada');
-    setDeleteDialog({ open: false, type: null, id: null, title: '' });
-    fetchReviews();
-  };
-
-  const handleAddCategory = async () => {
-    if (!newCategory.name.trim()) {
-      toast.error('El nombre es requerido');
-      return;
+    if (nextStatus === 'under_review') {
+      await supabase.from('transactions').update({ status: 'under_review' } as any).eq('id', dispute.transaction_id);
     }
 
-    const { error } = await supabase
-      .from('categories')
-      .insert({ name: newCategory.name, icon: newCategory.icon || null });
-
-    if (error) {
-      toast.error('Error al crear categoría');
-      return;
+    if (nextStatus === 'resolved_seller') {
+      await supabase.from('transactions').update({ status: 'completed', completed_at: now } as any).eq('id', dispute.transaction_id);
     }
 
-    toast.success('Categoría creada');
-    setNewCategory({ name: '', icon: '' });
-    fetchCategories();
-  };
-
-  const handleDeleteCategory = async () => {
-    if (!deleteDialog.id) return;
-
-    const { error } = await supabase
-      .from('categories')
-      .delete()
-      .eq('id', deleteDialog.id);
-
-    if (error) {
-      toast.error('Error al eliminar categoría');
-      return;
+    if (nextStatus === 'resolved_buyer') {
+      await supabase.from('transactions').update({ status: 'disputed', completed_at: now } as any).eq('id', dispute.transaction_id);
     }
 
-    toast.success('Categoría eliminada');
-    setDeleteDialog({ open: false, type: null, id: null, title: '' });
-    fetchCategories();
-  };
-
-  const handleDelete = () => {
-    switch (deleteDialog.type) {
-      case 'product':
-        handleDeleteProduct();
-        break;
-      case 'review':
-        handleDeleteReview();
-        break;
-      case 'category':
-        handleDeleteCategory();
-        break;
+    if (nextStatus === 'closed') {
+      await supabase.from('transactions').update({ status: 'disputed', completed_at: now } as any).eq('id', dispute.transaction_id);
     }
+
+    toast.success('Incidencia actualizada');
+    fetchDisputes();
   };
 
   const getStatusBadge = (status: string | null) => {
@@ -443,6 +394,23 @@ const Admin = () => {
     }
   };
 
+  const getDisputeStatusBadge = (status: string) => {
+    switch (status) {
+      case 'open':
+        return <Badge className="bg-yellow-500">Abierta</Badge>;
+      case 'under_review':
+        return <Badge className="bg-blue-500">En revisión</Badge>;
+      case 'resolved_buyer':
+        return <Badge className="bg-green-500">A favor comprador</Badge>;
+      case 'resolved_seller':
+        return <Badge className="bg-green-500">A favor vendedor</Badge>;
+      case 'closed':
+        return <Badge variant="secondary">Cerrada</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
   if (authLoading || adminLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -451,121 +419,160 @@ const Admin = () => {
     );
   }
 
-  if (!isAdmin) {
-    return null;
-  }
+  if (!isAdmin) return null;
 
-  const filteredProfiles = profiles.filter(p => 
-    p.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredProfiles = profiles.filter((profile) =>
+    profile.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    profile.full_name?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  const filteredProducts = products.filter(p =>
-    p.title.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredProducts = products.filter((product) => product.title.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  const filteredDisputes = disputes.filter((dispute) =>
+    dispute.reason.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    dispute.product_title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    dispute.buyer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    dispute.seller_name?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center gap-4 mb-8">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Panel de Administración</h1>
-            <p className="text-muted-foreground">Gestiona usuarios, productos y contenido</p>
+    <>
+      <Helmet>
+        <title>Centro de Control Reveta</title>
+      </Helmet>
+
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center gap-4 mb-8">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold">Centro de Control Reveta</h1>
+              <p className="text-muted-foreground">Gestiona usuarios, productos, reportes e incidencias</p>
+            </div>
           </div>
-        </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-2xl">{profiles.length}</CardTitle>
-              <CardDescription className="flex items-center gap-2">
-                <Users className="h-4 w-4" /> Usuarios
-              </CardDescription>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-2xl">{products.length}</CardTitle>
-              <CardDescription className="flex items-center gap-2">
-                <Package className="h-4 w-4" /> Productos
-              </CardDescription>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-2xl">{reports.filter(r => r.status === 'pending').length}</CardTitle>
-              <CardDescription className="flex items-center gap-2">
-                <Flag className="h-4 w-4" /> Reportes pendientes
-              </CardDescription>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-2xl">{reviews.length}</CardTitle>
-              <CardDescription className="flex items-center gap-2">
-                <Star className="h-4 w-4" /> Reseñas
-              </CardDescription>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-2xl">{categories.length}</CardTitle>
-              <CardDescription className="flex items-center gap-2">
-                <Grid3X3 className="h-4 w-4" /> Categorías
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </div>
-
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-          <Input
-            placeholder="Buscar..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-
-        <Tabs defaultValue="users" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="users" className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              <span className="hidden sm:inline">Usuarios</span>
-            </TabsTrigger>
-            <TabsTrigger value="products" className="flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              <span className="hidden sm:inline">Productos</span>
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="flex items-center gap-2">
-              <Flag className="h-4 w-4" />
-              <span className="hidden sm:inline">Reportes</span>
-            </TabsTrigger>
-            <TabsTrigger value="reviews" className="flex items-center gap-2">
-              <Star className="h-4 w-4" />
-              <span className="hidden sm:inline">Reseñas</span>
-            </TabsTrigger>
-            <TabsTrigger value="categories" className="flex items-center gap-2">
-              <Grid3X3 className="h-4 w-4" />
-              <span className="hidden sm:inline">Categorías</span>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="users">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
             <Card>
-              <CardHeader>
-                <CardTitle>Gestión de Usuarios</CardTitle>
-                <CardDescription>Administra verificaciones y permisos</CardDescription>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">{profiles.length}</CardTitle>
+                <CardDescription className="flex items-center gap-2"><Users className="h-4 w-4" /> Usuarios</CardDescription>
               </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : (
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">{products.length}</CardTitle>
+                <CardDescription className="flex items-center gap-2"><Package className="h-4 w-4" /> Productos</CardDescription>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">{reports.filter((report) => report.status === 'pending').length}</CardTitle>
+                <CardDescription className="flex items-center gap-2"><Flag className="h-4 w-4" /> Reportes</CardDescription>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">{disputes.filter((dispute) => ['open', 'under_review'].includes(dispute.status)).length}</CardTitle>
+                <CardDescription className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Incidencias</CardDescription>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">{categories.length}</CardTitle>
+                <CardDescription className="flex items-center gap-2"><Grid3X3 className="h-4 w-4" /> Categorías</CardDescription>
+              </CardHeader>
+            </Card>
+          </div>
+
+          <div className="relative mb-6">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <Input placeholder="Buscar..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="pl-10" />
+          </div>
+
+          <Tabs defaultValue="disputes" className="space-y-4">
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="disputes" className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" /><span className="hidden sm:inline">Protección</span></TabsTrigger>
+              <TabsTrigger value="users" className="flex items-center gap-2"><Users className="h-4 w-4" /><span className="hidden sm:inline">Usuarios</span></TabsTrigger>
+              <TabsTrigger value="products" className="flex items-center gap-2"><Package className="h-4 w-4" /><span className="hidden sm:inline">Productos</span></TabsTrigger>
+              <TabsTrigger value="reports" className="flex items-center gap-2"><Flag className="h-4 w-4" /><span className="hidden sm:inline">Reportes</span></TabsTrigger>
+              <TabsTrigger value="categories" className="flex items-center gap-2"><Grid3X3 className="h-4 w-4" /><span className="hidden sm:inline">Categorías</span></TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="disputes">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Protección Reveta / Incidencias</CardTitle>
+                  <CardDescription>Revisa incidencias entre comprador y vendedor</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                  ) : filteredDisputes.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">No hay incidencias.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Producto</TableHead>
+                            <TableHead>Comprador</TableHead>
+                            <TableHead>Vendedor</TableHead>
+                            <TableHead>Motivo</TableHead>
+                            <TableHead>Estado</TableHead>
+                            <TableHead>Fecha</TableHead>
+                            <TableHead>Acciones</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredDisputes.map((dispute) => (
+                            <TableRow key={dispute.id}>
+                              <TableCell>
+                                <div className="font-medium max-w-[180px] truncate">{dispute.product_title}</div>
+                                {dispute.amount !== null && dispute.amount !== undefined && <div className="text-xs text-muted-foreground">{dispute.amount.toLocaleString('es-ES')} €</div>}
+                              </TableCell>
+                              <TableCell>{dispute.buyer_name}</TableCell>
+                              <TableCell>{dispute.seller_name}</TableCell>
+                              <TableCell>
+                                <div className="font-medium max-w-[220px] truncate">{dispute.reason}</div>
+                                {dispute.details && <div className="text-xs text-muted-foreground max-w-[260px] truncate">{dispute.details}</div>}
+                              </TableCell>
+                              <TableCell>{getDisputeStatusBadge(dispute.status)}</TableCell>
+                              <TableCell>{format(new Date(dispute.created_at), 'dd/MM/yyyy', { locale: es })}</TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-2 min-w-[260px]">
+                                  <Button size="sm" variant="outline" onClick={() => handleResolveDispute(dispute, 'under_review')}>
+                                    En revisión
+                                  </Button>
+                                  <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleResolveDispute(dispute, 'resolved_buyer')}>
+                                    <CheckCircle2 className="h-4 w-4 mr-1" /> Comprador
+                                  </Button>
+                                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => handleResolveDispute(dispute, 'resolved_seller')}>
+                                    <CheckCircle2 className="h-4 w-4 mr-1" /> Vendedor
+                                  </Button>
+                                  <Button size="sm" variant="secondary" onClick={() => handleResolveDispute(dispute, 'closed')}>
+                                    <XCircle className="h-4 w-4 mr-1" /> Cerrar
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="users">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Gestión de Usuarios</CardTitle>
+                  <CardDescription>Administra verificaciones y permisos</CardDescription>
+                </CardHeader>
+                <CardContent>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -580,42 +587,21 @@ const Admin = () => {
                       <TableBody>
                         {filteredProfiles.map((profile) => (
                           <TableRow key={profile.id}>
-                            <TableCell className="font-medium">
-                              {profile.username || 'Sin username'}
-                            </TableCell>
+                            <TableCell className="font-medium">{profile.username || 'Sin username'}</TableCell>
                             <TableCell>{profile.full_name || '-'}</TableCell>
-                            <TableCell>
-                              {format(new Date(profile.created_at), 'dd/MM/yyyy', { locale: es })}
-                            </TableCell>
+                            <TableCell>{format(new Date(profile.created_at), 'dd/MM/yyyy', { locale: es })}</TableCell>
                             <TableCell>
                               <div className="flex gap-1">
-                                {profile.verified && (
-                                  <Badge className="bg-blue-500">Verificado</Badge>
-                                )}
-                                {profile.hasAdminRole && (
-                                  <Badge className="bg-purple-500">Admin</Badge>
-                                )}
+                                {profile.verified && <Badge className="bg-blue-500">Verificado</Badge>}
+                                {profile.hasAdminRole && <Badge className="bg-purple-500">Admin</Badge>}
                               </div>
                             </TableCell>
                             <TableCell>
                               <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant={profile.verified ? "outline" : "default"}
-                                  onClick={() => handleVerifyUser(profile.id, !profile.verified)}
-                                >
-                                  {profile.verified ? (
-                                    <Shield className="h-4 w-4" />
-                                  ) : (
-                                    <ShieldCheck className="h-4 w-4" />
-                                  )}
+                                <Button size="sm" variant={profile.verified ? 'outline' : 'default'} onClick={() => handleVerifyUser(profile.id, !profile.verified)}>
+                                  <ShieldCheck className="h-4 w-4" />
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  variant={profile.hasAdminRole ? "destructive" : "secondary"}
-                                  onClick={() => handleToggleAdmin(profile.id, !profile.hasAdminRole)}
-                                  disabled={profile.id === user?.id}
-                                >
+                                <Button size="sm" variant={profile.hasAdminRole ? 'destructive' : 'secondary'} onClick={() => handleToggleAdmin(profile.id, !profile.hasAdminRole)} disabled={profile.id === user?.id}>
                                   {profile.hasAdminRole ? 'Quitar Admin' : 'Hacer Admin'}
                                 </Button>
                               </div>
@@ -625,23 +611,17 @@ const Admin = () => {
                       </TableBody>
                     </Table>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="products">
-            <Card>
-              <CardHeader>
-                <CardTitle>Gestión de Productos</CardTitle>
-                <CardDescription>Modera y administra productos</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : (
+            <TabsContent value="products">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Gestión de Productos</CardTitle>
+                  <CardDescription>Modera y administra productos</CardDescription>
+                </CardHeader>
+                <CardContent>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -657,33 +637,16 @@ const Admin = () => {
                       <TableBody>
                         {filteredProducts.map((product) => (
                           <TableRow key={product.id}>
-                            <TableCell className="font-medium max-w-[200px] truncate">
-                              {product.title}
-                            </TableCell>
-                            <TableCell>{product.price.toFixed(2)}€</TableCell>
-                            <TableCell>
-                              {product.profiles?.username || product.profiles?.full_name || 'Desconocido'}
-                            </TableCell>
+                            <TableCell className="font-medium max-w-[220px] truncate">{product.title}</TableCell>
+                            <TableCell>{product.price.toFixed(2)} €</TableCell>
+                            <TableCell>{product.profiles?.username || product.profiles?.full_name || 'Desconocido'}</TableCell>
                             <TableCell>{getStatusBadge(product.status)}</TableCell>
-                            <TableCell>
-                              {format(new Date(product.created_at), 'dd/MM/yyyy', { locale: es })}
-                            </TableCell>
+                            <TableCell>{format(new Date(product.created_at), 'dd/MM/yyyy', { locale: es })}</TableCell>
                             <TableCell>
                               <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => navigate(`/product/${product.id}`)}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                                <Select
-                                  value={product.status || 'active'}
-                                  onValueChange={(value) => handleUpdateProductStatus(product.id, value)}
-                                >
-                                  <SelectTrigger className="w-[120px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
+                                <Button size="sm" variant="outline" onClick={() => navigate(`/product/${product.id}`)}><Eye className="h-4 w-4" /></Button>
+                                <Select value={product.status || 'active'} onValueChange={(value) => handleUpdateProductStatus(product.id, value)}>
+                                  <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="active">Activo</SelectItem>
                                     <SelectItem value="sold">Vendido</SelectItem>
@@ -691,18 +654,6 @@ const Admin = () => {
                                     <SelectItem value="inactive">Inactivo</SelectItem>
                                   </SelectContent>
                                 </Select>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => setDeleteDialog({
-                                    open: true,
-                                    type: 'product',
-                                    id: product.id,
-                                    title: product.title
-                                  })}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -710,23 +661,17 @@ const Admin = () => {
                       </TableBody>
                     </Table>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="reports">
-            <Card>
-              <CardHeader>
-                <CardTitle>Gestión de Reportes</CardTitle>
-                <CardDescription>Revisa y resuelve reportes de usuarios</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : (
+            <TabsContent value="reports">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Gestión de Reportes</CardTitle>
+                  <CardDescription>Revisa y resuelve reportes de usuarios</CardDescription>
+                </CardHeader>
+                <CardContent>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -742,21 +687,12 @@ const Admin = () => {
                         {reports.map((report) => (
                           <TableRow key={report.id}>
                             <TableCell className="font-medium">{report.reason}</TableCell>
-                            <TableCell className="max-w-[300px] truncate">
-                              {report.description || '-'}
-                            </TableCell>
+                            <TableCell className="max-w-[300px] truncate">{report.description || '-'}</TableCell>
                             <TableCell>{getReportStatusBadge(report.status)}</TableCell>
+                            <TableCell>{format(new Date(report.created_at), 'dd/MM/yyyy', { locale: es })}</TableCell>
                             <TableCell>
-                              {format(new Date(report.created_at), 'dd/MM/yyyy', { locale: es })}
-                            </TableCell>
-                            <TableCell>
-                              <Select
-                                value={report.status}
-                                onValueChange={(value) => handleUpdateReportStatus(report.id, value)}
-                              >
-                                <SelectTrigger className="w-[140px]">
-                                  <SelectValue />
-                                </SelectTrigger>
+                              <Select value={report.status} onValueChange={(value) => handleUpdateReportStatus(report.id, value)}>
+                                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="pending">Pendiente</SelectItem>
                                   <SelectItem value="reviewing">En revisión</SelectItem>
@@ -770,107 +706,17 @@ const Admin = () => {
                       </TableBody>
                     </Table>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="reviews">
-            <Card>
-              <CardHeader>
-                <CardTitle>Gestión de Reseñas</CardTitle>
-                <CardDescription>Modera las reseñas de usuarios</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Rating</TableHead>
-                          <TableHead>Comentario</TableHead>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead>Acciones</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {reviews.map((review) => (
-                          <TableRow key={review.id}>
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                {Array.from({ length: 5 }).map((_, i) => (
-                                  <Star
-                                    key={i}
-                                    className={`h-4 w-4 ${
-                                      i < review.rating 
-                                        ? 'text-yellow-400 fill-yellow-400' 
-                                        : 'text-gray-300'
-                                    }`}
-                                  />
-                                ))}
-                              </div>
-                            </TableCell>
-                            <TableCell className="max-w-[400px] truncate">
-                              {review.comment || '-'}
-                            </TableCell>
-                            <TableCell>
-                              {format(new Date(review.created_at), 'dd/MM/yyyy', { locale: es })}
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => setDeleteDialog({
-                                  open: true,
-                                  type: 'review',
-                                  id: review.id,
-                                  title: 'esta reseña'
-                                })}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="categories">
-            <Card>
-              <CardHeader>
-                <CardTitle>Gestión de Categorías</CardTitle>
-                <CardDescription>Administra las categorías de productos</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex gap-4">
-                  <Input
-                    placeholder="Nombre de categoría"
-                    value={newCategory.name}
-                    onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Icono (emoji o código)"
-                    value={newCategory.icon}
-                    onChange={(e) => setNewCategory({ ...newCategory, icon: e.target.value })}
-                    className="w-40"
-                  />
-                  <Button onClick={handleAddCategory}>Añadir</Button>
-                </div>
-
-                {loading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  </div>
-                ) : (
+            <TabsContent value="categories">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Gestión de Categorías</CardTitle>
+                  <CardDescription>Administra las categorías de productos</CardDescription>
+                </CardHeader>
+                <CardContent>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -878,62 +724,26 @@ const Admin = () => {
                           <TableHead>Icono</TableHead>
                           <TableHead>Nombre</TableHead>
                           <TableHead>Fecha creación</TableHead>
-                          <TableHead>Acciones</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {categories.map((category) => (
                           <TableRow key={category.id}>
-                            <TableCell className="text-2xl">
-                              {category.icon || '📦'}
-                            </TableCell>
+                            <TableCell className="text-2xl">{category.icon || '📦'}</TableCell>
                             <TableCell className="font-medium">{category.name}</TableCell>
-                            <TableCell>
-                              {format(new Date(category.created_at), 'dd/MM/yyyy', { locale: es })}
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => setDeleteDialog({
-                                  open: true,
-                                  type: 'category',
-                                  id: category.id,
-                                  title: category.name
-                                })}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
+                            <TableCell>{format(new Date(category.created_at), 'dd/MM/yyyy', { locale: es })}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ ...deleteDialog, open })}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Esta acción no se puede deshacer. Se eliminará permanentemente "{deleteDialog.title}".
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-                Eliminar
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
