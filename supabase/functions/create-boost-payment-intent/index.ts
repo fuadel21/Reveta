@@ -8,9 +8,9 @@ const corsHeaders = {
 };
 
 const BOOST_PLANS: Record<string, { days: number; amount: number; label: string }> = {
-  "7d": { days: 7, amount: 299, label: "Destacar producto 7 días" },
-  "14d": { days: 14, amount: 499, label: "Destacar producto 14 días" },
-  "30d": { days: 30, amount: 799, label: "Destacar producto 30 días" },
+  "1d": { days: 1, amount: 99, label: "Destacar producto 24 horas" },
+  "3d": { days: 3, amount: 199, label: "Destacar producto 3 días" },
+  "7d": { days: 7, amount: 349, label: "Destacar producto 7 días" },
 };
 
 serve(async (req) => {
