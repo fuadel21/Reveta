@@ -64,6 +64,40 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
     await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
   };
 
+  const reserveProductForAcceptedOffer = async (offer: Offer) => {
+    const { data: existingTransaction, error: existingError } = await supabase
+      .from('transactions')
+      .select('id')
+      .eq('product_id', offer.product_id)
+      .in('status', ['pending', 'pending_payment', 'paid', 'shipped', 'completed'])
+      .limit(1)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (existingTransaction?.id) throw new Error('Este producto ya tiene una compra o reserva activa.');
+
+    const { error: transactionError } = await supabase.from('transactions').insert({
+      product_id: offer.product_id,
+      buyer_id: offer.buyer_id,
+      seller_id: offer.seller_id,
+      amount: offer.amount,
+      status: 'pending',
+    });
+
+    if (transactionError) throw transactionError;
+
+    const { data: updatedProduct, error: productError } = await supabase
+      .from('products')
+      .update({ status: 'reserved' })
+      .eq('id', offer.product_id)
+      .eq('status', 'active')
+      .select('id')
+      .maybeSingle();
+
+    if (productError) throw productError;
+    if (!updatedProduct) throw new Error('No se pudo reservar el producto porque ya no está activo.');
+  };
+
   const respondToOffer = async (offer: Offer, status: 'accepted' | 'rejected') => {
     if (currentUserId !== sellerId) {
       toast({ title: 'Solo el vendedor puede responder a la oferta.' });
@@ -72,29 +106,31 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
 
     setUpdatingId(offer.id);
 
-    const { error } = await (supabase as any)
-      .from('offers')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', offer.id)
-      .eq('seller_id', currentUserId);
+    try {
+      if (status === 'accepted') await reserveProductForAcceptedOffer(offer);
 
-    if (error) {
+      const { error } = await (supabase as any)
+        .from('offers')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', offer.id)
+        .eq('seller_id', currentUserId);
+
+      if (error) throw error;
+
+      const amount = Number(offer.amount).toFixed(2);
+      const content = status === 'accepted'
+        ? `✅ Oferta aceptada: ${amount} €${productTitle ? ` por “${productTitle}”` : ''}. El producto queda reservado para el comprador.`
+        : `❌ Oferta rechazada: ${amount} €${productTitle ? ` por “${productTitle}”` : ''}`;
+
+      await sendChatMessage(content);
+      await fetchOffers();
+      toast({ title: status === 'accepted' ? 'Oferta aceptada y producto reservado' : 'Oferta rechazada' });
+    } catch (error: any) {
       console.error('Error updating offer:', error);
-      toast({ title: 'No se pudo actualizar la oferta', variant: 'destructive' });
+      toast({ title: 'No se pudo actualizar la oferta', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+    } finally {
       setUpdatingId(null);
-      return;
     }
-
-    const amount = Number(offer.amount).toFixed(2);
-    const content = status === 'accepted'
-      ? `✅ Oferta aceptada: ${amount} €${productTitle ? ` por “${productTitle}”` : ''}`
-      : `❌ Oferta rechazada: ${amount} €${productTitle ? ` por “${productTitle}”` : ''}`;
-
-    await sendChatMessage(content);
-    await fetchOffers();
-
-    toast({ title: status === 'accepted' ? 'Oferta aceptada' : 'Oferta rechazada' });
-    setUpdatingId(null);
   };
 
   if (offers.length === 0) return null;
