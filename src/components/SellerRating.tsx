@@ -19,41 +19,33 @@ const SellerRating = ({ sellerId, showCount = true, size = 'md' }: SellerRatingP
 
   useEffect(() => {
     fetchReviewStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sellerId]);
 
   const fetchReviewStats = async () => {
-    const { data, error } = await supabase
+    if (!sellerId) return;
+
+    const { data, error } = await (supabase as any)
       .from('reviews')
       .select('rating')
-      .eq('seller_id', sellerId);
+      .eq('reviewed_id', sellerId);
 
-    if (!error && data) {
-      const total = data.length;
-      const avg = total > 0 
-        ? data.reduce((sum, r) => sum + r.rating, 0) / total 
-        : 0;
-      setStats({ averageRating: avg, totalReviews: total });
+    if (error) {
+      console.error('Error fetching seller rating:', error);
+      setStats({ averageRating: 0, totalReviews: 0 });
+      return;
     }
+
+    const total = data?.length || 0;
+    const avg = total > 0 ? data.reduce((sum: number, review: { rating: number }) => sum + review.rating, 0) / total : 0;
+    setStats({ averageRating: avg, totalReviews: total });
   };
 
-  const iconSize = {
-    sm: 'h-3 w-3',
-    md: 'h-4 w-4',
-    lg: 'h-5 w-5'
-  };
-
-  const textSize = {
-    sm: 'text-xs',
-    md: 'text-sm',
-    lg: 'text-base'
-  };
+  const iconSize = { sm: 'h-3 w-3', md: 'h-4 w-4', lg: 'h-5 w-5' };
+  const textSize = { sm: 'text-xs', md: 'text-sm', lg: 'text-base' };
 
   if (stats.totalReviews === 0) {
-    return (
-      <span className={cn("text-muted-foreground", textSize[size])}>
-        Sin valoraciones
-      </span>
-    );
+    return <span className={cn('text-muted-foreground', textSize[size])}>Sin valoraciones</span>;
   }
 
   return (
@@ -64,21 +56,13 @@ const SellerRating = ({ sellerId, showCount = true, size = 'md' }: SellerRatingP
             key={star}
             className={cn(
               iconSize[size],
-              star <= Math.round(stats.averageRating)
-                ? 'fill-yellow-400 text-yellow-400'
-                : 'text-muted-foreground'
+              star <= Math.round(stats.averageRating) ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground',
             )}
           />
         ))}
       </div>
-      <span className={cn("font-medium", textSize[size])}>
-        {stats.averageRating.toFixed(1)}
-      </span>
-      {showCount && (
-        <span className={cn("text-muted-foreground", textSize[size])}>
-          ({stats.totalReviews})
-        </span>
-      )}
+      <span className={cn('font-medium', textSize[size])}>{stats.averageRating.toFixed(1)}</span>
+      {showCount && <span className={cn('text-muted-foreground', textSize[size])}>({stats.totalReviews})</span>}
     </div>
   );
 };
