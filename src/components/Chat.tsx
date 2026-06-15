@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Send, X, Image as ImageIcon, ArrowLeft, MessageCircle, HandCoins } from 'lucide-react';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
+import { PendingOffers } from '@/components/chat/PendingOffers';
 import { useTypingIndicator } from '@/hooks/useTypingIndicator';
 import { useToast } from '@/hooks/use-toast';
 
@@ -238,6 +239,7 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
       ) : (
         <>
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+            {user && <PendingOffers conversationId={selectedConversation.id} currentUserId={user.id} sellerId={selectedConversation.seller_id} productTitle={selectedConversation.product?.title} />}
             {messages.length === 0 ? <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center p-8"><MessageCircle className="h-12 w-12 mb-4 opacity-20" /><p className="font-medium">Inicia la conversación</p><p className="text-sm">Pregunta al vendedor sobre el producto</p></div> : messages.map((msg) => <MessageBubble key={msg.id} content={msg.content} isOwn={msg.sender_id === user?.id} isRead={!!msg.read} timestamp={new Date(msg.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} />)}
             {typingUsers.length > 0 && <TypingIndicator users={typingUsers} />}
             <div ref={messagesEndRef} />
