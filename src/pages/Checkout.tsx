@@ -126,7 +126,6 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
   const recordTransaction = async (status: 'completed' | 'pending') => {
     if (!user) throw new Error('Debes iniciar sesión para comprar.');
     await ensureProductStillAvailable();
-
     const existingTransaction = await findExistingOpenTransaction();
     if (existingTransaction?.id) return { created: false, transactionId: existingTransaction.id };
 
@@ -209,7 +208,8 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     if (!card) throw new Error('No se pudo leer la tarjeta. Recarga la página e inténtalo de nuevo.');
     await ensureProductStillAvailable();
 
-    const { data, error: functionError } = await supabase.functions.invoke('create-payment-intent', { body: { productId: product.id, amount: Math.round(totalAmount * 100), currency: 'eur' } });
+    const shippingAmountCents = Math.round((selectedShipping?.price || 0) * 100);
+    const { data, error: functionError } = await supabase.functions.invoke('create-payment-intent', { body: { productId: product.id, shippingAmount: shippingAmountCents, currency: 'eur' } });
     if (functionError) {
       const message = await getFunctionErrorMessage(functionError);
       console.error('Payment function error:', functionError);
