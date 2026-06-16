@@ -231,10 +231,24 @@ const SearchPage = () => {
   const hasActiveFilters = searchQuery || selectedCategory || selectedSubcategory || location || priceRange[0] > 0 || priceRange[1] < 10000 || condition || useGeoFilter;
   const currentFilters = { query: searchQuery || undefined, category_id: selectedCategory || undefined, subcategory_id: selectedSubcategory || undefined, min_price: priceRange[0] > 0 ? priceRange[0] : undefined, max_price: priceRange[1] < 10000 ? priceRange[1] : undefined, condition: condition || undefined, location: location || undefined, radius_km: useGeoFilter ? distanceRadius : undefined };
   const mappableProducts = products.filter((p) => p.latitude && p.longitude);
+  const selectedCategoryName = categories.find((cat) => cat.id === selectedCategory)?.name;
+  const selectedSubcategoryName = subcategories.find((subcat) => subcat.id === selectedSubcategory)?.name;
+  const mainTerm = selectedSubcategoryName || selectedCategoryName || searchQuery || 'productos de segunda mano';
+  const locationText = useGeoFilter && geolocation.hasLocation ? 'cerca de ti' : location ? `en ${location}` : '';
+  const searchSeoTitle = `${mainTerm.charAt(0).toUpperCase()}${mainTerm.slice(1)}${locationText ? ` ${locationText}` : ''} | Reveta`;
+  const searchSeoDescription = `Encuentra ${mainTerm.toLowerCase()}${locationText ? ` ${locationText}` : ''}. Compra, vende, negocia por chat y descubre ofertas de segunda mano en Reveta.`;
+  const canonicalUrl = `https://reveta.es/search${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
 
   return (
     <>
-      <Helmet><title>{searchQuery ? `${searchQuery} - Buscar` : 'Explorar productos'} | Reveta</title><meta name="description" content="Encuentra productos de segunda mano cerca de ti. Filtra por categoría, precio y ubicación." /></Helmet>
+      <Helmet>
+        <title>{searchSeoTitle}</title>
+        <meta name="description" content={searchSeoDescription} />
+        <link rel="canonical" href={canonicalUrl} />
+        <meta property="og:title" content={searchSeoTitle} />
+        <meta property="og:description" content={searchSeoDescription} />
+        <meta property="og:type" content="website" />
+      </Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <CategoryNav />
