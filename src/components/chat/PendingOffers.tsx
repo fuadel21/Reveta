@@ -74,12 +74,13 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
     if (existingError) throw existingError;
     if (existingTransaction?.id) throw new Error('Este producto ya tiene una compra o reserva activa.');
 
-    const { error: transactionError } = await supabase.from('transactions').insert({
+    const { error: transactionError } = await (supabase as any).from('transactions').insert({
       product_id: offer.product_id,
       buyer_id: offer.buyer_id,
       seller_id: offer.seller_id,
       amount: offer.amount,
       status: 'pending',
+      offer_id: offer.id,
     });
 
     if (transactionError) throw transactionError;
@@ -207,30 +208,15 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
               </div>
               {canAct && (
                 <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-                  <button
-                    type="button"
-                    disabled={updatingId === offer.id}
-                    onClick={() => respondToOffer(offer, 'accepted')}
-                    className="inline-flex items-center justify-center gap-1 rounded-full bg-green-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-50"
-                  >
+                  <button type="button" disabled={updatingId === offer.id} onClick={() => respondToOffer(offer, 'accepted')} className="inline-flex items-center justify-center gap-1 rounded-full bg-green-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-50">
                     <CheckCircle2 className="h-3 w-3" />
                     Aceptar
                   </button>
-                  <button
-                    type="button"
-                    disabled={updatingId === offer.id}
-                    onClick={() => sendCounterOffer(offer)}
-                    className="inline-flex items-center justify-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground disabled:opacity-50"
-                  >
+                  <button type="button" disabled={updatingId === offer.id} onClick={() => sendCounterOffer(offer)} className="inline-flex items-center justify-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground disabled:opacity-50">
                     <RotateCcw className="h-3 w-3" />
                     Contraofertar
                   </button>
-                  <button
-                    type="button"
-                    disabled={updatingId === offer.id}
-                    onClick={() => respondToOffer(offer, 'rejected')}
-                    className="inline-flex items-center justify-center gap-1 rounded-full bg-destructive px-3 py-1 text-xs font-bold text-destructive-foreground disabled:opacity-50"
-                  >
+                  <button type="button" disabled={updatingId === offer.id} onClick={() => respondToOffer(offer, 'rejected')} className="inline-flex items-center justify-center gap-1 rounded-full bg-destructive px-3 py-1 text-xs font-bold text-destructive-foreground disabled:opacity-50">
                     <XCircle className="h-3 w-3" />
                     Rechazar
                   </button>
