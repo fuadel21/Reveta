@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import ProductCard from '@/components/ProductCard';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 interface Product {
   id: string;
@@ -52,6 +54,17 @@ export const ProductGrid = ({
   className,
 }: ProductGridProps) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const handleProductClick = (product: Product) => {
+    void (supabase as any).from('product_clicks').insert({
+      product_id: product.id,
+      user_id: user?.id || null,
+      source: 'product_grid',
+    });
+
+    navigate(`/producto/${product.id}/${createProductSlug(product.title)}`);
+  };
 
   return (
     <div
@@ -64,7 +77,7 @@ export const ProductGrid = ({
       {products.map((product, index) => (
         <div
           key={product.id}
-          onClick={() => navigate(`/producto/${product.id}/${createProductSlug(product.title)}`)}
+          onClick={() => handleProductClick(product)}
           onMouseEnter={() => onProductHover?.(product.id)}
           onMouseLeave={() => onProductHover?.(null)}
           className={cn(
