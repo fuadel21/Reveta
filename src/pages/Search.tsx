@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
@@ -56,6 +56,7 @@ const SearchPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const geolocation = useGeolocation();
+  const lastLoggedSearchRef = useRef('');
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
@@ -98,6 +99,35 @@ const SearchPage = () => {
       setSearchParams(params, { replace: true });
     }
   }, [useGeoFilter, geolocation.hasLocation]);
+
+  useEffect(() => {
+    if (loading) return;
+
+    const signature = `${searchParams.toString()}|${totalCount}|${user?.id || 'anon'}`;
+    if (lastLoggedSearchRef.current === signature) return;
+    lastLoggedSearchRef.current = signature;
+
+    const timer = window.setTimeout(async () => {
+      const payload = {
+        user_id: user?.id || null,
+        query: searchParams.get('q') || null,
+        category_id: searchParams.get('category') || null,
+        subcategory_id: searchParams.get('subcategory') || null,
+        location: searchParams.get('location') || null,
+        min_price: searchParams.get('minPrice') ? Number(searchParams.get('minPrice')) : null,
+        max_price: searchParams.get('maxPrice') ? Number(searchParams.get('maxPrice')) : null,
+        condition: searchParams.get('condition') || null,
+        geo_enabled: searchParams.get('geo') === 'true',
+        radius_km: searchParams.get('radius') ? Number(searchParams.get('radius')) : null,
+        result_count: totalCount,
+      };
+
+      const { error } = await (supabase as any).from('search_analytics').insert(payload);
+      if (error) console.warn('Search analytics not recorded:', error.message);
+    }, 800);
+
+    return () => window.clearTimeout(timer);
+  }, [loading, searchParams, totalCount, user?.id]);
 
   const fetchFavorites = async () => {
     if (!user) return;
