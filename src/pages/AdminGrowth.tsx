@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ArrowLeft, BarChart3, Loader2, MapPin, Search, TrendingUp, XCircle } from 'lucide-react';
+import { ArrowLeft, BarChart3, Eye, Loader2, MapPin, Package, Search, TrendingUp, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
@@ -23,6 +23,16 @@ interface SearchAnalytic {
   result_count: number;
   created_at: string;
   geo_enabled: boolean;
+}
+
+interface ViewedProduct {
+  product_id: string;
+  title: string | null;
+  price: number | null;
+  status: string | null;
+  location: string | null;
+  view_count: number;
+  created_at: string;
 }
 
 interface SummaryRow {
@@ -50,11 +60,20 @@ const summarize = (items: SearchAnalytic[], getLabel: (item: SearchAnalytic) => 
   return Array.from(map.values()).sort((a, b) => b.count - a.count).slice(0, 10);
 };
 
+const getStatusLabel = (status: string | null) => {
+  if (status === 'active') return 'Activo';
+  if (status === 'sold') return 'Vendido';
+  if (status === 'reserved') return 'Reservado';
+  if (status === 'inactive') return 'Inactivo';
+  return status || 'Sin estado';
+};
+
 const AdminGrowth = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdmin();
   const [items, setItems] = useState<SearchAnalytic[]>([]);
+  const [viewedProducts, setViewedProducts] = useState<ViewedProduct[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -74,19 +93,34 @@ const AdminGrowth = () => {
 
   const fetchAnalytics = async () => {
     setLoading(true);
-    const { data, error } = await (supabase as any)
-      .from('search_analytics')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(500);
 
-    if (error) {
-      console.error('Error fetching search analytics:', error);
-      toast.error('No se pudieron cargar las métricas');
+    const [searchResult, viewedProductsResult] = await Promise.all([
+      (supabase as any)
+        .from('search_analytics')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(500),
+      (supabase as any)
+        .from('growth_top_viewed_products')
+        .select('*')
+        .limit(10),
+    ]);
+
+    if (searchResult.error) {
+      console.error('Error fetching search analytics:', searchResult.error);
+      toast.error('No se pudieron cargar las métricas de búsqueda');
       setItems([]);
     } else {
-      setItems((data || []) as SearchAnalytic[]);
+      setItems((searchResult.data || []) as SearchAnalytic[]);
     }
+
+    if (viewedProductsResult.error) {
+      console.warn('Viewed products view not available:', viewedProductsResult.error.message);
+      setViewedProducts([]);
+    } else {
+      setViewedProducts((viewedProductsResult.data || []) as ViewedProduct[]);
+    }
+
     setLoading(false);
   };
 
@@ -118,7 +152,7 @@ const AdminGrowth = () => {
               </Button>
               <div>
                 <h1 className="text-3xl font-bold">Crecimiento y búsquedas</h1>
-                <p className="text-muted-foreground">Detecta demanda, ciudades activas y búsquedas sin resultados.</p>
+                <p className="text-muted-foreground">Detecta demanda, ciudades activas, productos vistos y búsquedas sin resultados.</p>
               </div>
             </div>
             <Button onClick={fetchAnalytics} variant="outline">Actualizar</Button>
@@ -175,6 +209,41 @@ const AdminGrowth = () => {
                   </CardContent>
                 </Card>
               </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><Package className="h-5 w-5" /> Productos más vistos</CardTitle>
+                  <CardDescription>Productos que generan más interés por visitas a su ficha.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Producto</TableHead>
+                          <TableHead>Ubicación</TableHead>
+                          <TableHead>Estado</TableHead>
+                          <TableHead className="text-right">Precio</TableHead>
+                          <TableHead className="text-right">Visitas</TableHead>
+                          <TableHead></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {viewedProducts.map((item) => (
+                          <TableRow key={item.product_id}>
+                            <TableCell className="font-medium max-w-[260px] truncate">{item.title || 'Producto eliminado'}</TableCell>
+                            <TableCell>{item.location || 'Sin ubicación'}</TableCell>
+                            <TableCell><Badge variant="outline">{getStatusLabel(item.status)}</Badge></TableCell>
+                            <TableCell className="text-right">{typeof item.price === 'number' ? `${item.price.toLocaleString('es-ES')} €` : '-'}</TableCell>
+                            <TableCell className="text-right font-semibold">{item.view_count}</TableCell>
+                            <TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => navigate(`/product/${item.product_id}`)}><Eye className="h-4 w-4 mr-1" /> Ver</Button></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
 
               <Card>
                 <CardHeader>
