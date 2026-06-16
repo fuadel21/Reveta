@@ -65,6 +65,40 @@ const SeoLanding = () => {
     ? `Encuentra ${categoryName.toLowerCase()} de segunda mano en ${cityName}. Compra, vende y negocia con chat, ofertas, valoraciones y Protección Reveta.`
     : `Compra y vende productos de segunda mano en ${cityName}. Encuentra ofertas cerca de ti con chat, valoraciones y Protección Reveta.`;
 
+  const faqs = [
+    {
+      question: categoryName ? `¿Dónde comprar ${categoryName.toLowerCase()} de segunda mano en ${cityName}?` : `¿Dónde comprar productos de segunda mano en ${cityName}?`,
+      answer: categoryName
+        ? `En Reveta puedes buscar ${categoryName.toLowerCase()} de segunda mano en ${cityName}, contactar con vendedores por chat y negociar ofertas antes de comprar.`
+        : `En Reveta puedes encontrar productos de segunda mano en ${cityName}, filtrar por ubicación y hablar directamente con vendedores locales.`,
+    },
+    {
+      question: '¿Puedo vender gratis en Reveta?',
+      answer: 'Sí. Puedes publicar productos en Reveta, añadir fotos, descripción, precio y ubicación para llegar a compradores cercanos.',
+    },
+    {
+      question: '¿Reveta permite negociar precios?',
+      answer: 'Sí. Reveta incluye chat, ofertas y contraofertas para que comprador y vendedor puedan acordar un precio antes de reservar una operación.',
+    },
+    {
+      question: '¿Cómo puedo comprar con más confianza?',
+      answer: 'Puedes revisar valoraciones, hablar por chat, consultar la información del producto y usar Protección Reveta cuando esté disponible.',
+    },
+  ];
+
+  const faqJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map((faq) => ({
+      '@type': 'Question',
+      name: faq.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: faq.answer,
+      },
+    })),
+  };
+
   return (
     <>
       <Helmet>
@@ -74,6 +108,7 @@ const SeoLanding = () => {
         <meta property="og:title" content={title} />
         <meta property="og:description" content={description} />
         <meta property="og:type" content="website" />
+        <script type="application/ld+json">{JSON.stringify(faqJsonLd)}</script>
       </Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
@@ -145,6 +180,22 @@ const SeoLanding = () => {
                   ? `En ${cityName} puedes encontrar tecnología, motor, hogar, moda, deportes, libros y otros productos publicados por usuarios cercanos.`
                   : `Si buscas ${categoryName.toLowerCase()} en ${cityName}, esta página reúne una ruta rápida para acceder a productos relacionados y publicar tus propios anuncios.`}
               </p>
+            </div>
+          </section>
+
+          <section className="container pb-12">
+            <div className="mx-auto max-w-3xl">
+              <h2 className="text-2xl font-bold">Preguntas frecuentes</h2>
+              <div className="mt-5 space-y-4">
+                {faqs.map((faq) => (
+                  <Card key={faq.question}>
+                    <CardContent className="pt-6">
+                      <h3 className="font-semibold">{faq.question}</h3>
+                      <p className="mt-2 text-sm text-muted-foreground">{faq.answer}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             </div>
           </section>
         </main>
