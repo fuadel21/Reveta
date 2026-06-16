@@ -30,6 +30,16 @@ const isFeaturedProduct = (boostedUntil?: string | null) => {
   return !!boostedUntil && new Date(boostedUntil).getTime() > Date.now();
 };
 
+const createProductSlug = (title: string) => {
+  return title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'producto';
+};
+
 export const ProductGrid = ({
   products,
   favorites,
@@ -54,7 +64,7 @@ export const ProductGrid = ({
       {products.map((product, index) => (
         <div
           key={product.id}
-          onClick={() => navigate(`/product/${product.id}`)}
+          onClick={() => navigate(`/producto/${product.id}/${createProductSlug(product.title)}`)}
           onMouseEnter={() => onProductHover?.(product.id)}
           onMouseLeave={() => onProductHover?.(null)}
           className={cn(
