@@ -46,6 +46,16 @@ interface Category {
   name: string;
 }
 
+const createProductSlug = (title: string) => {
+  return title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'producto';
+};
+
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -215,31 +225,16 @@ const ProductDetail = () => {
       const callUrl = `${window.location.origin}/call/${callSession.id}`;
       const content = `📞 Solicitud de llamada privada\n\nHola, me interesa tu producto "${product.title}". Te envío una sala de llamada privada de Reveta. No compartiremos números de teléfono.\n\nEntrar en la llamada: ${callUrl}`;
 
-      const { error: messageError } = await supabase.from('messages').insert({
-        conversation_id: conversation.id,
-        sender_id: user.id,
-        content,
-      });
-
+      const { error: messageError } = await supabase.from('messages').insert({ conversation_id: conversation.id, sender_id: user.id, content });
       if (messageError) throw messageError;
 
-      await supabase
-        .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', conversation.id);
+      await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversation.id);
 
-      toast({
-        title: 'Sala de llamada creada',
-        description: 'Se ha enviado el enlace privado por el chat de Reveta.',
-      });
+      toast({ title: 'Sala de llamada creada', description: 'Se ha enviado el enlace privado por el chat de Reveta.' });
       navigate(`/call/${callSession.id}`);
     } catch (error) {
       console.error('Error requesting private call:', error);
-      toast({
-        title: 'No se pudo crear la llamada',
-        description: 'Ejecuta la migración de llamadas o inténtalo de nuevo.',
-        variant: 'destructive',
-      });
+      toast({ title: 'No se pudo crear la llamada', description: 'Ejecuta la migración de llamadas o inténtalo de nuevo.', variant: 'destructive' });
     } finally {
       setRequestingCall(false);
     }
@@ -285,7 +280,8 @@ const ProductDetail = () => {
   if (!product) return null;
 
   const isOwner = user?.id === product.user_id;
-  const canonicalUrl = `https://reveta.es/product/${product.id}`;
+  const productSlug = createProductSlug(product.title);
+  const canonicalUrl = `https://reveta.es/producto/${product.id}/${productSlug}`;
   const cleanDescription = (product.description || `${product.title} de segunda mano por ${product.price}€${product.location ? ` en ${product.location}` : ''}. Compra y vende en Reveta.`)
     .replace(/\s+/g, ' ')
     .trim()
