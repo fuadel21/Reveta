@@ -25,14 +25,13 @@ interface SearchAnalytic {
   geo_enabled: boolean;
 }
 
-interface ViewedProduct {
+interface ClickedProduct {
   product_id: string;
   title: string | null;
   price: number | null;
   status: string | null;
-  location: string | null;
-  view_count: number;
-  created_at: string;
+  click_count: number;
+  last_clicked_at: string;
 }
 
 interface SummaryRow {
@@ -68,12 +67,22 @@ const getStatusLabel = (status: string | null) => {
   return status || 'Sin estado';
 };
 
+const createProductSlug = (title: string | null) => {
+  return (title || 'producto')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'producto';
+};
+
 const AdminGrowth = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdmin();
   const [items, setItems] = useState<SearchAnalytic[]>([]);
-  const [viewedProducts, setViewedProducts] = useState<ViewedProduct[]>([]);
+  const [clickedProducts, setClickedProducts] = useState<ClickedProduct[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -94,14 +103,14 @@ const AdminGrowth = () => {
   const fetchAnalytics = async () => {
     setLoading(true);
 
-    const [searchResult, viewedProductsResult] = await Promise.all([
+    const [searchResult, clickedProductsResult] = await Promise.all([
       (supabase as any)
         .from('search_analytics')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(500),
       (supabase as any)
-        .from('growth_top_viewed_products')
+        .from('growth_top_clicked_products')
         .select('*')
         .limit(10),
     ]);
@@ -114,11 +123,11 @@ const AdminGrowth = () => {
       setItems((searchResult.data || []) as SearchAnalytic[]);
     }
 
-    if (viewedProductsResult.error) {
-      console.warn('Viewed products view not available:', viewedProductsResult.error.message);
-      setViewedProducts([]);
+    if (clickedProductsResult.error) {
+      console.warn('Clicked products view not available:', clickedProductsResult.error.message);
+      setClickedProducts([]);
     } else {
-      setViewedProducts((viewedProductsResult.data || []) as ViewedProduct[]);
+      setClickedProducts((clickedProductsResult.data || []) as ClickedProduct[]);
     }
 
     setLoading(false);
@@ -152,7 +161,7 @@ const AdminGrowth = () => {
               </Button>
               <div>
                 <h1 className="text-3xl font-bold">Crecimiento y búsquedas</h1>
-                <p className="text-muted-foreground">Detecta demanda, ciudades activas, productos vistos y búsquedas sin resultados.</p>
+                <p className="text-muted-foreground">Detecta demanda, ciudades activas, productos clicados y búsquedas sin resultados.</p>
               </div>
             </div>
             <Button onClick={fetchAnalytics} variant="outline">Actualizar</Button>
@@ -212,8 +221,8 @@ const AdminGrowth = () => {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Package className="h-5 w-5" /> Productos más vistos</CardTitle>
-                  <CardDescription>Productos que generan más interés por visitas a su ficha.</CardDescription>
+                  <CardTitle className="flex items-center gap-2"><Package className="h-5 w-5" /> Productos más clicados</CardTitle>
+                  <CardDescription>Productos que generan más interés desde listados y búsquedas.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
@@ -221,22 +230,22 @@ const AdminGrowth = () => {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Producto</TableHead>
-                          <TableHead>Ubicación</TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead className="text-right">Precio</TableHead>
-                          <TableHead className="text-right">Visitas</TableHead>
+                          <TableHead className="text-right">Clics</TableHead>
+                          <TableHead>Último clic</TableHead>
                           <TableHead></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {viewedProducts.map((item) => (
+                        {clickedProducts.map((item) => (
                           <TableRow key={item.product_id}>
-                            <TableCell className="font-medium max-w-[260px] truncate">{item.title || 'Producto eliminado'}</TableCell>
-                            <TableCell>{item.location || 'Sin ubicación'}</TableCell>
+                            <TableCell className="font-medium max-w-[280px] truncate">{item.title || 'Producto eliminado'}</TableCell>
                             <TableCell><Badge variant="outline">{getStatusLabel(item.status)}</Badge></TableCell>
                             <TableCell className="text-right">{typeof item.price === 'number' ? `${item.price.toLocaleString('es-ES')} €` : '-'}</TableCell>
-                            <TableCell className="text-right font-semibold">{item.view_count}</TableCell>
-                            <TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => navigate(`/product/${item.product_id}`)}><Eye className="h-4 w-4 mr-1" /> Ver</Button></TableCell>
+                            <TableCell className="text-right font-semibold">{item.click_count}</TableCell>
+                            <TableCell>{item.last_clicked_at ? format(new Date(item.last_clicked_at), 'dd/MM/yyyy HH:mm', { locale: es }) : '-'}</TableCell>
+                            <TableCell className="text-right"><Button size="sm" variant="ghost" onClick={() => navigate(`/producto/${item.product_id}/${createProductSlug(item.title)}`)}><Eye className="h-4 w-4 mr-1" /> Ver</Button></TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
