@@ -17,6 +17,7 @@ import ProductDetail from "./pages/ProductDetail";
 import Search from "./pages/Search";
 import SeoLanding from "./pages/SeoLanding";
 import Admin from "./pages/Admin";
+import AdminGrowth from "./pages/AdminGrowth";
 import AdminDisputeDetail from "./pages/AdminDisputeDetail";
 import Transactions from "./pages/Transactions";
 import Settings from "./pages/Settings";
@@ -59,6 +60,7 @@ const App = () => (
                 <Route path="/segunda-mano/:city" element={<SeoLanding />} />
                 <Route path="/segunda-mano/:city/:category" element={<SeoLanding />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/admin/growth" element={<AdminGrowth />} />
                 <Route path="/admin/disputes/:id" element={<AdminDisputeDetail />} />
                 <Route path="/transactions" element={<Transactions />} />
                 <Route path="/settings" element={<Settings />} />
