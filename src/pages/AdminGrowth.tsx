@@ -1,0 +1,219 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { ArrowLeft, BarChart3, Loader2, MapPin, Search, TrendingUp, XCircle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAdmin } from '@/hooks/useAdmin';
+import { useAuth } from '@/hooks/useAuth';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+
+interface SearchAnalytic {
+  id: string;
+  user_id: string | null;
+  query: string | null;
+  category_id: string | null;
+  subcategory_id: string | null;
+  location: string | null;
+  result_count: number;
+  created_at: string;
+  geo_enabled: boolean;
+}
+
+interface SummaryRow {
+  label: string;
+  count: number;
+  zeroResults?: number;
+}
+
+const normalizeLabel = (value: string | null | undefined, fallback: string) => {
+  const cleaned = value?.trim();
+  return cleaned && cleaned.length > 0 ? cleaned : fallback;
+};
+
+const summarize = (items: SearchAnalytic[], getLabel: (item: SearchAnalytic) => string | null | undefined): SummaryRow[] => {
+  const map = new Map<string, SummaryRow>();
+
+  items.forEach((item) => {
+    const label = normalizeLabel(getLabel(item), 'Sin dato');
+    const current = map.get(label) || { label, count: 0, zeroResults: 0 };
+    current.count += 1;
+    if (item.result_count === 0) current.zeroResults = (current.zeroResults || 0) + 1;
+    map.set(label, current);
+  });
+
+  return Array.from(map.values()).sort((a, b) => b.count - a.count).slice(0, 10);
+};
+
+const AdminGrowth = () => {
+  const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
+  const { isAdmin, loading: adminLoading } = useAdmin();
+  const [items, setItems] = useState<SearchAnalytic[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!authLoading && !user) navigate('/auth');
+  }, [user, authLoading, navigate]);
+
+  useEffect(() => {
+    if (!adminLoading && !isAdmin && user) {
+      toast.error('No tienes permisos de administrador');
+      navigate('/');
+    }
+  }, [isAdmin, adminLoading, user, navigate]);
+
+  useEffect(() => {
+    if (isAdmin) fetchAnalytics();
+  }, [isAdmin]);
+
+  const fetchAnalytics = async () => {
+    setLoading(true);
+    const { data, error } = await (supabase as any)
+      .from('search_analytics')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (error) {
+      console.error('Error fetching search analytics:', error);
+      toast.error('No se pudieron cargar las métricas');
+      setItems([]);
+    } else {
+      setItems((data || []) as SearchAnalytic[]);
+    }
+    setLoading(false);
+  };
+
+  const totalSearches = items.length;
+  const searchesWithNoResults = items.filter((item) => item.result_count === 0).length;
+  const uniqueQueries = new Set(items.map((item) => normalizeLabel(item.query, 'Sin texto'))).size;
+  const geoSearches = items.filter((item) => item.geo_enabled).length;
+
+  const topQueries = useMemo(() => summarize(items, (item) => item.query), [items]);
+  const topLocations = useMemo(() => summarize(items, (item) => item.location), [items]);
+  const noResultQueries = useMemo(() => summarize(items.filter((item) => item.result_count === 0), (item) => item.query), [items]);
+  const recentSearches = items.slice(0, 25);
+
+  if (authLoading || adminLoading) {
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  }
+
+  if (!isAdmin) return null;
+
+  return (
+    <>
+      <Helmet><title>Crecimiento y búsquedas | Reveta</title></Helmet>
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-between gap-4 mb-8">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold">Crecimiento y búsquedas</h1>
+                <p className="text-muted-foreground">Detecta demanda, ciudades activas y búsquedas sin resultados.</p>
+              </div>
+            </div>
+            <Button onClick={fetchAnalytics} variant="outline">Actualizar</Button>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{totalSearches}</CardTitle><CardDescription className="flex items-center gap-2"><Search className="h-4 w-4" /> Búsquedas</CardDescription></CardHeader></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{uniqueQueries}</CardTitle><CardDescription className="flex items-center gap-2"><TrendingUp className="h-4 w-4" /> Términos únicos</CardDescription></CardHeader></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{searchesWithNoResults}</CardTitle><CardDescription className="flex items-center gap-2"><XCircle className="h-4 w-4" /> Sin resultados</CardDescription></CardHeader></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{geoSearches}</CardTitle><CardDescription className="flex items-center gap-2"><MapPin className="h-4 w-4" /> Cerca de mí</CardDescription></CardHeader></Card>
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+          ) : (
+            <div className="space-y-8">
+              <div className="grid gap-6 lg:grid-cols-3">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Más buscado</CardTitle>
+                    <CardDescription>Términos que más se repiten.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader><TableRow><TableHead>Búsqueda</TableHead><TableHead className="text-right">Veces</TableHead></TableRow></TableHeader>
+                      <TableBody>{topQueries.map((row) => <TableRow key={row.label}><TableCell>{row.label}</TableCell><TableCell className="text-right font-medium">{row.count}</TableCell></TableRow>)}</TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5" /> Ciudades</CardTitle>
+                    <CardDescription>Ubicaciones con más demanda.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader><TableRow><TableHead>Ciudad</TableHead><TableHead className="text-right">Veces</TableHead></TableRow></TableHeader>
+                      <TableBody>{topLocations.map((row) => <TableRow key={row.label}><TableCell>{row.label}</TableCell><TableCell className="text-right font-medium">{row.count}</TableCell></TableRow>)}</TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><XCircle className="h-5 w-5" /> Oportunidades</CardTitle>
+                    <CardDescription>Búsquedas sin resultados para crear oferta.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader><TableRow><TableHead>Búsqueda</TableHead><TableHead className="text-right">Veces</TableHead></TableRow></TableHeader>
+                      <TableBody>{noResultQueries.map((row) => <TableRow key={row.label}><TableCell>{row.label}</TableCell><TableCell className="text-right font-medium">{row.count}</TableCell></TableRow>)}</TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Últimas búsquedas</CardTitle>
+                  <CardDescription>Últimos 25 registros guardados.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Búsqueda</TableHead>
+                          <TableHead>Ubicación</TableHead>
+                          <TableHead>Resultados</TableHead>
+                          <TableHead>Tipo</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {recentSearches.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell>{format(new Date(item.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}</TableCell>
+                            <TableCell className="font-medium">{normalizeLabel(item.query, 'Sin texto')}</TableCell>
+                            <TableCell>{normalizeLabel(item.location, item.geo_enabled ? 'Cerca de mí' : 'Sin ubicación')}</TableCell>
+                            <TableCell>{item.result_count === 0 ? <Badge variant="destructive">0</Badge> : item.result_count}</TableCell>
+                            <TableCell>{item.geo_enabled ? <Badge>Geo</Badge> : <Badge variant="outline">Normal</Badge>}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+};
+
+export default AdminGrowth;
