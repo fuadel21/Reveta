@@ -38,6 +38,9 @@ const CATEGORY_NAMES: Record<string, string> = {
   coleccionismo: 'Coleccionismo',
 };
 
+const POPULAR_CITIES = ['madrid', 'barcelona', 'valencia', 'sevilla', 'malaga', 'bilbao'];
+const POPULAR_CATEGORIES = ['motor', 'electronica', 'iphone', 'muebles', 'bicicletas', 'moda'];
+
 const slugToLabel = (slug?: string) => {
   if (!slug) return '';
   return slug
@@ -64,6 +67,22 @@ const SeoLanding = () => {
   const description = categoryName
     ? `Encuentra ${categoryName.toLowerCase()} de segunda mano en ${cityName}. Compra, vende y negocia con chat, ofertas, valoraciones y Protección Reveta.`
     : `Compra y vende productos de segunda mano en ${cityName}. Encuentra ofertas cerca de ti con chat, valoraciones y Protección Reveta.`;
+
+  const relatedCityLinks = POPULAR_CITIES
+    .filter((item) => item !== city)
+    .slice(0, 5)
+    .map((item) => ({
+      label: categoryName ? `${categoryName} en ${CITY_NAMES[item] || slugToLabel(item)}` : `Segunda mano en ${CITY_NAMES[item] || slugToLabel(item)}`,
+      href: categoryName ? `/segunda-mano/${item}/${category}` : `/segunda-mano/${item}`,
+    }));
+
+  const relatedCategoryLinks = POPULAR_CATEGORIES
+    .filter((item) => item !== category)
+    .slice(0, 6)
+    .map((item) => ({
+      label: `${CATEGORY_NAMES[item] || slugToLabel(item)} en ${cityName}`,
+      href: `/segunda-mano/${city}/${item}`,
+    }));
 
   const faqs = [
     {
@@ -180,6 +199,38 @@ const SeoLanding = () => {
                   ? `En ${cityName} puedes encontrar tecnología, motor, hogar, moda, deportes, libros y otros productos publicados por usuarios cercanos.`
                   : `Si buscas ${categoryName.toLowerCase()} en ${cityName}, esta página reúne una ruta rápida para acceder a productos relacionados y publicar tus propios anuncios.`}
               </p>
+            </div>
+          </section>
+
+          <section className="container pb-12">
+            <div className="mx-auto max-w-3xl">
+              <h2 className="text-2xl font-bold">Búsquedas relacionadas</h2>
+              <div className="mt-5 grid gap-5 md:grid-cols-2">
+                <Card>
+                  <CardContent className="pt-6">
+                    <h3 className="font-semibold">Otras categorías en {cityName}</h3>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {relatedCategoryLinks.map((item) => (
+                        <Link key={item.href} to={item.href} className="rounded-full border px-3 py-1.5 text-sm font-medium transition hover:border-primary hover:text-primary">
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <h3 className="font-semibold">También en otras ciudades</h3>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {relatedCityLinks.map((item) => (
+                        <Link key={item.href} to={item.href} className="rounded-full border px-3 py-1.5 text-sm font-medium transition hover:border-primary hover:text-primary">
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </section>
 
