@@ -15,6 +15,7 @@ import Upload from "./pages/Upload";
 import Messages from "./pages/Messages";
 import ProductDetail from "./pages/ProductDetail";
 import Search from "./pages/Search";
+import SeoLanding from "./pages/SeoLanding";
 import Admin from "./pages/Admin";
 import AdminDisputeDetail from "./pages/AdminDisputeDetail";
 import Transactions from "./pages/Transactions";
@@ -54,6 +55,8 @@ const App = () => (
                 <Route path="/boost/:productId" element={<BoostProduct />} />
                 <Route path="/call/:id" element={<CallRoom />} />
                 <Route path="/search" element={<Search />} />
+                <Route path="/segunda-mano/:city" element={<SeoLanding />} />
+                <Route path="/segunda-mano/:city/:category" element={<SeoLanding />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/admin/disputes/:id" element={<AdminDisputeDetail />} />
                 <Route path="/transactions" element={<Transactions />} />
