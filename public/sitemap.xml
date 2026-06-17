@@ -1,64 +1,78 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://reveta.es/</loc>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://reveta.es/search</loc>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://reveta.es/terms</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.3</priority>
-  </url>
-  <url>
-    <loc>https://reveta.es/privacy</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.3</priority>
-  </url>
-  <url>
-    <loc>https://reveta.es/cookies</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.3</priority>
-  </url>
+  <url><loc>https://reveta.es/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>https://reveta.es/search</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://reveta.es/terms</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://reveta.es/privacy</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://reveta.es/cookies</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
 
-  <url><loc>https://reveta.es/segunda-mano/madrid</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://reveta.es/segunda-mano/barcelona</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://reveta.es/segunda-mano/valencia</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://reveta.es/segunda-mano/sevilla</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://reveta.es/segunda-mano/malaga</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://reveta.es/segunda-mano/zaragoza</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://reveta.es/segunda-mano/bilbao</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://reveta.es/segunda-mano/alicante</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://reveta.es/segunda-mano/pineda-de-mar</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/madrid</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/barcelona</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/valencia</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/sevilla</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/malaga</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/zaragoza</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/bilbao</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/alicante</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/murcia</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/granada</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/pineda-de-mar</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/girona</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/tarragona</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/cordoba</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/valladolid</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
 
   <url><loc>https://reveta.es/segunda-mano/madrid/motor</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/madrid/electronica</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/madrid/muebles</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/madrid/iphone</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/madrid/bicicletas</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/madrid/hogar</loc><changefreq>weekly</changefreq><priority>0.88</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/madrid/moda</loc><changefreq>weekly</changefreq><priority>0.88</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/madrid/juegos</loc><changefreq>weekly</changefreq><priority>0.86</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/madrid/libros</loc><changefreq>weekly</changefreq><priority>0.84</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/madrid/deportes</loc><changefreq>weekly</changefreq><priority>0.84</priority></url>
 
   <url><loc>https://reveta.es/segunda-mano/barcelona/motor</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/barcelona/electronica</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/barcelona/muebles</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/barcelona/iphone</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/barcelona/bicicletas</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/barcelona/hogar</loc><changefreq>weekly</changefreq><priority>0.88</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/barcelona/moda</loc><changefreq>weekly</changefreq><priority>0.88</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/barcelona/juegos</loc><changefreq>weekly</changefreq><priority>0.86</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/barcelona/libros</loc><changefreq>weekly</changefreq><priority>0.84</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/barcelona/deportes</loc><changefreq>weekly</changefreq><priority>0.84</priority></url>
 
   <url><loc>https://reveta.es/segunda-mano/valencia/motor</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/valencia/electronica</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/valencia/muebles</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/valencia/iphone</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/valencia/bicicletas</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/valencia/hogar</loc><changefreq>weekly</changefreq><priority>0.88</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/valencia/moda</loc><changefreq>weekly</changefreq><priority>0.88</priority></url>
 
   <url><loc>https://reveta.es/segunda-mano/sevilla/motor</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/sevilla/electronica</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/sevilla/muebles</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/sevilla/hogar</loc><changefreq>weekly</changefreq><priority>0.88</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/sevilla/moda</loc><changefreq>weekly</changefreq><priority>0.88</priority></url>
 
   <url><loc>https://reveta.es/segunda-mano/malaga/motor</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/malaga/electronica</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
   <url><loc>https://reveta.es/segunda-mano/malaga/muebles</loc><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/malaga/hogar</loc><changefreq>weekly</changefreq><priority>0.88</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/malaga/moda</loc><changefreq>weekly</changefreq><priority>0.88</priority></url>
+
+  <url><loc>https://reveta.es/segunda-mano/zaragoza/electronica</loc><changefreq>weekly</changefreq><priority>0.86</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/zaragoza/muebles</loc><changefreq>weekly</changefreq><priority>0.86</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/zaragoza/motor</loc><changefreq>weekly</changefreq><priority>0.86</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/bilbao/electronica</loc><changefreq>weekly</changefreq><priority>0.86</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/bilbao/muebles</loc><changefreq>weekly</changefreq><priority>0.86</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/bilbao/motor</loc><changefreq>weekly</changefreq><priority>0.86</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/alicante/electronica</loc><changefreq>weekly</changefreq><priority>0.86</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/alicante/muebles</loc><changefreq>weekly</changefreq><priority>0.86</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/murcia/electronica</loc><changefreq>weekly</changefreq><priority>0.84</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/granada/electronica</loc><changefreq>weekly</changefreq><priority>0.84</priority></url>
+  <url><loc>https://reveta.es/segunda-mano/pineda-de-mar/electronica</loc><changefreq>weekly</changefreq><priority>0.84</priority></url>
 </urlset>
