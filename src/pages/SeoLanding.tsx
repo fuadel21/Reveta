@@ -17,6 +17,10 @@ const CITY_NAMES: Record<string, string> = {
   alicante: 'Alicante',
   murcia: 'Murcia',
   granada: 'Granada',
+  girona: 'Girona',
+  tarragona: 'Tarragona',
+  cordoba: 'Córdoba',
+  valladolid: 'Valladolid',
   'pineda-de-mar': 'Pineda de Mar',
 };
 
@@ -38,8 +42,26 @@ const CATEGORY_NAMES: Record<string, string> = {
   coleccionismo: 'Coleccionismo',
 };
 
-const POPULAR_CITIES = ['madrid', 'barcelona', 'valencia', 'sevilla', 'malaga', 'bilbao'];
-const POPULAR_CATEGORIES = ['motor', 'electronica', 'iphone', 'muebles', 'bicicletas', 'moda'];
+const CATEGORY_INTENTS: Record<string, string> = {
+  motor: 'coches, motos, recambios, accesorios y productos relacionados con vehículos',
+  electronica: 'móviles, ordenadores, tablets, consolas, televisores y pequeños dispositivos electrónicos',
+  hogar: 'artículos para casa, decoración, pequeños electrodomésticos y productos útiles para el día a día',
+  muebles: 'sofás, mesas, sillas, armarios, estanterías y muebles usados cerca de ti',
+  moda: 'ropa, calzado, bolsos, accesorios y prendas de segunda mano',
+  bicicletas: 'bicicletas urbanas, de montaña, eléctricas, piezas y accesorios',
+  iphone: 'iPhone de segunda mano, accesorios Apple, cargadores y móviles usados',
+  juegos: 'videojuegos, consolas, juegos de mesa y accesorios gaming',
+  libros: 'libros usados, novelas, libros de texto, cómics y material de lectura',
+  mascotas: 'accesorios, productos y artículos para mascotas',
+  deportes: 'material deportivo, bicicletas, accesorios fitness y equipamiento usado',
+  belleza: 'productos de belleza, cuidado personal y accesorios',
+  oficina: 'material de oficina, escritorios, sillas, monitores y accesorios de trabajo',
+  instrumentos: 'instrumentos musicales, accesorios de audio y material para músicos',
+  coleccionismo: 'objetos de colección, antigüedades, figuras y artículos especiales',
+};
+
+const POPULAR_CITIES = ['madrid', 'barcelona', 'valencia', 'sevilla', 'malaga', 'zaragoza', 'bilbao', 'alicante', 'pineda-de-mar'];
+const POPULAR_CATEGORIES = ['motor', 'electronica', 'iphone', 'muebles', 'bicicletas', 'moda', 'hogar', 'juegos', 'libros', 'deportes'];
 
 const slugToLabel = (slug?: string) => {
   if (!slug) return '';
@@ -54,6 +76,7 @@ const SeoLanding = () => {
   const { city = '', category = '' } = useParams();
   const cityName = CITY_NAMES[city] || slugToLabel(city);
   const categoryName = CATEGORY_NAMES[category] || slugToLabel(category);
+  const categoryIntent = CATEGORY_INTENTS[category] || `${categoryName.toLowerCase()} de segunda mano`;
   const isGenericCity = Boolean(cityName) && !categoryName;
   const searchParams = new URLSearchParams();
 
@@ -61,16 +84,17 @@ const SeoLanding = () => {
   if (cityName) searchParams.set('location', cityName);
 
   const searchUrl = `/search?${searchParams.toString()}`;
+  const canonicalUrl = `https://reveta.es/segunda-mano/${city}${category ? `/${category}` : ''}`;
   const title = categoryName
-    ? `${categoryName} de segunda mano en ${cityName} | Reveta`
-    : `Comprar y vender segunda mano en ${cityName} | Reveta`;
+    ? `${categoryName} de segunda mano en ${cityName} | Compra y vende en Reveta`
+    : `Segunda mano en ${cityName} | Comprar y vender cerca de ti | Reveta`;
   const description = categoryName
-    ? `Encuentra ${categoryName.toLowerCase()} de segunda mano en ${cityName}. Compra, vende y negocia con chat, ofertas, valoraciones y Protección Reveta.`
-    : `Compra y vende productos de segunda mano en ${cityName}. Encuentra ofertas cerca de ti con chat, valoraciones y Protección Reveta.`;
+    ? `Compra y vende ${categoryName.toLowerCase()} de segunda mano en ${cityName}. Encuentra anuncios cerca de ti, negocia por chat y publica gratis en Reveta.`
+    : `Compra y vende productos de segunda mano en ${cityName}. Encuentra ofertas locales, publica anuncios gratis y negocia por chat en Reveta.`;
 
   const relatedCityLinks = POPULAR_CITIES
     .filter((item) => item !== city)
-    .slice(0, 5)
+    .slice(0, 6)
     .map((item) => ({
       label: categoryName ? `${categoryName} en ${CITY_NAMES[item] || slugToLabel(item)}` : `Segunda mano en ${CITY_NAMES[item] || slugToLabel(item)}`,
       href: categoryName ? `/segunda-mano/${item}/${category}` : `/segunda-mano/${item}`,
@@ -78,7 +102,7 @@ const SeoLanding = () => {
 
   const relatedCategoryLinks = POPULAR_CATEGORIES
     .filter((item) => item !== category)
-    .slice(0, 6)
+    .slice(0, 8)
     .map((item) => ({
       label: `${CATEGORY_NAMES[item] || slugToLabel(item)} en ${cityName}`,
       href: `/segunda-mano/${city}/${item}`,
@@ -88,12 +112,14 @@ const SeoLanding = () => {
     {
       question: categoryName ? `¿Dónde comprar ${categoryName.toLowerCase()} de segunda mano en ${cityName}?` : `¿Dónde comprar productos de segunda mano en ${cityName}?`,
       answer: categoryName
-        ? `En Reveta puedes buscar ${categoryName.toLowerCase()} de segunda mano en ${cityName}, contactar con vendedores por chat y negociar ofertas antes de comprar.`
-        : `En Reveta puedes encontrar productos de segunda mano en ${cityName}, filtrar por ubicación y hablar directamente con vendedores locales.`,
+        ? `En Reveta puedes buscar ${categoryName.toLowerCase()} de segunda mano en ${cityName}, comparar anuncios cercanos, contactar con vendedores por chat y negociar ofertas antes de comprar.`
+        : `En Reveta puedes encontrar productos de segunda mano en ${cityName}, filtrar por ubicación, revisar anuncios locales y hablar directamente con vendedores cercanos.`,
     },
     {
-      question: '¿Puedo vender gratis en Reveta?',
-      answer: 'Sí. Puedes publicar productos en Reveta, añadir fotos, descripción, precio y ubicación para llegar a compradores cercanos.',
+      question: categoryName ? `¿Puedo vender ${categoryName.toLowerCase()} en ${cityName}?` : `¿Puedo vender productos usados en ${cityName}?`,
+      answer: categoryName
+        ? `Sí. Puedes publicar ${categoryName.toLowerCase()} en Reveta, añadir fotos, precio, descripción y ubicación para llegar a compradores de ${cityName} y alrededores.`
+        : `Sí. Puedes publicar anuncios gratis en Reveta con fotos, precio, descripción y ubicación para llegar a compradores de ${cityName} y zonas cercanas.`,
     },
     {
       question: '¿Reveta permite negociar precios?',
@@ -118,16 +144,47 @@ const SeoLanding = () => {
     })),
   };
 
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Reveta',
+        item: 'https://reveta.es/',
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: `Segunda mano en ${cityName}`,
+        item: `https://reveta.es/segunda-mano/${city}`,
+      },
+      ...(categoryName
+        ? [
+            {
+              '@type': 'ListItem',
+              position: 3,
+              name: `${categoryName} en ${cityName}`,
+              item: canonicalUrl,
+            },
+          ]
+        : []),
+    ],
+  };
+
   return (
     <>
       <Helmet>
         <title>{title}</title>
         <meta name="description" content={description} />
-        <link rel="canonical" href={`https://reveta.es/segunda-mano/${city}${category ? `/${category}` : ''}`} />
+        <link rel="canonical" href={canonicalUrl} />
         <meta property="og:title" content={title} />
         <meta property="og:description" content={description} />
         <meta property="og:type" content="website" />
+        <meta property="og:url" content={canonicalUrl} />
         <script type="application/ld+json">{JSON.stringify(faqJsonLd)}</script>
+        <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
       </Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
@@ -143,8 +200,8 @@ const SeoLanding = () => {
               </h1>
               <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground">
                 {categoryName
-                  ? `Busca ${categoryName.toLowerCase()} cerca de ${cityName}, compara precios, habla con vendedores y negocia directamente desde Reveta.`
-                  : `Encuentra productos cerca de ${cityName}, publica gratis, negocia por chat y compra con más confianza dentro de Reveta.`}
+                  ? `Compra y vende ${categoryName.toLowerCase()} en ${cityName}. Encuentra ${categoryIntent}, compara precios, habla con vendedores locales y negocia directamente desde Reveta.`
+                  : `Compra y vende productos de segunda mano en ${cityName}. Encuentra anuncios locales, publica gratis, negocia por chat y descubre oportunidades cerca de ti.`}
               </p>
               <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <Button asChild size="lg">
@@ -166,7 +223,7 @@ const SeoLanding = () => {
                 <CardContent className="pt-6">
                   <Sparkles className="mb-3 h-6 w-6 text-primary" />
                   <h2 className="font-semibold">Ofertas cerca de ti</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Filtra por ciudad, categoría, precio y estado para encontrar productos relevantes.</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Filtra por ciudad, categoría, precio y estado para encontrar productos relevantes cerca de {cityName}.</p>
                 </CardContent>
               </Card>
               <Card>
@@ -189,15 +246,18 @@ const SeoLanding = () => {
           <section className="container py-10">
             <div className="mx-auto max-w-3xl space-y-4 text-muted-foreground">
               <h2 className="text-2xl font-bold text-foreground">
-                {categoryName ? `Comprar ${categoryName.toLowerCase()} en ${cityName}` : `Comprar y vender en ${cityName}`}
+                {categoryName ? `Comprar ${categoryName.toLowerCase()} usado en ${cityName}` : `Comprar y vender en ${cityName}`}
               </h2>
               <p>
-                Reveta conecta compradores y vendedores para encontrar productos de segunda mano de forma local. Puedes buscar por ubicación, contactar por chat y negociar precios antes de reservar una compra.
+                Reveta conecta compradores y vendedores para encontrar productos de segunda mano de forma local. Puedes buscar por ubicación, contactar por chat, negociar precios y descubrir anuncios publicados por personas cercanas.
               </p>
               <p>
                 {isGenericCity
-                  ? `En ${cityName} puedes encontrar tecnología, motor, hogar, moda, deportes, libros y otros productos publicados por usuarios cercanos.`
-                  : `Si buscas ${categoryName.toLowerCase()} en ${cityName}, esta página reúne una ruta rápida para acceder a productos relacionados y publicar tus propios anuncios.`}
+                  ? `En ${cityName} puedes encontrar tecnología, motor, hogar, moda, deportes, libros, bicicletas, muebles y otros productos publicados por usuarios de la zona.`
+                  : `Si buscas ${categoryName.toLowerCase()} en ${cityName}, esta página te ayuda a encontrar anuncios relacionados con ${categoryIntent}. También puedes publicar tus propios productos para llegar a compradores locales.`}
+              </p>
+              <p>
+                El objetivo de Reveta es facilitar una compraventa local más clara, rápida y segura: productos cerca de ti, comunicación directa, valoraciones y herramientas para acordar operaciones con confianza.
               </p>
             </div>
           </section>
