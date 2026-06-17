@@ -15,16 +15,24 @@ const cityLinks = [
   { label: "Valencia", href: "/segunda-mano/valencia" },
   { label: "Sevilla", href: "/segunda-mano/sevilla" },
   { label: "Málaga", href: "/segunda-mano/malaga" },
+  { label: "Zaragoza", href: "/segunda-mano/zaragoza" },
   { label: "Bilbao", href: "/segunda-mano/bilbao" },
+  { label: "Alicante", href: "/segunda-mano/alicante" },
+  { label: "Murcia", href: "/segunda-mano/murcia" },
+  { label: "Granada", href: "/segunda-mano/granada" },
+  { label: "Pineda de Mar", href: "/segunda-mano/pineda-de-mar" },
 ];
 
 const categoryLinks = [
-  { label: "Motor en Madrid", href: "/segunda-mano/madrid/motor" },
-  { label: "Electrónica en Barcelona", href: "/segunda-mano/barcelona/electronica" },
-  { label: "iPhone en Valencia", href: "/segunda-mano/valencia/iphone" },
-  { label: "Muebles en Sevilla", href: "/segunda-mano/sevilla/muebles" },
-  { label: "Bicicletas en Madrid", href: "/segunda-mano/madrid/bicicletas" },
-  { label: "Motor en Málaga", href: "/segunda-mano/malaga/motor" },
+  { label: "Motor de segunda mano en Madrid", href: "/segunda-mano/madrid/motor" },
+  { label: "Electrónica de segunda mano en Barcelona", href: "/segunda-mano/barcelona/electronica" },
+  { label: "iPhone de segunda mano en Valencia", href: "/segunda-mano/valencia/iphone" },
+  { label: "Muebles usados en Sevilla", href: "/segunda-mano/sevilla/muebles" },
+  { label: "Bicicletas de segunda mano en Madrid", href: "/segunda-mano/madrid/bicicletas" },
+  { label: "Motor de segunda mano en Málaga", href: "/segunda-mano/malaga/motor" },
+  { label: "Hogar de segunda mano en Barcelona", href: "/segunda-mano/barcelona/hogar" },
+  { label: "Moda de segunda mano en Valencia", href: "/segunda-mano/valencia/moda" },
+  { label: "Electrónica en Pineda de Mar", href: "/segunda-mano/pineda-de-mar/electronica" },
 ];
 
 const Index = () => {
@@ -34,9 +42,10 @@ const Index = () => {
         <title>Reveta - Compra y vende de segunda mano cerca de ti</title>
         <meta 
           name="description" 
-          content="Compra y vende productos de segunda mano en tu ciudad. Miles de ofertas en tecnología, muebles, coches, moda y mucho más. ¡Empieza a ahorrar hoy!" 
+          content="Compra y vende productos de segunda mano en tu ciudad. Encuentra ofertas locales en tecnología, muebles, motor, moda, bicicletas, hogar y mucho más en Reveta." 
         />
-        <meta name="keywords" content="segunda mano, comprar, vender, marketplace, usado, ofertas" />
+        <meta name="keywords" content="segunda mano, comprar segunda mano, vender segunda mano, marketplace España, productos usados, ofertas cerca de mí" />
+        <link rel="canonical" href="https://reveta.es/" />
       </Helmet>
       
       <div className="min-h-screen bg-background">
@@ -55,7 +64,7 @@ const Index = () => {
               <div className="mx-auto max-w-3xl text-center">
                 <h2 className="text-2xl font-bold md:text-3xl">Compra y vende segunda mano por ciudad</h2>
                 <p className="mt-3 text-muted-foreground">
-                  Encuentra productos cerca de ti, descubre ofertas locales y publica anuncios gratis en Reveta.
+                  Encuentra productos cerca de ti, descubre ofertas locales y publica anuncios gratis en Reveta. Explora páginas por ciudad y categoría para comprar tecnología, muebles, motor, moda, bicicletas y productos usados cerca de tu zona.
                 </p>
               </div>
               <div className="mt-8 grid gap-8 md:grid-cols-2">
@@ -79,6 +88,19 @@ const Index = () => {
                     ))}
                   </div>
                 </div>
+              </div>
+            </div>
+          </section>
+          <section className="container mx-auto px-4 pb-10">
+            <div className="mx-auto max-w-4xl rounded-2xl bg-muted/40 p-6 md:p-8">
+              <h2 className="text-2xl font-bold">Reveta, marketplace de segunda mano en España</h2>
+              <div className="mt-4 space-y-3 text-muted-foreground">
+                <p>
+                  Reveta es una plataforma para comprar y vender productos de segunda mano entre particulares. Puedes publicar anuncios gratis, buscar productos por ubicación, hablar por chat y negociar ofertas antes de comprar.
+                </p>
+                <p>
+                  Nuestro objetivo es ayudarte a encontrar oportunidades locales: electrónica usada, muebles de segunda mano, productos de motor, bicicletas, ropa, libros, hogar y mucho más en ciudades como Madrid, Barcelona, Valencia, Málaga, Sevilla, Bilbao o Pineda de Mar.
+                </p>
               </div>
             </div>
           </section>
