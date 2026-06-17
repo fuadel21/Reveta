@@ -103,6 +103,18 @@ const SearchPage = () => {
   useEffect(() => {
     if (loading) return;
 
+    const hasMeaningfulSearch =
+      !!searchParams.get('q')?.trim() ||
+      !!searchParams.get('category') ||
+      !!searchParams.get('subcategory') ||
+      !!searchParams.get('location')?.trim() ||
+      !!searchParams.get('minPrice') ||
+      !!searchParams.get('maxPrice') ||
+      !!searchParams.get('condition') ||
+      searchParams.get('geo') === 'true';
+
+    if (!hasMeaningfulSearch) return;
+
     const signature = `${searchParams.toString()}|${totalCount}|${user?.id || 'anon'}`;
     if (lastLoggedSearchRef.current === signature) return;
     lastLoggedSearchRef.current = signature;
@@ -258,7 +270,6 @@ const SearchPage = () => {
     return `${km.toFixed(1)} km`;
   };
 
-  const hasActiveFilters = searchQuery || selectedCategory || selectedSubcategory || location || priceRange[0] > 0 || priceRange[1] < 10000 || condition || useGeoFilter;
   const currentFilters = { query: searchQuery || undefined, category_id: selectedCategory || undefined, subcategory_id: selectedSubcategory || undefined, min_price: priceRange[0] > 0 ? priceRange[0] : undefined, max_price: priceRange[1] < 10000 ? priceRange[1] : undefined, condition: condition || undefined, location: location || undefined, radius_km: useGeoFilter ? distanceRadius : undefined };
   const mappableProducts = products.filter((p) => p.latitude && p.longitude);
   const selectedCategoryName = categories.find((cat) => cat.id === selectedCategory)?.name;
