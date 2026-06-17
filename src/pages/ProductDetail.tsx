@@ -16,6 +16,7 @@ import ProductStatusBadge from '@/components/ProductStatusBadge';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import SocialShareButtons from '@/components/SocialShareButtons';
 import BlockUserButton from '@/components/BlockUserButton';
+import ProductBuyerConfidence from '@/components/product/ProductBuyerConfidence';
 import { Chat } from '@/components/Chat';
 
 interface Product {
@@ -82,11 +83,7 @@ const ProductDetail = () => {
   const fetchProduct = async () => {
     if (!id) return;
 
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+    const { data, error } = await supabase.from('products').select('*').eq('id', id).maybeSingle();
 
     if (error || !data) {
       console.error('Error fetching product:', error);
@@ -95,27 +92,13 @@ const ProductDetail = () => {
     }
 
     setProduct(data);
+    await supabase.from('products').update({ views: (data.views || 0) + 1 }).eq('id', id);
 
-    await supabase
-      .from('products')
-      .update({ views: (data.views || 0) + 1 })
-      .eq('id', id);
-
-    const { data: sellerData } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', data.user_id)
-      .maybeSingle();
-
+    const { data: sellerData } = await supabase.from('profiles').select('*').eq('id', data.user_id).maybeSingle();
     if (sellerData) setSeller(sellerData);
 
     if (data.category_id) {
-      const { data: categoryData } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('id', data.category_id)
-        .maybeSingle();
-
+      const { data: categoryData } = await supabase.from('categories').select('*').eq('id', data.category_id).maybeSingle();
       if (categoryData) setCategory(categoryData);
     }
 
@@ -124,14 +107,7 @@ const ProductDetail = () => {
 
   const checkFavorite = async () => {
     if (!user || !product) return;
-
-    const { data } = await supabase
-      .from('favorites')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('product_id', product.id)
-      .maybeSingle();
-
+    const { data } = await supabase.from('favorites').select('id').eq('user_id', user.id).eq('product_id', product.id).maybeSingle();
     setIsFavorite(!!data);
   };
 
@@ -144,19 +120,11 @@ const ProductDetail = () => {
     if (!product) return;
 
     if (isFavorite) {
-      await supabase
-        .from('favorites')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('product_id', product.id);
-
+      await supabase.from('favorites').delete().eq('user_id', user.id).eq('product_id', product.id);
       setIsFavorite(false);
       toast({ title: 'Eliminado de favoritos', description: 'El producto se ha eliminado de tus favoritos' });
     } else {
-      await supabase
-        .from('favorites')
-        .insert({ user_id: user.id, product_id: product.id });
-
+      await supabase.from('favorites').insert({ user_id: user.id, product_id: product.id });
       setIsFavorite(true);
       toast({ title: 'Añadido a favoritos', description: 'El producto se ha añadido a tus favoritos' });
     }
@@ -201,7 +169,6 @@ const ProductDetail = () => {
     }
 
     if (!product || !seller) return;
-
     setRequestingCall(true);
 
     try {
@@ -210,13 +177,7 @@ const ProductDetail = () => {
 
       const { data: callSession, error: callError } = await (supabase as any)
         .from('call_sessions')
-        .insert({
-          conversation_id: conversation.id,
-          product_id: product.id,
-          caller_id: user.id,
-          callee_id: seller.id,
-          status: 'requested',
-        })
+        .insert({ conversation_id: conversation.id, product_id: product.id, caller_id: user.id, callee_id: seller.id, status: 'requested' })
         .select('*')
         .single();
 
@@ -250,27 +211,20 @@ const ProductDetail = () => {
       const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
       if (diffHours === 0) return 'Hace unos minutos';
       return `Hace ${diffHours}h`;
-    } else if (diffDays === 1) {
-      return 'Ayer';
-    } else if (diffDays < 7) {
-      return `Hace ${diffDays} días`;
-    } else {
-      return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
     }
+    if (diffDays === 1) return 'Ayer';
+    if (diffDays < 7) return `Hace ${diffDays} días`;
+    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
   };
 
   const getMemberSince = (dateString: string) => new Date(dateString).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   const nextImage = () => {
-    if (product && product.images.length > 1) {
-      setCurrentImageIndex((prev) => (prev === product.images.length - 1 ? 0 : prev + 1));
-    }
+    if (product && product.images.length > 1) setCurrentImageIndex((prev) => (prev === product.images.length - 1 ? 0 : prev + 1));
   };
 
   const prevImage = () => {
-    if (product && product.images.length > 1) {
-      setCurrentImageIndex((prev) => (prev === 0 ? product.images.length - 1 : prev - 1));
-    }
+    if (product && product.images.length > 1) setCurrentImageIndex((prev) => (prev === 0 ? product.images.length - 1 : prev - 1));
   };
 
   if (loading) {
@@ -282,10 +236,7 @@ const ProductDetail = () => {
   const isOwner = user?.id === product.user_id;
   const productSlug = createProductSlug(product.title);
   const canonicalUrl = `https://reveta.es/producto/${product.id}/${productSlug}`;
-  const cleanDescription = (product.description || `${product.title} de segunda mano por ${product.price}€${product.location ? ` en ${product.location}` : ''}. Compra y vende en Reveta.`)
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 160);
+  const cleanDescription = (product.description || `${product.title} de segunda mano por ${product.price}€${product.location ? ` en ${product.location}` : ''}. Compra y vende en Reveta.`).replace(/\s+/g, ' ').trim().slice(0, 160);
   const rawTitle = `${product.title} · ${product.price}€${product.location ? ` en ${product.location}` : ''} | Reveta`;
   const seoTitle = rawTitle.length > 60 ? `${product.title.slice(0, 40)} · ${product.price}€ | Reveta` : rawTitle;
   const primaryImage = product.images?.[0];
@@ -301,15 +252,7 @@ const ProductDetail = () => {
     ...(category && { category: category.name }),
     itemCondition,
     sku: product.id,
-    offers: {
-      '@type': 'Offer',
-      url: canonicalUrl,
-      priceCurrency: 'EUR',
-      price: product.price,
-      availability,
-      itemCondition,
-      ...(seller?.full_name && { seller: { '@type': 'Person', name: seller.full_name } }),
-    },
+    offers: { '@type': 'Offer', url: canonicalUrl, priceCurrency: 'EUR', price: product.price, availability, itemCondition, ...(seller?.full_name && { seller: { '@type': 'Person', name: seller.full_name } }) },
   };
 
   const breadcrumbJsonLd = {
@@ -372,6 +315,7 @@ const ProductDetail = () => {
               {product.images && product.images.length > 1 && <div className="flex gap-2 mt-4 overflow-x-auto pb-2">{product.images.map((img, index) => <button key={index} onClick={() => setCurrentImageIndex(index)} className={`shrink-0 h-20 w-20 rounded-lg overflow-hidden border-2 transition-colors ${index === currentImageIndex ? 'border-primary' : 'border-transparent hover:border-border'}`}><img src={img} alt="" className="h-full w-full object-cover" /></button>)}</div>}
 
               <div className="mt-8"><h2 className="text-lg font-semibold mb-4">Descripción</h2><p className="text-muted-foreground whitespace-pre-wrap">{product.description || 'Sin descripción'}</p></div>
+              <div className="mt-6"><ProductBuyerConfidence /></div>
             </div>
 
             <div className="space-y-6">
@@ -382,9 +326,7 @@ const ProductDetail = () => {
                 </div>
 
                 <h1 className="text-xl font-semibold mb-4">{product.title}</h1>
-
                 <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-6">{product.location && <div className="flex items-center gap-1"><MapPin className="h-4 w-4" />{product.location}</div>}<div className="flex items-center gap-1"><Clock className="h-4 w-4" />{formatDate(product.created_at)}</div><div className="flex items-center gap-1"><Eye className="h-4 w-4" />{product.views || 0} visitas</div></div>
-
                 {category && <Link to={`/search?category=${category.id}`} className="inline-block text-sm text-primary hover:underline mb-6">{category.name}</Link>}
 
                 {!isOwner && product.status === 'active' && (
@@ -400,14 +342,11 @@ const ProductDetail = () => {
                 )}
 
                 {!isOwner && product.status !== 'active' && <div className="text-center p-4 bg-muted rounded-lg"><p className="text-muted-foreground">{product.status === 'sold' ? 'Este producto ya ha sido vendido' : 'Este producto está reservado'}</p></div>}
-
                 {isOwner && <div className="space-y-3"><Button variant="outline" className="w-full h-12" onClick={() => navigate('/profile')}>Gestionar producto</Button><p className="text-xs text-center text-muted-foreground italic">Eres el vendedor de este producto</p></div>}
               </div>
 
               {seller && <div className="bg-card rounded-xl p-6 shadow-card border border-border/50"><div className="flex items-center gap-4 mb-4"><div className="h-14 w-14 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-xl font-bold text-primary-foreground">{seller.full_name?.[0]?.toUpperCase() || 'U'}</div><div><div className="flex items-center gap-2"><p className="font-semibold">{seller.full_name || 'Usuario'}</p>{seller.verified && <VerifiedBadge size="sm" />}</div><SellerRating sellerId={seller.id} size="sm" /><p className="text-sm text-muted-foreground mt-1">Miembro desde {getMemberSince(seller.created_at)}</p></div></div>{seller.verified && <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4"><Shield className="h-4 w-4 text-primary" /><span>Vendedor verificado</span></div>}{!isOwner && <div className="flex flex-col gap-2"><ReportDialog productId={product.id} userId={seller.id} /><BlockUserButton userId={seller.id} userName={seller.full_name || 'este usuario'} /></div>}</div>}
-
               {seller && <div className="bg-card rounded-xl p-6 shadow-card border border-border/50"><Reviews userId={seller.id} productId={product.id} /></div>}
-
               <div className="bg-muted/50 rounded-xl p-6"><h3 className="font-medium mb-3 flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />Consejos de seguridad</h3><ul className="text-sm text-muted-foreground space-y-2"><li>• Queda en lugares públicos</li><li>• Verifica el producto antes de pagar</li><li>• Nunca envíes dinero por adelantado</li><li>• Usa el chat de la plataforma</li></ul></div>
             </div>
           </div>
