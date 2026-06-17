@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { ProductEngagementFunnel } from '@/components/admin/ProductEngagementFunnel';
 
 interface SearchAnalytic {
   id: string;
@@ -253,6 +254,8 @@ const AdminGrowth = () => {
                   </div>
                 </CardContent>
               </Card>
+
+              <ProductEngagementFunnel />
 
               <Card>
                 <CardHeader>
