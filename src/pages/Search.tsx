@@ -10,7 +10,7 @@ import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Search, SlidersHorizontal, Bookmark } from 'lucide-react';
+import { Search, SlidersHorizontal, Bookmark, MapPin, TrendingUp } from 'lucide-react';
 import ProductsMap from '@/components/ProductsMap';
 import { SearchFilters } from '@/components/search/SearchFilters';
 import { ActiveFilters } from '@/components/search/ActiveFilters';
@@ -50,6 +50,9 @@ const sortBoostedFirst = (items: Product[]) => {
     return 0;
   });
 };
+
+const popularSearches = ['iPhone', 'bicicleta', 'muebles', 'PS5', 'coche', 'patinete', 'sofá', 'portátil'];
+const popularCities = ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Málaga', 'Pineda de Mar'];
 
 const SearchPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -256,6 +259,26 @@ const SearchPage = () => {
 
   const handleCategoryChange = (value: string) => { setSelectedCategory(value); setSelectedSubcategory(''); };
 
+  const handlePopularSearch = (term: string) => {
+    setSearchQuery(term);
+    const params = new URLSearchParams(searchParams);
+    params.set('q', term);
+    params.delete('geo');
+    params.delete('radius');
+    setUseGeoFilter(false);
+    setSearchParams(params);
+  };
+
+  const handlePopularCity = (city: string) => {
+    setLocation(city);
+    const params = new URLSearchParams(searchParams);
+    params.set('location', city);
+    params.delete('geo');
+    params.delete('radius');
+    setUseGeoFilter(false);
+    setSearchParams(params);
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString); const now = new Date(); const diffMs = now.getTime() - date.getTime(); const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     if (diffDays === 0) { const diffHours = Math.floor(diffMs / (1000 * 60 * 60)); return diffHours === 0 ? 'Hace unos min' : `Hace ${diffHours}h`; }
@@ -269,6 +292,16 @@ const SearchPage = () => {
     if (km < 1) return `${Math.round(km * 1000)} m`;
     return `${km.toFixed(1)} km`;
   };
+
+  const hasActiveFilters =
+    !!searchQuery.trim() ||
+    !!selectedCategory ||
+    !!selectedSubcategory ||
+    !!location.trim() ||
+    priceRange[0] > 0 ||
+    priceRange[1] < 10000 ||
+    !!condition ||
+    useGeoFilter;
 
   const currentFilters = { query: searchQuery || undefined, category_id: selectedCategory || undefined, subcategory_id: selectedSubcategory || undefined, min_price: priceRange[0] > 0 ? priceRange[0] : undefined, max_price: priceRange[1] < 10000 ? priceRange[1] : undefined, condition: condition || undefined, location: location || undefined, radius_km: useGeoFilter ? distanceRadius : undefined };
   const mappableProducts = products.filter((p) => p.latitude && p.longitude);
@@ -297,13 +330,34 @@ const SearchPage = () => {
           <div className="flex gap-3 mb-4">
             <div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" /><Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && applyFilters()} placeholder="¿Qué estás buscando?" className="pl-12 h-12 text-base" /></div>
             <Button onClick={applyFilters} className="h-12 px-6">Buscar</Button>
-            <Sheet><SheetTrigger asChild><Button variant="outline" size="icon" className="h-12 w-12 lg:hidden"><SlidersHorizontal className="h-5 w-5" /></Button></SheetTrigger><SheetContent side="right" className="overflow-y-auto"><SheetHeader><SheetTitle>Filtros</SheetTitle></SheetHeader><div className="mt-6"><SearchFilters categories={categories} selectedCategory={selectedCategory} setSelectedCategory={handleCategoryChange} selectedSubcategory={selectedSubcategory} setSelectedSubcategory={setSelectedSubcategory} location={location} setLocation={setLocation} priceRange={priceRange} setPriceRange={setPriceRange} condition={condition} setCondition={setCondition} useGeoFilter={useGeoFilter} setUseGeoFilter={setUseGeoFilter} distanceRadius={distanceRadius} setDistanceRadius={setDistanceRadius} geolocation={geolocation} onApply={applyFilters} onClear={clearFilters} hasActiveFilters={!!hasActiveFilters} /></div></SheetContent></Sheet>
+            <Sheet><SheetTrigger asChild><Button variant="outline" size="icon" className="h-12 w-12 lg:hidden"><SlidersHorizontal className="h-5 w-5" /></Button></SheetTrigger><SheetContent side="right" className="overflow-y-auto"><SheetHeader><SheetTitle>Filtros</SheetTitle></SheetHeader><div className="mt-6"><SearchFilters categories={categories} selectedCategory={selectedCategory} setSelectedCategory={handleCategoryChange} selectedSubcategory={selectedSubcategory} setSelectedSubcategory={setSelectedSubcategory} location={location} setLocation={setLocation} priceRange={priceRange} setPriceRange={setPriceRange} condition={condition} setCondition={setCondition} useGeoFilter={useGeoFilter} setUseGeoFilter={setUseGeoFilter} distanceRadius={distanceRadius} setDistanceRadius={setDistanceRadius} geolocation={geolocation} onApply={applyFilters} onClear={clearFilters} hasActiveFilters={hasActiveFilters} /></div></SheetContent></Sheet>
           </div>
 
-          <div className="mb-6"><QuickFilters onQuickFilter={handleQuickFilter} activeQuickFilter={activeQuickFilter} /></div>
+          <div className="mb-4"><QuickFilters onQuickFilter={handleQuickFilter} activeQuickFilter={activeQuickFilter} /></div>
+
+          {!hasActiveFilters && (
+            <div className="mb-6 space-y-4 rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><TrendingUp className="h-4 w-4 text-primary" />Búsquedas populares</div>
+                <div className="flex flex-wrap gap-2">
+                  {popularSearches.map((term) => (
+                    <Button key={term} variant="secondary" size="sm" onClick={() => handlePopularSearch(term)}>{term}</Button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><MapPin className="h-4 w-4 text-primary" />Ciudades populares</div>
+                <div className="flex flex-wrap gap-2">
+                  {popularCities.map((city) => (
+                    <Button key={city} variant="outline" size="sm" onClick={() => handlePopularCity(city)}>{city}</Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-8">
-            <aside className="hidden lg:block w-72 shrink-0"><div className="sticky top-24 bg-card rounded-xl p-6 border border-border/50 shadow-sm"><h2 className="font-semibold mb-6 flex items-center gap-2"><SlidersHorizontal className="h-4 w-4" />Filtros</h2><SearchFilters categories={categories} selectedCategory={selectedCategory} setSelectedCategory={handleCategoryChange} selectedSubcategory={selectedSubcategory} setSelectedSubcategory={setSelectedSubcategory} location={location} setLocation={setLocation} priceRange={priceRange} setPriceRange={setPriceRange} condition={condition} setCondition={setCondition} useGeoFilter={useGeoFilter} setUseGeoFilter={setUseGeoFilter} distanceRadius={distanceRadius} setDistanceRadius={setDistanceRadius} geolocation={geolocation} onApply={applyFilters} onClear={clearFilters} hasActiveFilters={!!hasActiveFilters} /></div></aside>
+            <aside className="hidden lg:block w-72 shrink-0"><div className="sticky top-24 bg-card rounded-xl p-6 border border-border/50 shadow-sm"><h2 className="font-semibold mb-6 flex items-center gap-2"><SlidersHorizontal className="h-4 w-4" />Filtros</h2><SearchFilters categories={categories} selectedCategory={selectedCategory} setSelectedCategory={handleCategoryChange} selectedSubcategory={selectedSubcategory} setSelectedSubcategory={setSelectedSubcategory} location={location} setLocation={setLocation} priceRange={priceRange} setPriceRange={setPriceRange} condition={condition} setCondition={setCondition} useGeoFilter={useGeoFilter} setUseGeoFilter={setUseGeoFilter} distanceRadius={distanceRadius} setDistanceRadius={setDistanceRadius} geolocation={geolocation} onApply={applyFilters} onClear={clearFilters} hasActiveFilters={hasActiveFilters} /></div></aside>
             <div className="flex-1 min-w-0">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6"><div><h1 className="text-2xl font-bold">{useGeoFilter && geolocation.hasLocation ? 'Productos cerca de ti' : searchQuery ? `Resultados para "${searchQuery}"` : 'Todos los productos'}</h1><p className="text-muted-foreground">{totalCount} producto{totalCount !== 1 ? 's' : ''} encontrado{totalCount !== 1 ? 's' : ''}{useGeoFilter && geolocation.hasLocation && ` a menos de ${distanceRadius} km`}</p></div><div className="flex items-center gap-3">{user && hasActiveFilters && <Button variant="outline" size="sm" onClick={() => setSaveSearchDialogOpen(true)}><Bookmark className="h-4 w-4 mr-2" />Guardar búsqueda</Button>}<SortSelect value={sortBy} onChange={handleSortChange} showDistanceOption={useGeoFilter && geolocation.hasLocation} /><ViewModeToggle viewMode={viewMode} onViewModeChange={setViewMode} /></div></div>
               <SaveSearchDialog open={saveSearchDialogOpen} onOpenChange={setSaveSearchDialogOpen} filters={currentFilters} />
