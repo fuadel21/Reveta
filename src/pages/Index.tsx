@@ -35,6 +35,27 @@ const categoryLinks = [
   { label: "Electrónica en Pineda de Mar", href: "/segunda-mano/pineda-de-mar/electronica" },
 ];
 
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Reveta",
+  url: "https://reveta.es/",
+  logo: "https://reveta.es/favicon.ico",
+  description: "Marketplace para comprar y vender productos de segunda mano en España.",
+};
+
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Reveta",
+  url: "https://reveta.es/",
+  potentialAction: {
+    "@type": "SearchAction",
+    target: "https://reveta.es/search?q={search_term_string}",
+    "query-input": "required name=search_term_string",
+  },
+};
+
 const Index = () => {
   return (
     <>
@@ -46,6 +67,12 @@ const Index = () => {
         />
         <meta name="keywords" content="segunda mano, comprar segunda mano, vender segunda mano, marketplace España, productos usados, ofertas cerca de mí" />
         <link rel="canonical" href="https://reveta.es/" />
+        <meta property="og:title" content="Reveta - Compra y vende de segunda mano cerca de ti" />
+        <meta property="og:description" content="Compra y vende productos de segunda mano en tu ciudad. Encuentra ofertas locales en tecnología, muebles, motor, moda, bicicletas, hogar y mucho más en Reveta." />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://reveta.es/" />
+        <script type="application/ld+json">{JSON.stringify(organizationJsonLd)}</script>
+        <script type="application/ld+json">{JSON.stringify(websiteJsonLd)}</script>
       </Helmet>
       
       <div className="min-h-screen bg-background">
