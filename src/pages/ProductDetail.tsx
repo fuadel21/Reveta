@@ -17,6 +17,7 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import SocialShareButtons from '@/components/SocialShareButtons';
 import BlockUserButton from '@/components/BlockUserButton';
 import ProductBuyerConfidence from '@/components/product/ProductBuyerConfidence';
+import RelatedProducts from '@/components/product/RelatedProducts';
 import { Chat } from '@/components/Chat';
 
 interface Product {
@@ -350,6 +351,8 @@ const ProductDetail = () => {
               <div className="bg-muted/50 rounded-xl p-6"><h3 className="font-medium mb-3 flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />Consejos de seguridad</h3><ul className="text-sm text-muted-foreground space-y-2"><li>• Queda en lugares públicos</li><li>• Verifica el producto antes de pagar</li><li>• Nunca envíes dinero por adelantado</li><li>• Usa el chat de la plataforma</li></ul></div>
             </div>
           </div>
+
+          <RelatedProducts currentProductId={product.id} categoryId={product.category_id} location={product.location} />
         </main>
 
         <Footer />
