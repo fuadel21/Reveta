@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import ProductCard from '@/components/ProductCard';
 import { Button } from '@/components/ui/button';
 
@@ -44,6 +45,7 @@ const getRelativeTime = (dateString: string) => {
 };
 
 const RelatedProducts = ({ currentProductId, categoryId, location }: RelatedProductsProps) => {
+  const { user } = useAuth();
   const [products, setProducts] = useState<RelatedProduct[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -85,6 +87,14 @@ const RelatedProducts = ({ currentProductId, categoryId, location }: RelatedProd
     fetchRelatedProducts();
   }, [currentProductId, categoryId, location]);
 
+  const trackRelatedClick = (productId: string) => {
+    void (supabase as any).from('product_clicks').insert({
+      product_id: productId,
+      user_id: user?.id || null,
+      source: 'related_products',
+    });
+  };
+
   if (loading) {
     return (
       <section className="mt-12">
@@ -116,7 +126,12 @@ const RelatedProducts = ({ currentProductId, categoryId, location }: RelatedProd
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {products.map((item) => (
-          <Link key={item.id} to={`/producto/${item.id}/${createProductSlug(item.title)}`} className="block">
+          <Link
+            key={item.id}
+            to={`/producto/${item.id}/${createProductSlug(item.title)}`}
+            className="block"
+            onClick={() => trackRelatedClick(item.id)}
+          >
             <ProductCard
               id={item.id}
               title={item.title}
