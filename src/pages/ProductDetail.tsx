@@ -332,12 +332,10 @@ const ProductDetail = () => {
 
                 {!isOwner && product.status === 'active' && (
                   <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button className="h-14 text-base font-bold" onClick={handleContactSeller}><MessageCircle className="h-5 w-5 mr-2" />Chat</Button>
-                      <Button variant="outline" className="h-14 text-base font-bold border-primary/30" onClick={handleRequestPrivateCall} disabled={requestingCall}><Phone className="h-5 w-5 mr-2" />{requestingCall ? 'Creando...' : 'Llamada privada'}</Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground text-center">Crea una sala de audio dentro de Reveta. No se muestran números de teléfono.</p>
+                    <Button className="w-full h-14 text-lg font-bold" onClick={handleContactSeller}><MessageCircle className="h-5 w-5 mr-2" />Hacer oferta / Chat</Button>
                     <Button variant="secondary" className="w-full h-14 text-lg font-bold border-2 border-primary/20" onClick={() => navigate(`/checkout/${product.id}`)}>Comprar ahora</Button>
+                    <Button variant="outline" className="w-full h-12 text-base font-bold border-primary/30" onClick={handleRequestPrivateCall} disabled={requestingCall}><Phone className="h-5 w-5 mr-2" />{requestingCall ? 'Creando...' : 'Solicitar llamada privada'}</Button>
+                    <p className="text-xs text-muted-foreground text-center">Negocia por chat, envía una oferta o compra directamente con Protección Reveta.</p>
                     <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 mt-4"><div className="flex items-start gap-3"><Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" /><div><p className="text-sm font-bold text-foreground">Compra Protegida</p><p className="text-xs text-muted-foreground mt-1">Paga a través de Reveta y protegemos tu dinero hasta que recibas el producto.</p></div></div></div>
                   </div>
                 )}
