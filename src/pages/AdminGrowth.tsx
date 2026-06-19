@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ArrowLeft, BarChart3, Eye, Loader2, MapPin, Package, Search, TrendingUp, XCircle } from 'lucide-react';
+import { ArrowLeft, BarChart3, Eye, Loader2, MapPin, MousePointerClick, Package, Search, TrendingUp, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,6 +26,14 @@ interface SearchAnalytic {
   geo_enabled: boolean;
 }
 
+interface ProductClick {
+  id: string;
+  product_id: string | null;
+  user_id: string | null;
+  source: string | null;
+  created_at: string;
+}
+
 interface ClickedProduct {
   product_id: string;
   title: string | null;
@@ -46,6 +54,13 @@ const normalizeLabel = (value: string | null | undefined, fallback: string) => {
   return cleaned && cleaned.length > 0 ? cleaned : fallback;
 };
 
+const getSourceLabel = (source: string | null | undefined) => {
+  if (source === 'product_grid') return 'Búsqueda / listado';
+  if (source === 'related_products') return 'Productos similares';
+  if (source === 'search_grid') return 'Búsqueda';
+  return source || 'Sin origen';
+};
+
 const summarize = (items: SearchAnalytic[], getLabel: (item: SearchAnalytic) => string | null | undefined): SummaryRow[] => {
   const map = new Map<string, SummaryRow>();
 
@@ -54,6 +69,19 @@ const summarize = (items: SearchAnalytic[], getLabel: (item: SearchAnalytic) => 
     const current = map.get(label) || { label, count: 0, zeroResults: 0 };
     current.count += 1;
     if (item.result_count === 0) current.zeroResults = (current.zeroResults || 0) + 1;
+    map.set(label, current);
+  });
+
+  return Array.from(map.values()).sort((a, b) => b.count - a.count).slice(0, 10);
+};
+
+const summarizeClickSources = (items: ProductClick[]): SummaryRow[] => {
+  const map = new Map<string, SummaryRow>();
+
+  items.forEach((item) => {
+    const label = getSourceLabel(item.source);
+    const current = map.get(label) || { label, count: 0 };
+    current.count += 1;
     map.set(label, current);
   });
 
@@ -83,6 +111,7 @@ const AdminGrowth = () => {
   const { user, loading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdmin();
   const [items, setItems] = useState<SearchAnalytic[]>([]);
+  const [productClicks, setProductClicks] = useState<ProductClick[]>([]);
   const [clickedProducts, setClickedProducts] = useState<ClickedProduct[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -104,7 +133,7 @@ const AdminGrowth = () => {
   const fetchAnalytics = async () => {
     setLoading(true);
 
-    const [searchResult, clickedProductsResult] = await Promise.all([
+    const [searchResult, clickedProductsResult, productClicksResult] = await Promise.all([
       (supabase as any)
         .from('search_analytics')
         .select('*')
@@ -114,6 +143,11 @@ const AdminGrowth = () => {
         .from('growth_top_clicked_products')
         .select('*')
         .limit(10),
+      (supabase as any)
+        .from('product_clicks')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(500),
     ]);
 
     if (searchResult.error) {
@@ -131,6 +165,13 @@ const AdminGrowth = () => {
       setClickedProducts((clickedProductsResult.data || []) as ClickedProduct[]);
     }
 
+    if (productClicksResult.error) {
+      console.warn('Product clicks not available:', productClicksResult.error.message);
+      setProductClicks([]);
+    } else {
+      setProductClicks((productClicksResult.data || []) as ProductClick[]);
+    }
+
     setLoading(false);
   };
 
@@ -138,10 +179,12 @@ const AdminGrowth = () => {
   const searchesWithNoResults = items.filter((item) => item.result_count === 0).length;
   const uniqueQueries = new Set(items.map((item) => normalizeLabel(item.query, 'Sin texto'))).size;
   const geoSearches = items.filter((item) => item.geo_enabled).length;
+  const totalProductClicks = productClicks.length;
 
   const topQueries = useMemo(() => summarize(items, (item) => item.query), [items]);
   const topLocations = useMemo(() => summarize(items, (item) => item.location), [items]);
   const noResultQueries = useMemo(() => summarize(items.filter((item) => item.result_count === 0), (item) => item.query), [items]);
+  const clickSources = useMemo(() => summarizeClickSources(productClicks), [productClicks]);
   const recentSearches = items.slice(0, 25);
 
   if (authLoading || adminLoading) {
@@ -168,18 +211,19 @@ const AdminGrowth = () => {
             <Button onClick={fetchAnalytics} variant="outline">Actualizar</Button>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
             <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{totalSearches}</CardTitle><CardDescription className="flex items-center gap-2"><Search className="h-4 w-4" /> Búsquedas</CardDescription></CardHeader></Card>
             <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{uniqueQueries}</CardTitle><CardDescription className="flex items-center gap-2"><TrendingUp className="h-4 w-4" /> Términos únicos</CardDescription></CardHeader></Card>
             <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{searchesWithNoResults}</CardTitle><CardDescription className="flex items-center gap-2"><XCircle className="h-4 w-4" /> Sin resultados</CardDescription></CardHeader></Card>
             <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{geoSearches}</CardTitle><CardDescription className="flex items-center gap-2"><MapPin className="h-4 w-4" /> Cerca de mí</CardDescription></CardHeader></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{totalProductClicks}</CardTitle><CardDescription className="flex items-center gap-2"><MousePointerClick className="h-4 w-4" /> Clics</CardDescription></CardHeader></Card>
           </div>
 
           {loading ? (
             <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
           ) : (
             <div className="space-y-8">
-              <div className="grid gap-6 lg:grid-cols-3">
+              <div className="grid gap-6 lg:grid-cols-4">
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Más buscado</CardTitle>
@@ -218,12 +262,25 @@ const AdminGrowth = () => {
                     </Table>
                   </CardContent>
                 </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><MousePointerClick className="h-5 w-5" /> Origen de clics</CardTitle>
+                    <CardDescription>Qué zonas generan más navegación.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader><TableRow><TableHead>Origen</TableHead><TableHead className="text-right">Clics</TableHead></TableRow></TableHeader>
+                      <TableBody>{clickSources.map((row) => <TableRow key={row.label}><TableCell>{row.label}</TableCell><TableCell className="text-right font-medium">{row.count}</TableCell></TableRow>)}</TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
               </div>
 
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2"><Package className="h-5 w-5" /> Productos más clicados</CardTitle>
-                  <CardDescription>Productos que generan más interés desde listados y búsquedas.</CardDescription>
+                  <CardDescription>Productos que generan más interés desde listados, búsquedas y productos similares.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
