@@ -9,15 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Heart, MapPin, Clock, MessageCircle, Phone, ChevronLeft, ChevronRight, Shield, Eye } from 'lucide-react';
-import SellerRating from '@/components/SellerRating';
 import { Reviews } from '@/components/Reviews';
-import ReportDialog from '@/components/ReportDialog';
 import ProductStatusBadge from '@/components/ProductStatusBadge';
-import VerifiedBadge from '@/components/VerifiedBadge';
 import SocialShareButtons from '@/components/SocialShareButtons';
-import BlockUserButton from '@/components/BlockUserButton';
 import ProductBuyerConfidence from '@/components/product/ProductBuyerConfidence';
 import RelatedProducts from '@/components/product/RelatedProducts';
+import SellerTrustCard from '@/components/product/SellerTrustCard';
 import { Chat } from '@/components/Chat';
 
 interface Product {
@@ -67,6 +64,7 @@ const ProductDetail = () => {
   const [product, setProduct] = useState<Product | null>(null);
   const [seller, setSeller] = useState<Profile | null>(null);
   const [category, setCategory] = useState<Category | null>(null);
+  const [sellerActiveProductsCount, setSellerActiveProductsCount] = useState(0);
   const [isFavorite, setIsFavorite] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -97,6 +95,13 @@ const ProductDetail = () => {
 
     const { data: sellerData } = await supabase.from('profiles').select('*').eq('id', data.user_id).maybeSingle();
     if (sellerData) setSeller(sellerData);
+
+    const { count: activeCount } = await supabase
+      .from('products')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', data.user_id)
+      .eq('status', 'active');
+    setSellerActiveProductsCount(activeCount || 0);
 
     if (data.category_id) {
       const { data: categoryData } = await supabase.from('categories').select('*').eq('id', data.category_id).maybeSingle();
@@ -217,8 +222,6 @@ const ProductDetail = () => {
     if (diffDays < 7) return `Hace ${diffDays} días`;
     return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
   };
-
-  const getMemberSince = (dateString: string) => new Date(dateString).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
   const nextImage = () => {
     if (product && product.images.length > 1) setCurrentImageIndex((prev) => (prev === product.images.length - 1 ? 0 : prev + 1));
@@ -344,7 +347,15 @@ const ProductDetail = () => {
                 {isOwner && <div className="space-y-3"><Button variant="outline" className="w-full h-12" onClick={() => navigate('/profile')}>Gestionar producto</Button><p className="text-xs text-center text-muted-foreground italic">Eres el vendedor de este producto</p></div>}
               </div>
 
-              {seller && <div className="bg-card rounded-xl p-6 shadow-card border border-border/50"><div className="flex items-center gap-4 mb-4"><div className="h-14 w-14 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-xl font-bold text-primary-foreground">{seller.full_name?.[0]?.toUpperCase() || 'U'}</div><div><div className="flex items-center gap-2"><p className="font-semibold">{seller.full_name || 'Usuario'}</p>{seller.verified && <VerifiedBadge size="sm" />}</div><SellerRating sellerId={seller.id} size="sm" /><p className="text-sm text-muted-foreground mt-1">Miembro desde {getMemberSince(seller.created_at)}</p></div></div>{seller.verified && <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4"><Shield className="h-4 w-4 text-primary" /><span>Vendedor verificado</span></div>}{!isOwner && <div className="flex flex-col gap-2"><ReportDialog productId={product.id} userId={seller.id} /><BlockUserButton userId={seller.id} userName={seller.full_name || 'este usuario'} /></div>}</div>}
+              {seller && (
+                <SellerTrustCard
+                  seller={seller}
+                  productId={product.id}
+                  isOwner={isOwner}
+                  activeProductsCount={sellerActiveProductsCount}
+                  onContactSeller={handleContactSeller}
+                />
+              )}
               {seller && <div className="bg-card rounded-xl p-6 shadow-card border border-border/50"><Reviews userId={seller.id} productId={product.id} /></div>}
               <div className="bg-muted/50 rounded-xl p-6"><h3 className="font-medium mb-3 flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />Consejos de seguridad</h3><ul className="text-sm text-muted-foreground space-y-2"><li>• Queda en lugares públicos</li><li>• Verifica el producto antes de pagar</li><li>• Nunca envíes dinero por adelantado</li><li>• Usa el chat de la plataforma</li></ul></div>
             </div>
