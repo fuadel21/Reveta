@@ -5,17 +5,22 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  Search, 
-  Bell, 
-  BellOff, 
-  Trash2, 
+import {
+  Search,
+  Bell,
+  BellOff,
+  Trash2,
   ExternalLink,
-  BookmarkX
+  BookmarkX,
+  Sparkles,
+  Clock,
+  ShieldCheck,
+  Plus,
 } from 'lucide-react';
 
 interface SavedSearch {
@@ -33,6 +38,22 @@ interface SavedSearch {
   created_at: string;
   category?: { name: string } | null;
 }
+
+const conditionLabels: Record<string, string> = {
+  new: 'Nuevo',
+  like_new: 'Como nuevo',
+  good: 'Buen estado',
+  fair: 'Aceptable',
+  poor: 'Necesita reparación',
+};
+
+const formatDate = (dateString: string) => {
+  return new Date(dateString).toLocaleDateString('es-ES', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+};
 
 const SavedSearches = () => {
   const { user, loading: authLoading } = useAuth();
@@ -64,10 +85,15 @@ const SavedSearches = () => {
 
     if (error) {
       console.error('Error fetching saved searches:', error);
+      toast({
+        title: 'No se pudieron cargar tus búsquedas',
+        description: 'Inténtalo de nuevo en unos segundos.',
+        variant: 'destructive',
+      });
     } else {
-      const formattedData = data?.map(s => ({
-        ...s,
-        category: s.categories
+      const formattedData = data?.map((item: any) => ({
+        ...item,
+        category: item.categories,
       })) || [];
       setSearches(formattedData);
     }
@@ -85,17 +111,17 @@ const SavedSearches = () => {
       toast({
         title: 'Error',
         description: 'No se pudo actualizar la alerta',
-        variant: 'destructive'
+        variant: 'destructive',
       });
     } else {
-      setSearches(searches.map(s => 
-        s.id === searchId ? { ...s, alerts_enabled: enabled } : s
+      setSearches(searches.map((item) =>
+        item.id === searchId ? { ...item, alerts_enabled: enabled } : item,
       ));
       toast({
         title: enabled ? 'Alertas activadas' : 'Alertas desactivadas',
-        description: enabled 
-          ? 'Recibirás notificaciones de nuevos productos'
-          : 'No recibirás más notificaciones de esta búsqueda'
+        description: enabled
+          ? 'Te avisaremos cuando haya productos que coincidan con esta búsqueda.'
+          : 'No recibirás más avisos de esta búsqueda.',
       });
     }
   };
@@ -110,13 +136,13 @@ const SavedSearches = () => {
       toast({
         title: 'Error',
         description: 'No se pudo eliminar la búsqueda',
-        variant: 'destructive'
+        variant: 'destructive',
       });
     } else {
-      setSearches(searches.filter(s => s.id !== searchId));
+      setSearches(searches.filter((item) => item.id !== searchId));
       toast({
         title: 'Búsqueda eliminada',
-        description: 'La búsqueda guardada se ha eliminado'
+        description: 'La búsqueda guardada se ha eliminado',
       });
     }
   };
@@ -137,6 +163,8 @@ const SavedSearches = () => {
     return `/search?${params.toString()}`;
   };
 
+  const enabledAlerts = searches.filter((item) => item.alerts_enabled).length;
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -148,92 +176,100 @@ const SavedSearches = () => {
   return (
     <>
       <Helmet>
-        <title>Búsquedas Guardadas | Reveta</title>
-        <meta name="description" content="Gestiona tus búsquedas guardadas y alertas" />
+        <title>Búsquedas guardadas | Reveta</title>
+        <meta name="description" content="Gestiona tus búsquedas guardadas, activa alertas y vuelve rápidamente a los productos que te interesan en Reveta." />
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
 
-        <main className="flex-1 container py-8 max-w-2xl">
-          <h1 className="text-2xl font-bold mb-6">Búsquedas Guardadas</h1>
+        <main className="flex-1 container py-8 max-w-4xl">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold">Búsquedas guardadas</h1>
+              <p className="text-muted-foreground mt-1">
+                Vuelve rápido a lo que te interesa y activa alertas para no perder oportunidades.
+              </p>
+            </div>
+            <Button onClick={() => navigate('/search')}>
+              <Plus className="h-4 w-4 mr-2" /> Nueva búsqueda
+            </Button>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3 mb-8">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">{searches.length}</CardTitle>
+                <CardDescription className="flex items-center gap-2"><Search className="h-4 w-4" /> Guardadas</CardDescription>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">{enabledAlerts}</CardTitle>
+                <CardDescription className="flex items-center gap-2"><Bell className="h-4 w-4" /> Alertas activas</CardDescription>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-2xl">24/7</CardTitle>
+                <CardDescription className="flex items-center gap-2"><Clock className="h-4 w-4" /> Seguimiento</CardDescription>
+              </CardHeader>
+            </Card>
+          </div>
 
           {searches.length === 0 ? (
             <Card className="border-border/50">
               <CardContent className="py-12 text-center">
                 <BookmarkX className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No tienes búsquedas guardadas</h3>
-                <p className="text-muted-foreground mb-4">
-                  Guarda búsquedas para acceder rápidamente y recibir alertas
+                <h3 className="text-lg font-medium mb-2">Todavía no tienes búsquedas guardadas</h3>
+                <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                  Busca un producto, aplica filtros y pulsa “Guardar búsqueda” para volver más tarde y activar alertas.
                 </p>
                 <Button onClick={() => navigate('/search')}>
-                  <Search className="h-4 w-4 mr-2" />
-                  Explorar productos
+                  <Search className="h-4 w-4 mr-2" /> Explorar productos
                 </Button>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-4">
               {searches.map((search) => (
-                <Card key={search.id} className="border-border/50">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-4">
+                <Card key={search.id} className="border-border/50 hover:shadow-md transition-shadow">
+                  <CardContent className="p-5">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-medium truncate">{search.name}</h3>
-                        <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
-                          {search.query && (
-                            <p>Búsqueda: "{search.query}"</p>
-                          )}
-                          {search.category && (
-                            <p>Categoría: {search.category.name}</p>
-                          )}
-                          {search.condition && (
-                            <p>Condición: {search.condition}</p>
-                          )}
-                          {(search.min_price || search.max_price) && (
-                            <p>
-                              Precio: {search.min_price || 0}€ - {search.max_price || '∞'}€
-                            </p>
-                          )}
-                          {search.radius_km && (
-                            <p>Radio: {search.radius_km} km</p>
-                          )}
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <h3 className="font-semibold text-lg truncate">{search.name}</h3>
+                          {search.alerts_enabled ? <Badge>Alerta activa</Badge> : <Badge variant="outline">Sin alerta</Badge>}
                         </div>
+
+                        <div className="flex flex-wrap gap-2 text-sm">
+                          {search.query && <Badge variant="secondary">“{search.query}”</Badge>}
+                          {search.category && <Badge variant="secondary">{search.category.name}</Badge>}
+                          {search.condition && <Badge variant="secondary">{conditionLabels[search.condition] || search.condition}</Badge>}
+                          {search.location && <Badge variant="secondary">{search.location}</Badge>}
+                          {(search.min_price || search.max_price) && <Badge variant="secondary">{search.min_price || 0}€ - {search.max_price || '∞'}€</Badge>}
+                          {search.radius_km && <Badge variant="secondary">Radio {search.radius_km} km</Badge>}
+                        </div>
+
+                        <p className="text-xs text-muted-foreground mt-3">Guardada el {formatDate(search.created_at)}</p>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-2 text-sm">
-                          {search.alerts_enabled ? (
-                            <Bell className="h-4 w-4 text-primary" />
-                          ) : (
-                            <BellOff className="h-4 w-4 text-muted-foreground" />
-                          )}
-                          <Switch
-                            checked={search.alerts_enabled}
-                            onCheckedChange={(checked) => toggleAlerts(search.id, checked)}
-                          />
+                      <div className="flex items-center gap-3 md:justify-end">
+                        <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                          {search.alerts_enabled ? <Bell className="h-4 w-4 text-primary" /> : <BellOff className="h-4 w-4 text-muted-foreground" />}
+                          <span className="hidden sm:inline">Alertas</span>
+                          <Switch checked={search.alerts_enabled} onCheckedChange={(checked) => toggleAlerts(search.id, checked)} />
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex gap-2 mt-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        asChild
-                        className="flex-1"
-                      >
+                    <div className="flex gap-2 mt-5">
+                      <Button variant="outline" size="sm" asChild className="flex-1">
                         <Link to={buildSearchUrl(search)}>
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          Ver resultados
+                          <ExternalLink className="h-4 w-4 mr-2" /> Ver resultados
                         </Link>
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => deleteSearch(search.id)}
-                        className="text-destructive hover:text-destructive"
-                      >
+                      <Button variant="outline" size="sm" onClick={() => deleteSearch(search.id)} className="text-destructive hover:text-destructive">
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -242,6 +278,17 @@ const SavedSearches = () => {
               ))}
             </div>
           )}
+
+          <Card className="mt-8 border-primary/20 bg-primary/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg"><Sparkles className="h-5 w-5 text-primary" />Cómo usar esta sección</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-3">
+              <div className="flex gap-2"><Search className="h-4 w-4 text-primary shrink-0 mt-0.5" /><span>Guarda búsquedas con filtros concretos.</span></div>
+              <div className="flex gap-2"><Bell className="h-4 w-4 text-primary shrink-0 mt-0.5" /><span>Activa alertas para no perder novedades.</span></div>
+              <div className="flex gap-2"><ShieldCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" /><span>Compra y negocia siempre dentro de Reveta.</span></div>
+            </CardContent>
+          </Card>
         </main>
 
         <Footer />
