@@ -133,7 +133,8 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
 
   const updateConversationTimestamp = async (conversationId: string) => {
     const updatedAt = new Date().toISOString();
-    await supabase.from('conversations').update({ updated_at: updatedAt }).eq('id', conversationId);
+    const { error } = await supabase.from('conversations').update({ updated_at: updatedAt }).eq('id', conversationId);
+    if (error) console.warn('Conversation timestamp not updated:', error.message);
     setSelectedConversation((prev) => (prev ? { ...prev, updated_at: updatedAt } : prev));
     setConversations((prev) => prev.map((conversation) => conversation.id === conversationId ? { ...conversation, updated_at: updatedAt } : conversation));
   };
@@ -148,7 +149,6 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     const { error } = await supabase.from('messages').insert({ conversation_id: selectedConversation.id, sender_id: user.id, content });
     if (error) {
       console.error('Error sending message:', error);
-      toast({ title: 'Error', description: 'No se pudo enviar el mensaje', variant: 'destructive' });
       setNewMessage(content);
     } else {
       await updateConversationTimestamp(selectedConversation.id);
@@ -189,7 +189,7 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
       toast({ title: 'Oferta enviada', description: 'El vendedor la verá en el chat.' });
     } catch (error) {
       console.error('Error sending offer:', error);
-      toast({ title: 'No se pudo enviar la oferta', description: 'Ejecuta el SQL de ofertas si la tabla no existe.', variant: 'destructive' });
+      toast({ title: 'No se pudo enviar la oferta', description: 'Revisa que el sistema de ofertas esté activo.', variant: 'destructive' });
     } finally {
       setSendingOffer(false);
     }
