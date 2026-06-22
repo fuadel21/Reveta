@@ -7,10 +7,11 @@ import Footer from '@/components/Footer';
 import ProductCard from '@/components/ProductCard';
 import SellerRating from '@/components/SellerRating';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import FollowSellerButton from '@/components/seller/FollowSellerButton';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CalendarDays, CheckCircle2, MessageCircle, Package, ShieldCheck, ShoppingBag, Star, Store } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Package, ShieldCheck, ShoppingBag, Star, Store, Users } from 'lucide-react';
 
 interface Profile {
   id: string;
@@ -62,6 +63,7 @@ const PublicSellerProfile = () => {
   const [seller, setSeller] = useState<Profile | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [soldCount, setSoldCount] = useState(0);
+  const [followersCount, setFollowersCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState('recent');
 
@@ -102,6 +104,10 @@ const PublicSellerProfile = () => {
     setProducts((activeProducts || []) as Product[]);
     setSoldCount(soldProductsCount || 0);
     setLoading(false);
+  };
+
+  const updateFollowersCount = (value: number) => {
+    setFollowersCount((previous) => (value < 0 ? Math.max(0, previous + value) : value === 1 ? previous + 1 : value));
   };
 
   const sortedProducts = useMemo(() => {
@@ -165,14 +171,17 @@ const PublicSellerProfile = () => {
                 </div>
               </div>
 
-              <Button asChild variant="outline">
-                <Link to={`/search?seller=${seller.id}`}>
-                  <Store className="mr-2 h-4 w-4" /> Ver todos sus anuncios
-                </Link>
-              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row md:flex-col lg:flex-row">
+                <FollowSellerButton sellerId={seller.id} onFollowersChange={updateFollowersCount} />
+                <Button asChild variant="outline">
+                  <Link to={`/search?seller=${seller.id}`}>
+                    <Store className="mr-2 h-4 w-4" /> Ver todos sus anuncios
+                  </Link>
+                </Button>
+              </div>
             </div>
 
-            <div className="mt-8 grid gap-4 sm:grid-cols-4">
+            <div className="mt-8 grid gap-4 sm:grid-cols-5">
               <div className="rounded-2xl border border-border/60 p-4">
                 <p className="text-2xl font-bold">{products.length}</p>
                 <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"><Package className="h-4 w-4" /> Anuncios activos</p>
@@ -180,6 +189,10 @@ const PublicSellerProfile = () => {
               <div className="rounded-2xl border border-border/60 p-4">
                 <p className="text-2xl font-bold">{soldCount}</p>
                 <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"><ShoppingBag className="h-4 w-4" /> Vendidos</p>
+              </div>
+              <div className="rounded-2xl border border-border/60 p-4">
+                <p className="text-2xl font-bold">{followersCount}</p>
+                <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"><Users className="h-4 w-4" /> Seguidores</p>
               </div>
               <div className="rounded-2xl border border-border/60 p-4">
                 <p className="text-2xl font-bold">{totalViews}</p>
