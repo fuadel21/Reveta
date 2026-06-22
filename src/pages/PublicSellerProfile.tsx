@@ -1,0 +1,252 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
+import { supabase } from '@/integrations/supabase/client';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
+import ProductCard from '@/components/ProductCard';
+import SellerRating from '@/components/SellerRating';
+import VerifiedBadge from '@/components/VerifiedBadge';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CalendarDays, CheckCircle2, MessageCircle, Package, ShieldCheck, ShoppingBag, Star, Store } from 'lucide-react';
+
+interface Profile {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  verified: boolean | null;
+}
+
+interface Product {
+  id: string;
+  title: string;
+  price: number;
+  images: string[] | null;
+  location: string | null;
+  condition: string | null;
+  status: string | null;
+  views: number | null;
+  created_at: string;
+}
+
+const createProductSlug = (title: string) =>
+  title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'producto';
+
+const formatDate = (dateString: string) =>
+  new Date(dateString).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+
+const getRelativeTime = (dateString: string) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return 'Hoy';
+  if (diffDays === 1) return 'Ayer';
+  if (diffDays < 7) return `${diffDays} días`;
+  return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+};
+
+const PublicSellerProfile = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [seller, setSeller] = useState<Profile | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [soldCount, setSoldCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState('recent');
+
+  useEffect(() => {
+    fetchSellerProfile();
+  }, [id]);
+
+  const fetchSellerProfile = async () => {
+    if (!id) return;
+    setLoading(true);
+
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('id,full_name,avatar_url,created_at,verified')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (profileError || !profileData) {
+      navigate('/');
+      return;
+    }
+
+    setSeller(profileData);
+
+    const { data: activeProducts } = await supabase
+      .from('products')
+      .select('id,title,price,images,location,condition,status,views,created_at')
+      .eq('user_id', id)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    const { count: soldProductsCount } = await supabase
+      .from('products')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', id)
+      .eq('status', 'sold');
+
+    setProducts((activeProducts || []) as Product[]);
+    setSoldCount(soldProductsCount || 0);
+    setLoading(false);
+  };
+
+  const sortedProducts = useMemo(() => {
+    const items = [...products];
+    switch (sortBy) {
+      case 'views':
+        return items.sort((a, b) => (b.views || 0) - (a.views || 0));
+      case 'price_asc':
+        return items.sort((a, b) => a.price - b.price);
+      case 'price_desc':
+        return items.sort((a, b) => b.price - a.price);
+      default:
+        return items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+  }, [products, sortBy]);
+
+  const totalViews = products.reduce((sum, item) => sum + (item.views || 0), 0);
+  const displayName = seller?.full_name || 'Vendedor de Reveta';
+  const pageTitle = `${displayName} en Reveta | Perfil de vendedor`;
+  const pageDescription = `Consulta los anuncios activos, valoraciones y señales de confianza de ${displayName} en Reveta.`;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  if (!seller) return null;
+
+  return (
+    <>
+      <Helmet>
+        <title>{pageTitle}</title>
+        <meta name="description" content={pageDescription} />
+        <link rel="canonical" href={`https://reveta.es/usuario/${seller.id}`} />
+        <meta property="og:title" content={pageTitle} />
+        <meta property="og:description" content={pageDescription} />
+        <meta property="og:type" content="profile" />
+      </Helmet>
+
+      <div className="min-h-screen flex flex-col bg-background">
+        <Header />
+        <main className="flex-1 container py-8">
+          <section className="rounded-3xl border border-border/60 bg-card p-6 shadow-sm md:p-8">
+            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-5">
+                <div className="h-24 w-24 overflow-hidden rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-3xl font-bold text-primary-foreground">
+                  {seller.avatar_url ? <img src={seller.avatar_url} alt={displayName} className="h-full w-full object-cover" /> : displayName[0]?.toUpperCase()}
+                </div>
+                <div>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <h1 className="text-3xl font-bold">{displayName}</h1>
+                    {seller.verified ? <VerifiedBadge /> : <Badge variant="outline">Sin verificar</Badge>}
+                  </div>
+                  <SellerRating sellerId={seller.id} size="md" />
+                  <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                    <CalendarDays className="h-4 w-4" /> Miembro desde {formatDate(seller.created_at)}
+                  </p>
+                </div>
+              </div>
+
+              <Button asChild variant="outline">
+                <Link to={`/search?seller=${seller.id}`}>
+                  <Store className="mr-2 h-4 w-4" /> Ver todos sus anuncios
+                </Link>
+              </Button>
+            </div>
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-4">
+              <div className="rounded-2xl border border-border/60 p-4">
+                <p className="text-2xl font-bold">{products.length}</p>
+                <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"><Package className="h-4 w-4" /> Anuncios activos</p>
+              </div>
+              <div className="rounded-2xl border border-border/60 p-4">
+                <p className="text-2xl font-bold">{soldCount}</p>
+                <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"><ShoppingBag className="h-4 w-4" /> Vendidos</p>
+              </div>
+              <div className="rounded-2xl border border-border/60 p-4">
+                <p className="text-2xl font-bold">{totalViews}</p>
+                <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"><Star className="h-4 w-4" /> Visitas</p>
+              </div>
+              <div className="rounded-2xl border border-border/60 p-4">
+                <p className="text-2xl font-bold">{seller.verified ? 'Sí' : 'Pendiente'}</p>
+                <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground"><ShieldCheck className="h-4 w-4" /> Verificación</p>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl bg-primary/5 border border-primary/10 p-4">
+              <h2 className="mb-3 font-semibold">Señales de confianza</h2>
+              <div className="grid gap-2 text-sm text-muted-foreground md:grid-cols-3">
+                <div className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-primary" /> Valoraciones visibles del vendedor</div>
+                <div className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-primary" /> Chat seguro dentro de Reveta</div>
+                <div className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-primary" /> Compra protegida en productos activos</div>
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-8">
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold">Anuncios activos</h2>
+                <p className="text-sm text-muted-foreground">Productos publicados actualmente por este vendedor.</p>
+              </div>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-full sm:w-56">
+                  <SelectValue placeholder="Ordenar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recent">Más recientes</SelectItem>
+                  <SelectItem value="views">Más vistos</SelectItem>
+                  <SelectItem value="price_asc">Precio ascendente</SelectItem>
+                  <SelectItem value="price_desc">Precio descendente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {sortedProducts.length === 0 ? (
+              <div className="rounded-2xl border border-border/60 bg-card p-10 text-center text-muted-foreground">
+                Este vendedor no tiene anuncios activos ahora mismo.
+              </div>
+            ) : (
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                {sortedProducts.map((item) => (
+                  <Link key={item.id} to={`/producto/${item.id}/${createProductSlug(item.title)}`}>
+                    <ProductCard
+                      id={item.id}
+                      title={item.title}
+                      price={item.price}
+                      image={item.images?.[0] || '/placeholder.svg'}
+                      location={item.location || 'Sin ubicación'}
+                      time={getRelativeTime(item.created_at)}
+                      isNegotiable={item.condition !== 'new'}
+                    />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+        </main>
+        <Footer />
+      </div>
+    </>
+  );
+};
+
+export default PublicSellerProfile;
