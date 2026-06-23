@@ -15,6 +15,7 @@ import { CalendarDays, CheckCircle2, Package, ShieldCheck, ShoppingBag, Star, St
 
 interface Profile {
   id: string;
+  username: string | null;
   full_name: string | null;
   avatar_url: string | null;
   created_at: string;
@@ -57,6 +58,8 @@ const getRelativeTime = (dateString: string) => {
   return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
 };
 
+const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
 const PublicSellerProfile = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -75,11 +78,14 @@ const PublicSellerProfile = () => {
     if (!id) return;
     setLoading(true);
 
-    const { data: profileData, error: profileError } = await supabase
+    const identifier = decodeURIComponent(id).trim().toLowerCase();
+    const profileQuery = supabase
       .from('profiles')
-      .select('id,full_name,avatar_url,created_at,verified')
-      .eq('id', id)
-      .maybeSingle();
+      .select('id,username,full_name,avatar_url,created_at,verified');
+
+    const { data: profileData, error: profileError } = isUuid(identifier)
+      ? await profileQuery.eq('id', identifier).maybeSingle()
+      : await profileQuery.eq('username', identifier).maybeSingle();
 
     if (profileError || !profileData) {
       navigate('/');
@@ -91,14 +97,14 @@ const PublicSellerProfile = () => {
     const { data: activeProducts } = await supabase
       .from('products')
       .select('id,title,price,images,location,condition,status,views,created_at')
-      .eq('user_id', id)
+      .eq('user_id', profileData.id)
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
     const { count: soldProductsCount } = await supabase
       .from('products')
       .select('id', { count: 'exact', head: true })
-      .eq('user_id', id)
+      .eq('user_id', profileData.id)
       .eq('status', 'sold');
 
     setProducts((activeProducts || []) as Product[]);
@@ -125,9 +131,10 @@ const PublicSellerProfile = () => {
   }, [products, sortBy]);
 
   const totalViews = products.reduce((sum, item) => sum + (item.views || 0), 0);
-  const displayName = seller?.full_name || 'Vendedor de Reveta';
-  const pageTitle = `${displayName} en Reveta | Perfil de vendedor`;
-  const pageDescription = `Consulta los anuncios activos, valoraciones y señales de confianza de ${displayName} en Reveta.`;
+  const displayName = seller?.full_name || seller?.username || 'Vendedor de Reveta';
+  const profilePath = seller?.username || seller?.id || '';
+  const pageTitle = `${displayName} | Vendedor en Reveta`;
+  const pageDescription = `Consulta los anuncios, valoraciones y productos de ${displayName} en Reveta.`;
 
   if (loading) {
     return (
@@ -144,7 +151,7 @@ const PublicSellerProfile = () => {
       <Helmet>
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
-        <link rel="canonical" href={`https://reveta.es/usuario/${seller.id}`} />
+        <link rel="canonical" href={`https://reveta.es/usuario/${profilePath}`} />
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={pageDescription} />
         <meta property="og:type" content="profile" />
@@ -164,6 +171,7 @@ const PublicSellerProfile = () => {
                     <h1 className="text-3xl font-bold">{displayName}</h1>
                     {seller.verified ? <VerifiedBadge /> : <Badge variant="outline">Sin verificar</Badge>}
                   </div>
+                  {seller.username && <p className="mb-2 text-sm text-muted-foreground">@{seller.username}</p>}
                   <SellerRating sellerId={seller.id} size="md" />
                   <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
                     <CalendarDays className="h-4 w-4" /> Miembro desde {formatDate(seller.created_at)}
