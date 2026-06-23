@@ -1,13 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  Facebook, 
-  Twitter, 
-  Linkedin, 
-  Link2, 
-  MessageCircle,
-  Share2
-} from 'lucide-react';
+import { Facebook, Twitter, Linkedin, Link2, MessageCircle, Share2, Send } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,63 +18,59 @@ interface SocialShareButtonsProps {
 const SocialShareButtons = ({ url, title, description, compact = false }: SocialShareButtonsProps) => {
   const { toast } = useToast();
   const shareUrl = url || window.location.href;
+  const shareText = description ? `${title}\n${description}` : title;
   const encodedUrl = encodeURIComponent(shareUrl);
   const encodedTitle = encodeURIComponent(title);
-  const encodedDescription = encodeURIComponent(description || title);
+  const encodedShareText = encodeURIComponent(`${shareText}\n${shareUrl}`);
 
   const shareLinks = [
     {
       name: 'WhatsApp',
       icon: MessageCircle,
-      url: `https://wa.me/?text=${encodedTitle}%20${encodedUrl}`,
-      color: 'hover:text-green-500'
+      url: `https://wa.me/?text=${encodedShareText}`,
+      color: 'hover:text-green-500',
     },
     {
-      name: 'Twitter',
-      icon: Twitter,
-      url: `https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encodedUrl}`,
-      color: 'hover:text-blue-400'
+      name: 'Telegram',
+      icon: Send,
+      url: `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(shareText)}`,
+      color: 'hover:text-sky-500',
     },
     {
       name: 'Facebook',
       icon: Facebook,
       url: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
-      color: 'hover:text-blue-600'
+      color: 'hover:text-blue-600',
+    },
+    {
+      name: 'X',
+      icon: Twitter,
+      url: `https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encodedUrl}`,
+      color: 'hover:text-blue-400',
     },
     {
       name: 'LinkedIn',
       icon: Linkedin,
       url: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`,
-      color: 'hover:text-blue-700'
+      color: 'hover:text-blue-700',
     },
   ];
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(shareUrl);
-      toast({
-        title: 'Enlace copiado',
-        description: 'El enlace se ha copiado al portapapeles'
-      });
+      await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+      toast({ title: 'Enlace copiado', description: 'El enlace se ha copiado al portapapeles' });
     } catch {
-      toast({
-        title: 'Error',
-        description: 'No se pudo copiar el enlace',
-        variant: 'destructive'
-      });
+      toast({ title: 'Error', description: 'No se pudo copiar el enlace', variant: 'destructive' });
     }
   };
 
   const handleNativeShare = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({
-          title,
-          text: description,
-          url: shareUrl
-        });
-      } catch (err) {
-        // User cancelled or error
+        await navigator.share({ title, text: description || title, url: shareUrl });
+      } catch {
+        // User cancelled or sharing failed.
       }
     }
   };
@@ -121,13 +110,7 @@ const SocialShareButtons = ({ url, title, description, compact = false }: Social
   return (
     <div className="flex flex-wrap gap-2">
       {shareLinks.map((link) => (
-        <Button
-          key={link.name}
-          variant="outline"
-          size="sm"
-          asChild
-          className={link.color}
-        >
+        <Button key={link.name} variant="outline" size="sm" asChild className={link.color}>
           <a href={link.url} target="_blank" rel="noopener noreferrer">
             <link.icon className="h-4 w-4 mr-2" />
             {link.name}
