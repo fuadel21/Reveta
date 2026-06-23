@@ -8,6 +8,7 @@ import ProductCard from '@/components/ProductCard';
 import SellerRating from '@/components/SellerRating';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import FollowSellerButton from '@/components/seller/FollowSellerButton';
+import SocialShareButtons from '@/components/SocialShareButtons';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -133,8 +134,9 @@ const PublicSellerProfile = () => {
   const totalViews = products.reduce((sum, item) => sum + (item.views || 0), 0);
   const displayName = seller?.full_name || seller?.username || 'Vendedor de Reveta';
   const profilePath = seller?.username || seller?.id || '';
+  const profileUrl = `https://reveta.es/usuario/${profilePath}`;
   const pageTitle = `${displayName} | Vendedor en Reveta`;
-  const pageDescription = `Consulta los anuncios, valoraciones y productos de ${displayName} en Reveta.`;
+  const pageDescription = `Descubre los productos de ${displayName} en Reveta. Consulta anuncios activos, valoraciones y señales de confianza.`;
 
   if (loading) {
     return (
@@ -151,10 +153,19 @@ const PublicSellerProfile = () => {
       <Helmet>
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
-        <link rel="canonical" href={`https://reveta.es/usuario/${profilePath}`} />
+        <link rel="canonical" href={profileUrl} />
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={pageDescription} />
+        <meta property="og:url" content={profileUrl} />
         <meta property="og:type" content="profile" />
+        <meta property="og:site_name" content="Reveta" />
+        <meta property="og:locale" content="es_ES" />
+        {seller.avatar_url && <meta property="og:image" content={seller.avatar_url} />}
+        {seller.avatar_url && <meta property="og:image:alt" content={displayName} />}
+        <meta name="twitter:card" content={seller.avatar_url ? 'summary_large_image' : 'summary'} />
+        <meta name="twitter:title" content={pageTitle} />
+        <meta name="twitter:description" content={pageDescription} />
+        {seller.avatar_url && <meta name="twitter:image" content={seller.avatar_url} />}
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
@@ -181,6 +192,7 @@ const PublicSellerProfile = () => {
 
               <div className="flex flex-col gap-2 sm:flex-row md:flex-col lg:flex-row">
                 <FollowSellerButton sellerId={seller.id} onFollowersChange={updateFollowersCount} />
+                <SocialShareButtons url={profileUrl} title={`Descubre los productos de ${displayName} en Reveta`} description={`Perfil con ${products.length} anuncios activos en Reveta.`} compact />
                 <Button asChild variant="outline">
                   <Link to={`/search?seller=${seller.id}`}>
                     <Store className="mr-2 h-4 w-4" /> Ver todos sus anuncios
