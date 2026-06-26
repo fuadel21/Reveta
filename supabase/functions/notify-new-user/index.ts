@@ -20,6 +20,7 @@ serve(async (req) => {
   try {
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     const adminEmail = Deno.env.get('ADMIN_NOTIFICATION_EMAIL') || 'fuadel21@gmail.com';
+    const fromEmail = Deno.env.get('RESEND_FROM_EMAIL') || 'Reveta <noreply@reveta.es>';
 
     if (!resendApiKey) {
       return new Response(JSON.stringify({ error: 'RESEND_API_KEY is not configured' }), {
@@ -55,7 +56,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Reveta <onboarding@resend.dev>',
+        from: fromEmail,
         to: [adminEmail],
         subject,
         html,
