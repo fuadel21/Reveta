@@ -1,10 +1,16 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
-interface NewUserPayload {
+interface NewUserRecord {
   id?: string;
   email?: string;
-  full_name?: string | null;
+  raw_user_meta_data?: Record<string, unknown> | null;
   created_at?: string;
+}
+
+interface NewUserPayload extends NewUserRecord {
+  full_name?: string | null;
+  record?: NewUserRecord;
+  new?: NewUserRecord;
 }
 
 const corsHeaders = {
@@ -30,10 +36,17 @@ serve(async (req) => {
     }
 
     const payload = (await req.json()) as NewUserPayload;
-    const userEmail = payload.email || 'Email no disponible';
-    const fullName = payload.full_name || 'Nombre no disponible';
-    const userId = payload.id || 'ID no disponible';
-    const createdAt = payload.created_at || new Date().toISOString();
+    const userRecord = payload.record || payload.new || payload;
+    const metadata = userRecord.raw_user_meta_data || {};
+
+    const userEmail = userRecord.email || payload.email || 'Email no disponible';
+    const fullName =
+      payload.full_name ||
+      (metadata.full_name as string | undefined) ||
+      (metadata.name as string | undefined) ||
+      'Nombre no disponible';
+    const userId = userRecord.id || payload.id || 'ID no disponible';
+    const createdAt = userRecord.created_at || payload.created_at || new Date().toISOString();
 
     const subject = 'Nuevo usuario registrado en Reveta';
     const html = `
