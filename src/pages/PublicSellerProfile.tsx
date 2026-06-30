@@ -9,6 +9,7 @@ import SellerRating from '@/components/SellerRating';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import FollowSellerButton from '@/components/seller/FollowSellerButton';
 import SocialShareButtons from '@/components/SocialShareButtons';
+import RecentReviews from '@/components/reviews/RecentReviews';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -232,6 +233,10 @@ const PublicSellerProfile = () => {
                 <div className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-primary" /> Compra protegida en productos activos</div>
               </div>
             </div>
+          </section>
+
+          <section className="mt-8">
+            <RecentReviews userId={seller.id} />
           </section>
 
           <section className="mt-8">
