@@ -22,6 +22,20 @@ const CITY_NAMES: Record<string, string> = {
   cordoba: 'Córdoba',
   valladolid: 'Valladolid',
   'pineda-de-mar': 'Pineda de Mar',
+  badalona: 'Badalona',
+  'hospitalet-de-llobregat': "L'Hospitalet de Llobregat",
+  sabadell: 'Sabadell',
+  terrassa: 'Terrassa',
+  mataro: 'Mataró',
+  'santa-coloma-de-gramenet': 'Santa Coloma de Gramenet',
+  'lloret-de-mar': 'Lloret de Mar',
+  blanes: 'Blanes',
+  'malgrat-de-mar': 'Malgrat de Mar',
+  figueres: 'Figueres',
+  reus: 'Reus',
+  lleida: 'Lleida',
+  granollers: 'Granollers',
+  vic: 'Vic',
 };
 
 const CATEGORY_NAMES: Record<string, string> = {
@@ -60,7 +74,7 @@ const CATEGORY_INTENTS: Record<string, string> = {
   coleccionismo: 'objetos de colección, antigüedades, figuras y artículos especiales',
 };
 
-const POPULAR_CITIES = ['madrid', 'barcelona', 'valencia', 'sevilla', 'malaga', 'zaragoza', 'bilbao', 'alicante', 'pineda-de-mar'];
+const POPULAR_CITIES = ['barcelona', 'madrid', 'valencia', 'badalona', 'hospitalet-de-llobregat', 'sabadell', 'terrassa', 'mataro', 'pineda-de-mar', 'girona', 'lloret-de-mar', 'blanes'];
 const POPULAR_CATEGORIES = ['motor', 'electronica', 'iphone', 'muebles', 'bicicletas', 'moda', 'hogar', 'juegos', 'libros', 'deportes'];
 
 const slugToLabel = (slug?: string) => {
