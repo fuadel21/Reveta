@@ -10,29 +10,41 @@ import Stats from "@/components/Stats";
 import Footer from "@/components/Footer";
 
 const cityLinks = [
-  { label: "Madrid", href: "/segunda-mano/madrid" },
   { label: "Barcelona", href: "/segunda-mano/barcelona" },
+  { label: "Madrid", href: "/segunda-mano/madrid" },
   { label: "Valencia", href: "/segunda-mano/valencia" },
   { label: "Sevilla", href: "/segunda-mano/sevilla" },
   { label: "Málaga", href: "/segunda-mano/malaga" },
-  { label: "Zaragoza", href: "/segunda-mano/zaragoza" },
-  { label: "Bilbao", href: "/segunda-mano/bilbao" },
-  { label: "Alicante", href: "/segunda-mano/alicante" },
-  { label: "Murcia", href: "/segunda-mano/murcia" },
-  { label: "Granada", href: "/segunda-mano/granada" },
+  { label: "Girona", href: "/segunda-mano/girona" },
+  { label: "Tarragona", href: "/segunda-mano/tarragona" },
+  { label: "Lleida", href: "/segunda-mano/lleida" },
+  { label: "Badalona", href: "/segunda-mano/badalona" },
+  { label: "Hospitalet de Llobregat", href: "/segunda-mano/hospitalet-de-llobregat" },
+  { label: "Sabadell", href: "/segunda-mano/sabadell" },
+  { label: "Terrassa", href: "/segunda-mano/terrassa" },
+  { label: "Mataró", href: "/segunda-mano/mataro" },
   { label: "Pineda de Mar", href: "/segunda-mano/pineda-de-mar" },
+  { label: "Lloret de Mar", href: "/segunda-mano/lloret-de-mar" },
+  { label: "Blanes", href: "/segunda-mano/blanes" },
+  { label: "Malgrat de Mar", href: "/segunda-mano/malgrat-de-mar" },
+  { label: "Figueres", href: "/segunda-mano/figueres" },
+  { label: "Granollers", href: "/segunda-mano/granollers" },
+  { label: "Vic", href: "/segunda-mano/vic" },
 ];
 
 const categoryLinks = [
-  { label: "Motor de segunda mano en Madrid", href: "/segunda-mano/madrid/motor" },
   { label: "Electrónica de segunda mano en Barcelona", href: "/segunda-mano/barcelona/electronica" },
+  { label: "iPhone de segunda mano en Barcelona", href: "/segunda-mano/barcelona/iphone" },
+  { label: "Muebles usados en Barcelona", href: "/segunda-mano/barcelona/muebles" },
+  { label: "Motor de segunda mano en Madrid", href: "/segunda-mano/madrid/motor" },
+  { label: "Electrónica de segunda mano en Madrid", href: "/segunda-mano/madrid/electronica" },
   { label: "iPhone de segunda mano en Valencia", href: "/segunda-mano/valencia/iphone" },
   { label: "Muebles usados en Sevilla", href: "/segunda-mano/sevilla/muebles" },
-  { label: "Bicicletas de segunda mano en Madrid", href: "/segunda-mano/madrid/bicicletas" },
   { label: "Motor de segunda mano en Málaga", href: "/segunda-mano/malaga/motor" },
-  { label: "Hogar de segunda mano en Barcelona", href: "/segunda-mano/barcelona/hogar" },
-  { label: "Moda de segunda mano en Valencia", href: "/segunda-mano/valencia/moda" },
+  { label: "Electrónica en Badalona", href: "/segunda-mano/badalona/electronica" },
+  { label: "Electrónica en Hospitalet de Llobregat", href: "/segunda-mano/hospitalet-de-llobregat/electronica" },
   { label: "Electrónica en Pineda de Mar", href: "/segunda-mano/pineda-de-mar/electronica" },
+  { label: "Muebles en Pineda de Mar", href: "/segunda-mano/pineda-de-mar/muebles" },
 ];
 
 const organizationJsonLd = {
@@ -40,7 +52,7 @@ const organizationJsonLd = {
   "@type": "Organization",
   name: "Reveta",
   url: "https://reveta.es/",
-  logo: "https://reveta.es/favicon.ico",
+  logo: "https://reveta.es/favicon.svg",
   description: "Marketplace para comprar y vender productos de segunda mano en España.",
 };
 
@@ -56,6 +68,18 @@ const websiteJsonLd = {
   },
 };
 
+const cityItemListJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  name: "Ciudades para comprar y vender segunda mano en Reveta",
+  itemListElement: cityLinks.slice(0, 12).map((item, index) => ({
+    "@type": "ListItem",
+    position: index + 1,
+    name: `Segunda mano en ${item.label}`,
+    url: `https://reveta.es${item.href}`,
+  })),
+};
+
 const Index = () => {
   return (
     <>
@@ -65,14 +89,20 @@ const Index = () => {
           name="description" 
           content="Compra y vende productos de segunda mano en tu ciudad. Encuentra ofertas locales en tecnología, muebles, motor, moda, bicicletas, hogar y mucho más en Reveta." 
         />
-        <meta name="keywords" content="segunda mano, comprar segunda mano, vender segunda mano, marketplace España, productos usados, ofertas cerca de mí" />
+        <meta name="keywords" content="segunda mano, comprar segunda mano, vender segunda mano, marketplace España, productos usados, ofertas cerca de mí, segunda mano Barcelona, segunda mano Madrid" />
         <link rel="canonical" href="https://reveta.es/" />
         <meta property="og:title" content="Reveta - Compra y vende de segunda mano cerca de ti" />
         <meta property="og:description" content="Compra y vende productos de segunda mano en tu ciudad. Encuentra ofertas locales en tecnología, muebles, motor, moda, bicicletas, hogar y mucho más en Reveta." />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://reveta.es/" />
+        <meta property="og:image" content="https://reveta.es/og-image.png" />
+        <meta property="og:site_name" content="Reveta" />
+        <meta property="og:locale" content="es_ES" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:image" content="https://reveta.es/og-image.png" />
         <script type="application/ld+json">{JSON.stringify(organizationJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(websiteJsonLd)}</script>
+        <script type="application/ld+json">{JSON.stringify(cityItemListJsonLd)}</script>
       </Helmet>
       
       <div className="min-h-screen bg-background">
@@ -126,7 +156,7 @@ const Index = () => {
                   Reveta es una plataforma para comprar y vender productos de segunda mano entre particulares. Puedes publicar anuncios gratis, buscar productos por ubicación, hablar por chat y negociar ofertas antes de comprar.
                 </p>
                 <p>
-                  Nuestro objetivo es ayudarte a encontrar oportunidades locales: electrónica usada, muebles de segunda mano, productos de motor, bicicletas, ropa, libros, hogar y mucho más en ciudades como Madrid, Barcelona, Valencia, Málaga, Sevilla, Bilbao o Pineda de Mar.
+                  Nuestro objetivo es ayudarte a encontrar oportunidades locales: electrónica usada, muebles de segunda mano, productos de motor, bicicletas, ropa, libros, hogar y mucho más en ciudades como Barcelona, Madrid, Valencia, Girona, Badalona, Sabadell, Terrassa, Mataró, Pineda de Mar, Lloret de Mar o Blanes.
                 </p>
               </div>
             </div>
