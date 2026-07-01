@@ -62,6 +62,12 @@ const getRelativeTime = (dateString: string) => {
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
+const absoluteUrl = (url?: string | null) => {
+  if (!url) return 'https://reveta.es/og-image.png';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return `https://reveta.es${url.startsWith('/') ? url : `/${url}`}`;
+};
+
 const PublicSellerProfile = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -136,8 +142,52 @@ const PublicSellerProfile = () => {
   const displayName = seller?.full_name || seller?.username || 'Vendedor de Reveta';
   const profilePath = seller?.username || seller?.id || '';
   const profileUrl = `https://reveta.es/usuario/${profilePath}`;
+  const socialImage = absoluteUrl(seller?.avatar_url);
   const pageTitle = `${displayName} | Vendedor en Reveta`;
-  const pageDescription = `Descubre los productos de ${displayName} en Reveta. Consulta anuncios activos, valoraciones y señales de confianza.`;
+  const pageDescription = `Perfil de ${displayName} en Reveta: ${products.length} anuncios activos, ${soldCount} productos vendidos, valoraciones y señales de confianza para comprar segunda mano.`;
+
+  const personJsonLd = seller
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'Person',
+        name: displayName,
+        url: profileUrl,
+        image: socialImage,
+        identifier: seller.id,
+        memberOf: {
+          '@type': 'Organization',
+          name: 'Reveta',
+          url: 'https://reveta.es/',
+        },
+        ...(seller.username && { alternateName: `@${seller.username}` }),
+      }
+    : null;
+
+  const productItemListJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: `Anuncios activos de ${displayName} en Reveta`,
+    itemListElement: sortedProducts.slice(0, 12).map((item, index) => {
+      const productUrl = `https://reveta.es/producto/${item.id}/${createProductSlug(item.title)}`;
+      return {
+        '@type': 'ListItem',
+        position: index + 1,
+        url: productUrl,
+        item: {
+          '@type': 'Product',
+          name: item.title,
+          url: productUrl,
+          image: absoluteUrl(item.images?.[0]),
+          offers: {
+            '@type': 'Offer',
+            price: item.price,
+            priceCurrency: 'EUR',
+            availability: 'https://schema.org/InStock',
+          },
+        },
+      };
+    }),
+  };
 
   if (loading) {
     return (
@@ -154,6 +204,7 @@ const PublicSellerProfile = () => {
       <Helmet>
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
+        <meta name="robots" content="index,follow,max-image-preview:large" />
         <link rel="canonical" href={profileUrl} />
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={pageDescription} />
@@ -161,12 +212,15 @@ const PublicSellerProfile = () => {
         <meta property="og:type" content="profile" />
         <meta property="og:site_name" content="Reveta" />
         <meta property="og:locale" content="es_ES" />
-        {seller.avatar_url && <meta property="og:image" content={seller.avatar_url} />}
-        {seller.avatar_url && <meta property="og:image:alt" content={displayName} />}
-        <meta name="twitter:card" content={seller.avatar_url ? 'summary_large_image' : 'summary'} />
+        <meta property="og:image" content={socialImage} />
+        <meta property="og:image:secure_url" content={socialImage} />
+        <meta property="og:image:alt" content={displayName} />
+        <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={pageTitle} />
         <meta name="twitter:description" content={pageDescription} />
-        {seller.avatar_url && <meta name="twitter:image" content={seller.avatar_url} />}
+        <meta name="twitter:image" content={socialImage} />
+        {personJsonLd && <script type="application/ld+json">{JSON.stringify(personJsonLd)}</script>}
+        {sortedProducts.length > 0 && <script type="application/ld+json">{JSON.stringify(productItemListJsonLd)}</script>}
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
