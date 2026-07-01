@@ -78,6 +78,9 @@ const SeoLanding = () => {
   const categoryName = CATEGORY_NAMES[category] || slugToLabel(category);
   const categoryIntent = CATEGORY_INTENTS[category] || `${categoryName.toLowerCase()} de segunda mano`;
   const isGenericCity = Boolean(cityName) && !categoryName;
+  const isKnownCity = Boolean(CITY_NAMES[city]);
+  const isKnownCategory = !category || Boolean(CATEGORY_NAMES[category]);
+  const shouldIndex = isKnownCity && isKnownCategory;
   const searchParams = new URLSearchParams();
 
   if (categoryName) searchParams.set('q', categoryName);
@@ -91,6 +94,10 @@ const SeoLanding = () => {
   const description = categoryName
     ? `Compra y vende ${categoryName.toLowerCase()} de segunda mano en ${cityName}. Encuentra anuncios cerca de ti, negocia por chat y publica gratis en Reveta.`
     : `Compra y vende productos de segunda mano en ${cityName}. Encuentra ofertas locales, publica anuncios gratis y negocia por chat en Reveta.`;
+  const keywords = categoryName
+    ? `${categoryName.toLowerCase()} segunda mano ${cityName.toLowerCase()}, comprar ${categoryName.toLowerCase()} usado, vender ${categoryName.toLowerCase()} ${cityName.toLowerCase()}, anuncios ${categoryName.toLowerCase()} ${cityName.toLowerCase()}, Reveta`
+    : `segunda mano ${cityName.toLowerCase()}, comprar usado ${cityName.toLowerCase()}, vender segunda mano ${cityName.toLowerCase()}, anuncios gratis ${cityName.toLowerCase()}, marketplace local, Reveta`;
+  const ogImage = 'https://reveta.es/og-image.png';
 
   const relatedCityLinks = POPULAR_CITIES
     .filter((item) => item !== city)
@@ -173,16 +180,44 @@ const SeoLanding = () => {
     ],
   };
 
+  const collectionPageJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: title,
+    description,
+    url: canonicalUrl,
+    inLanguage: 'es-ES',
+    isPartOf: {
+      '@type': 'WebSite',
+      name: 'Reveta',
+      url: 'https://reveta.es/',
+    },
+    about: categoryName
+      ? `${categoryName} de segunda mano en ${cityName}`
+      : `Productos de segunda mano en ${cityName}`,
+  };
+
   return (
     <>
       <Helmet>
         <title>{title}</title>
         <meta name="description" content={description} />
+        <meta name="keywords" content={keywords} />
+        <meta name="robots" content={shouldIndex ? 'index,follow,max-image-preview:large' : 'noindex,follow'} />
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:title" content={title} />
         <meta property="og:description" content={description} />
         <meta property="og:type" content="website" />
         <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:image" content={ogImage} />
+        <meta property="og:image:secure_url" content={ogImage} />
+        <meta property="og:site_name" content="Reveta" />
+        <meta property="og:locale" content="es_ES" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={title} />
+        <meta name="twitter:description" content={description} />
+        <meta name="twitter:image" content={ogImage} />
+        <script type="application/ld+json">{JSON.stringify(collectionPageJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(faqJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
       </Helmet>
