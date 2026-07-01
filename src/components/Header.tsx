@@ -101,9 +101,9 @@ const Header = () => {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur-md supports-[backdrop-filter]:bg-card/80">
       <div className="container flex h-16 items-center justify-between gap-4">
-        <Link to="/" className="flex items-center gap-2 shrink-0 group">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary transition-transform duration-300 group-hover:scale-105 shadow-lg">
-            <span className="text-xl font-bold text-primary-foreground">R</span>
+        <Link to="/" className="flex items-center gap-2 shrink-0 group" aria-label="Ir al inicio de Reveta">
+          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-border bg-background shadow-md transition-transform duration-300 group-hover:scale-105">
+            <img src="/favicon.svg" alt="Reveta" className="h-full w-full object-cover" />
           </div>
           <span className="text-xl font-bold text-primary hidden sm:block transition-colors group-hover:text-primary/80">Reveta</span>
         </Link>
