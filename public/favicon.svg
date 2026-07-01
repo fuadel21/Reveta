@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Reveta">
+  <rect width="512" height="512" rx="92" fill="#ffffff"/>
+  <rect x="8" y="8" width="496" height="496" rx="86" fill="none" stroke="#e5e7eb" stroke-width="8"/>
+  <text x="182" y="330" font-family="Arial Black, Arial, sans-serif" font-size="260" font-weight="900" fill="#20252a">R</text>
+  <path d="M172 335V223h-52l94-94 94 94h-52v112c0 17-14 31-31 31h-22c-17 0-31-14-31-31Z" fill="#10b981"/>
+  <path d="M312 335h82v-48l80 80-80 80v-48h-82c-17 0-31-14-31-31v-2c0-17 14-31 31-31Z" fill="#10b981"/>
+  <text x="141" y="452" font-family="Arial, sans-serif" font-size="64" font-weight="800" fill="#20252a">Reveta</text>
+</svg>
