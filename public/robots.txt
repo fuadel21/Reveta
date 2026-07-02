@@ -15,5 +15,6 @@ Disallow: /call
 Disallow: /auth
 Disallow: /reset-password
 Disallow: /forgot-password
+Disallow: /search
 
 Sitemap: https://reveta.es/sitemap.xml
