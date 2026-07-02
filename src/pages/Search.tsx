@@ -311,17 +311,28 @@ const SearchPage = () => {
   const locationText = useGeoFilter && geolocation.hasLocation ? 'cerca de ti' : location ? `en ${location}` : '';
   const searchSeoTitle = `${mainTerm.charAt(0).toUpperCase()}${mainTerm.slice(1)}${locationText ? ` ${locationText}` : ''} | Reveta`;
   const searchSeoDescription = `Encuentra ${mainTerm.toLowerCase()}${locationText ? ` ${locationText}` : ''}. Compra, vende, negocia por chat y descubre ofertas de segunda mano en Reveta.`;
-  const canonicalUrl = `https://reveta.es/search${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+  const canonicalUrl = 'https://reveta.es/search';
+  const socialImage = 'https://reveta.es/og-image.png';
 
   return (
     <>
       <Helmet>
         <title>{searchSeoTitle}</title>
         <meta name="description" content={searchSeoDescription} />
+        <meta name="robots" content="noindex,follow,max-image-preview:large" />
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:title" content={searchSeoTitle} />
         <meta property="og:description" content={searchSeoDescription} />
         <meta property="og:type" content="website" />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:image" content={socialImage} />
+        <meta property="og:image:secure_url" content={socialImage} />
+        <meta property="og:site_name" content="Reveta" />
+        <meta property="og:locale" content="es_ES" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={searchSeoTitle} />
+        <meta name="twitter:description" content={searchSeoDescription} />
+        <meta name="twitter:image" content={socialImage} />
       </Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
