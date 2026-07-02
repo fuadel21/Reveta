@@ -17,4 +17,3 @@ Disallow: /reset-password
 Disallow: /forgot-password
 
 Sitemap: https://reveta.es/sitemap.xml
-Sitemap: https://reveta.es/api/sitemap-products.xml
