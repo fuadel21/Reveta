@@ -56,6 +56,12 @@ const createProductSlug = (title: string) => {
     .slice(0, 80) || 'producto';
 };
 
+const absoluteUrl = (url?: string | null) => {
+  if (!url) return 'https://reveta.es/og-image.png';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return `https://reveta.es${url.startsWith('/') ? url : `/${url}`}`;
+};
+
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -245,15 +251,18 @@ const ProductDetail = () => {
   const rawTitle = `${product.title} · ${product.price}€${product.location ? ` en ${product.location}` : ''} | Reveta`;
   const seoTitle = rawTitle.length > 60 ? `${product.title.slice(0, 40)} · ${product.price}€ | Reveta` : rawTitle;
   const primaryImage = product.images?.[0];
+  const socialImage = absoluteUrl(primaryImage);
+  const schemaImages = product.images && product.images.length > 0 ? product.images.map((image) => absoluteUrl(image)) : [socialImage];
+  const shouldIndex = product.status === 'active';
   const availability = product.status === 'sold' ? 'https://schema.org/SoldOut' : product.status === 'reserved' ? 'https://schema.org/LimitedAvailability' : 'https://schema.org/InStock';
-  const itemCondition = product.condition === 'Nuevo' ? 'https://schema.org/NewCondition' : 'https://schema.org/UsedCondition';
+  const itemCondition = ['nuevo', 'new'].includes((product.condition || '').toLowerCase()) ? 'https://schema.org/NewCondition' : 'https://schema.org/UsedCondition';
 
   const productJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.title,
     description: cleanDescription,
-    ...(primaryImage && { image: product.images }),
+    image: schemaImages,
     ...(category && { category: category.name }),
     itemCondition,
     sku: product.id,
@@ -276,6 +285,7 @@ const ProductDetail = () => {
       <Helmet>
         <title>{seoTitle}</title>
         <meta name="description" content={cleanDescription} />
+        <meta name="robots" content={shouldIndex ? 'index,follow,max-image-preview:large' : 'noindex,follow'} />
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:type" content="product" />
         <meta property="og:title" content={product.title} />
@@ -283,14 +293,15 @@ const ProductDetail = () => {
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:site_name" content="Reveta" />
         <meta property="og:locale" content="es_ES" />
-        {primaryImage && <meta property="og:image" content={primaryImage} />}
-        {primaryImage && <meta property="og:image:alt" content={product.title} />}
+        <meta property="og:image" content={socialImage} />
+        <meta property="og:image:secure_url" content={socialImage} />
+        <meta property="og:image:alt" content={product.title} />
         <meta property="product:price:amount" content={String(product.price)} />
         <meta property="product:price:currency" content="EUR" />
-        <meta name="twitter:card" content={primaryImage ? 'summary_large_image' : 'summary'} />
+        <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={product.title} />
         <meta name="twitter:description" content={cleanDescription} />
-        {primaryImage && <meta name="twitter:image" content={primaryImage} />}
+        <meta name="twitter:image" content={socialImage} />
         <script type="application/ld+json">{JSON.stringify(productJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
       </Helmet>
