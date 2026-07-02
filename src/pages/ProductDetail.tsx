@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -65,6 +65,7 @@ const absoluteUrl = (url?: string | null) => {
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
 
@@ -85,6 +86,15 @@ const ProductDetail = () => {
   useEffect(() => {
     if (product && user) checkFavorite();
   }, [product, user]);
+
+  useEffect(() => {
+    if (!product) return;
+
+    const canonicalPath = `/producto/${product.id}/${createProductSlug(product.title)}`;
+    if (location.pathname !== canonicalPath) {
+      navigate(canonicalPath, { replace: true });
+    }
+  }, [product, location.pathname, navigate]);
 
   const fetchProduct = async () => {
     if (!id) return;
