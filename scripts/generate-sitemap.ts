@@ -6,11 +6,8 @@ import { resolve } from "path";
 import { createClient } from "@supabase/supabase-js";
 
 const BASE_URL = "https://reveta.es";
-
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "https://dnjjvtjcjfeklgwbhwpy.supabase.co";
-const SUPABASE_KEY =
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  "sb_publishable_nYmr_026d-jL5jU2GyUvTA_g10_FHfO";
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 interface SitemapEntry {
   path: string;
@@ -65,19 +62,6 @@ const citySlugs = [
 ];
 
 const priorityCitySlugs = new Set(["barcelona", "madrid", "valencia", "girona", "badalona", "sabadell", "terrassa", "mataro", "pineda-de-mar"]);
-
-const categorySlugs = [
-  "electronica",
-  "iphone",
-  "muebles",
-  "motor",
-  "bicicletas",
-  "hogar",
-  "moda",
-  "deportes",
-  "libros",
-  "juegos",
-];
 
 const cityCategoryPairs = [
   ["barcelona", "electronica"],
@@ -182,8 +166,18 @@ function dedupe(entries: SitemapEntry[]) {
 async function fetchDynamicEntries(): Promise<SitemapEntry[]> {
   const entries: SitemapEntry[] = [];
 
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.warn("sitemap: missing Supabase environment variables, using static SEO entries only");
+    return entries;
+  }
+
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
 
     const { data: products, error: productsError } = await supabase
       .from("products")
