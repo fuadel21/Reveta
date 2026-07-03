@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import NoIndex from "@/components/seo/NoIndex";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -34,6 +35,13 @@ import MobileSellButton from "@/components/MobileSellButton";
 
 const queryClient = new QueryClient();
 
+const privatePage = (title: string, element: JSX.Element) => (
+  <>
+    <NoIndex title={title} />
+    {element}
+  </>
+);
+
 const App = () => (
   <HelmetProvider>
     <QueryClientProvider client={queryClient}>
@@ -47,26 +55,26 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/auth" element={<Auth />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/profile" element={<Profile />} />
+                <Route path="/forgot-password" element={privatePage("Recuperar contraseña | Reveta", <ForgotPassword />)} />
+                <Route path="/reset-password" element={privatePage("Restablecer contraseña | Reveta", <ResetPassword />)} />
+                <Route path="/profile" element={privatePage("Mi perfil | Reveta", <Profile />)} />
                 <Route path="/usuario/:id" element={<PublicSellerProfile />} />
-                <Route path="/upload" element={<Upload />} />
-                <Route path="/messages" element={<Messages />} />
+                <Route path="/upload" element={privatePage("Publicar producto | Reveta", <Upload />)} />
+                <Route path="/messages" element={privatePage("Mensajes | Reveta", <Messages />)} />
                 <Route path="/product/:id" element={<ProductDetail />} />
                 <Route path="/producto/:id/:slug" element={<ProductDetail />} />
-                <Route path="/checkout/:productId" element={<Checkout />} />
-                <Route path="/boost/:productId" element={<BoostProduct />} />
-                <Route path="/call/:id" element={<CallRoom />} />
+                <Route path="/checkout/:productId" element={privatePage("Checkout | Reveta", <Checkout />)} />
+                <Route path="/boost/:productId" element={privatePage("Destacar producto | Reveta", <BoostProduct />)} />
+                <Route path="/call/:id" element={privatePage("Llamada privada | Reveta", <CallRoom />)} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/segunda-mano/:city" element={<SeoLanding />} />
                 <Route path="/segunda-mano/:city/:category" element={<SeoLanding />} />
-                <Route path="/admin" element={<Admin />} />
-                <Route path="/admin/growth" element={<AdminGrowth />} />
-                <Route path="/admin/disputes/:id" element={<AdminDisputeDetail />} />
-                <Route path="/transactions" element={<Transactions />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/saved-searches" element={<SavedSearches />} />
+                <Route path="/admin" element={privatePage("Administración | Reveta", <Admin />)} />
+                <Route path="/admin/growth" element={privatePage("Growth admin | Reveta", <AdminGrowth />)} />
+                <Route path="/admin/disputes/:id" element={privatePage("Incidencia admin | Reveta", <AdminDisputeDetail />)} />
+                <Route path="/transactions" element={privatePage("Transacciones | Reveta", <Transactions />)} />
+                <Route path="/settings" element={privatePage("Ajustes | Reveta", <Settings />)} />
+                <Route path="/saved-searches" element={privatePage("Búsquedas guardadas | Reveta", <SavedSearches />)} />
                 <Route path="/terms" element={<Terms />} />
                 <Route path="/privacy" element={<Privacy />} />
                 <Route path="/cookies" element={<Cookies />} />
