@@ -64,6 +64,8 @@ const Hero = () => {
                 src={heroImage}
                 alt="Persona usando la app de segunda mano"
                 className="w-full h-full object-cover lg:rounded-l-[2.5rem] shadow-2xl"
+                loading="eager"
+                decoding="async"
               />
               {/* Gradient overlay */}
               <div className="absolute inset-0 bg-gradient-to-r from-background via-transparent to-transparent lg:rounded-l-[2.5rem]" />
