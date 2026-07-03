@@ -40,6 +40,7 @@ const ProductCard = ({
   const navigate = useNavigate();
   const [favorite, setFavorite] = useState(isFavorite);
   const [isToggling, setIsToggling] = useState(false);
+  const [imageSrc, setImageSrc] = useState(image || '/placeholder.svg');
 
   const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -94,10 +95,12 @@ const ProductCard = ({
       
       <div className="relative aspect-square overflow-hidden rounded-t-2xl">
         <img
-          src={image}
+          src={imageSrc}
           alt={title}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
           loading="lazy"
+          decoding="async"
+          onError={() => setImageSrc('/placeholder.svg')}
         />
         
         {/* Overlay gradient */}
