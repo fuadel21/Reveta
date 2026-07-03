@@ -1,5 +1,6 @@
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import NoIndex from "@/components/seo/NoIndex";
 
 const NotFound = () => {
   const location = useLocation();
@@ -9,15 +10,18 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">404</h1>
-        <p className="mb-4 text-xl text-muted-foreground">¡Vaya! No encontramos la página que buscas.</p>
-        <a href="/" className="text-primary underline hover:text-primary/90 font-medium">
-          Volver al Inicio
-        </a>
+    <>
+      <NoIndex title="Página no encontrada | Reveta" description="Esta página no existe en Reveta." />
+      <div className="flex min-h-screen items-center justify-center bg-muted">
+        <div className="text-center">
+          <h1 className="mb-4 text-4xl font-bold">404</h1>
+          <p className="mb-4 text-xl text-muted-foreground">¡Vaya! No encontramos la página que buscas.</p>
+          <a href="/" className="text-primary underline hover:text-primary/90 font-medium">
+            Volver al Inicio
+          </a>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
