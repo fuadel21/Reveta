@@ -6,17 +6,32 @@ const cityLinks = [
   { to: "/segunda-mano/madrid", label: "Segunda mano Madrid" },
   { to: "/segunda-mano/valencia", label: "Segunda mano Valencia" },
   { to: "/segunda-mano/girona", label: "Segunda mano Girona" },
+  { to: "/segunda-mano/tarragona", label: "Segunda mano Tarragona" },
+  { to: "/segunda-mano/lleida", label: "Segunda mano Lleida" },
   { to: "/segunda-mano/badalona", label: "Segunda mano Badalona" },
+  { to: "/segunda-mano/hospitalet-de-llobregat", label: "Segunda mano Hospitalet" },
+  { to: "/segunda-mano/sabadell", label: "Segunda mano Sabadell" },
+  { to: "/segunda-mano/terrassa", label: "Segunda mano Terrassa" },
+  { to: "/segunda-mano/mataro", label: "Segunda mano Mataró" },
   { to: "/segunda-mano/pineda-de-mar", label: "Segunda mano Pineda de Mar" },
+  { to: "/segunda-mano/lloret-de-mar", label: "Segunda mano Lloret de Mar" },
+  { to: "/segunda-mano/blanes", label: "Segunda mano Blanes" },
+  { to: "/segunda-mano/malgrat-de-mar", label: "Segunda mano Malgrat de Mar" },
 ];
 
 const categoryLinks = [
   { to: "/segunda-mano/barcelona/electronica", label: "Electrónica Barcelona" },
   { to: "/segunda-mano/barcelona/iphone", label: "iPhone Barcelona" },
+  { to: "/segunda-mano/barcelona/muebles", label: "Muebles Barcelona" },
   { to: "/segunda-mano/madrid/motor", label: "Motor Madrid" },
+  { to: "/segunda-mano/madrid/electronica", label: "Electrónica Madrid" },
+  { to: "/segunda-mano/valencia/iphone", label: "iPhone Valencia" },
   { to: "/segunda-mano/badalona/electronica", label: "Electrónica Badalona" },
-  { to: "/segunda-mano/pineda-de-mar/electronica", label: "Electrónica Pineda de Mar" },
   { to: "/segunda-mano/hospitalet-de-llobregat/electronica", label: "Electrónica Hospitalet" },
+  { to: "/segunda-mano/sabadell/electronica", label: "Electrónica Sabadell" },
+  { to: "/segunda-mano/terrassa/muebles", label: "Muebles Terrassa" },
+  { to: "/segunda-mano/mataro/electronica", label: "Electrónica Mataró" },
+  { to: "/segunda-mano/pineda-de-mar/electronica", label: "Electrónica Pineda de Mar" },
 ];
 
 const Footer = () => {
@@ -96,7 +111,7 @@ const Footer = () => {
           </div>
 
           <div>
-            <h3 className="font-semibold text-foreground mb-6 text-lg">Búsquedas SEO</h3>
+            <h3 className="font-semibold text-foreground mb-6 text-lg">Búsquedas populares</h3>
             <ul className="space-y-3">
               {categoryLinks.map(({ to, label }) => (
                 <li key={to}>
@@ -144,6 +159,7 @@ const Footer = () => {
               <Link to="/segunda-mano/girona" className="hover:text-primary transition-colors">Girona</Link>
               <Link to="/segunda-mano/pineda-de-mar" className="hover:text-primary transition-colors">Pineda de Mar</Link>
               <Link to="/segunda-mano/blanes" className="hover:text-primary transition-colors">Blanes</Link>
+              <Link to="/segunda-mano/lloret-de-mar" className="hover:text-primary transition-colors">Lloret de Mar</Link>
             </div>
           </div>
         </div>
