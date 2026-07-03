@@ -78,7 +78,7 @@ const App = () => (
                 <Route path="/terms" element={<Terms />} />
                 <Route path="/privacy" element={<Privacy />} />
                 <Route path="/cookies" element={<Cookies />} />
-                <Route path="*" element={<NotFound />} />
+                <Route path="*" element={privatePage("Página no encontrada | Reveta", <NotFound />)} />
               </Routes>
             </BrowserRouter>
           </TooltipProvider>
