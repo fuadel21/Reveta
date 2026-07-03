@@ -1,4 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/product/:id",
+      "destination": "/producto/:id/producto",
+      "permanent": true
+    }
+  ],
   "headers": [
     {
       "source": "/admin/:path*",
@@ -69,6 +76,24 @@
         {
           "key": "X-Robots-Tag",
           "value": "noindex, nofollow, noarchive"
+        }
+      ]
+    },
+    {
+      "source": "/auth",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        }
+      ]
+    },
+    {
+      "source": "/search",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, follow, noarchive"
         }
       ]
     }
