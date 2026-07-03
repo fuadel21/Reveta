@@ -257,9 +257,21 @@ const ProductDetail = () => {
   const isOwner = user?.id === product.user_id;
   const productSlug = createProductSlug(product.title);
   const canonicalUrl = `https://reveta.es/producto/${product.id}/${productSlug}`;
-  const cleanDescription = (product.description || `${product.title} de segunda mano por ${product.price}€${product.location ? ` en ${product.location}` : ''}. Compra y vende en Reveta.`).replace(/\s+/g, ' ').trim().slice(0, 160);
-  const rawTitle = `${product.title} · ${product.price}€${product.location ? ` en ${product.location}` : ''} | Reveta`;
-  const seoTitle = rawTitle.length > 60 ? `${product.title.slice(0, 40)} · ${product.price}€ | Reveta` : rawTitle;
+  const locationText = product.location ? ` en ${product.location}` : '';
+  const categoryText = category?.name ? ` de ${category.name.toLowerCase()}` : '';
+  const descriptionBase = product.description || `${product.title}${categoryText} de segunda mano por ${product.price}€${locationText}. Compra, negocia por chat y consulta anuncios similares en Reveta.`;
+  const cleanDescription = descriptionBase.replace(/\s+/g, ' ').trim().slice(0, 160);
+  const rawTitle = `${product.title} segunda mano${locationText} · ${product.price}€ | Reveta`;
+  const seoTitle = rawTitle.length > 65 ? `${product.title.slice(0, 42)} · ${product.price}€${locationText ? ` ${locationText}` : ''} | Reveta` : rawTitle;
+  const seoKeywords = [
+    product.title,
+    `${product.title} segunda mano`,
+    product.location ? `${product.title} ${product.location}` : null,
+    category?.name ? `${category.name} segunda mano` : null,
+    product.location ? `segunda mano ${product.location}` : null,
+    'comprar segunda mano',
+    'Reveta',
+  ].filter(Boolean).join(', ');
   const primaryImage = product.images?.[0];
   const socialImage = absoluteUrl(primaryImage);
   const schemaImages = product.images && product.images.length > 0 ? product.images.map((image) => absoluteUrl(image)) : [socialImage];
@@ -272,11 +284,21 @@ const ProductDetail = () => {
     '@type': 'Product',
     name: product.title,
     description: cleanDescription,
+    url: canonicalUrl,
     image: schemaImages,
     ...(category && { category: category.name }),
     itemCondition,
     sku: product.id,
-    offers: { '@type': 'Offer', url: canonicalUrl, priceCurrency: 'EUR', price: product.price, availability, itemCondition, ...(seller?.full_name && { seller: { '@type': 'Person', name: seller.full_name } }) },
+    datePublished: product.created_at,
+    offers: {
+      '@type': 'Offer',
+      url: canonicalUrl,
+      priceCurrency: 'EUR',
+      price: product.price,
+      availability,
+      itemCondition,
+      ...(seller?.full_name && { seller: { '@type': 'Person', name: seller.full_name } }),
+    },
   };
 
   const breadcrumbJsonLd = {
@@ -295,10 +317,11 @@ const ProductDetail = () => {
       <Helmet>
         <title>{seoTitle}</title>
         <meta name="description" content={cleanDescription} />
+        <meta name="keywords" content={seoKeywords} />
         <meta name="robots" content={shouldIndex ? 'index,follow,max-image-preview:large' : 'noindex,follow'} />
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:type" content="product" />
-        <meta property="og:title" content={product.title} />
+        <meta property="og:title" content={seoTitle} />
         <meta property="og:description" content={cleanDescription} />
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:site_name" content="Reveta" />
@@ -308,8 +331,9 @@ const ProductDetail = () => {
         <meta property="og:image:alt" content={product.title} />
         <meta property="product:price:amount" content={String(product.price)} />
         <meta property="product:price:currency" content="EUR" />
+        <meta property="product:availability" content={availability} />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={product.title} />
+        <meta name="twitter:title" content={seoTitle} />
         <meta name="twitter:description" content={cleanDescription} />
         <meta name="twitter:image" content={socialImage} />
         <script type="application/ld+json">{JSON.stringify(productJsonLd)}</script>
@@ -348,7 +372,7 @@ const ProductDetail = () => {
               <div className="bg-card rounded-xl p-6 shadow-card border border-border/50">
                 <div className="flex items-start justify-between mb-4">
                   <div><div className="flex items-center gap-2 mb-2"><p className="text-3xl font-bold text-foreground">{product.price.toLocaleString('es-ES')} €</p><ProductStatusBadge status={product.status} /></div>{product.condition && <Badge variant="secondary" className="font-medium">{product.condition}</Badge>}</div>
-                  <div className="flex gap-2"><Button variant="outline" size="icon" onClick={toggleFavorite} className={isFavorite ? 'text-destructive' : ''}><Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} /></Button><SocialShareButtons title={product.title} description={`${product.title} por ${product.price}€ en Reveta`} compact /></div>
+                  <div className="flex gap-2"><Button variant="outline" size="icon" onClick={toggleFavorite} className={isFavorite ? 'text-destructive' : ''}><Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} /></Button><SocialShareButtons title={seoTitle} description={cleanDescription} compact /></div>
                 </div>
 
                 <h1 className="text-xl font-semibold mb-4">{product.title}</h1>
