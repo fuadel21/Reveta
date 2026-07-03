@@ -142,6 +142,7 @@ const Auth = () => {
       <Helmet>
         <title>{isLogin ? 'Iniciar Sesión' : 'Registrarse'} | Reveta</title>
         <meta name="description" content="Accede a tu cuenta de Reveta para comprar y vender productos de segunda mano" />
+        <meta name="robots" content="noindex,nofollow,noarchive" />
       </Helmet>
       
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
