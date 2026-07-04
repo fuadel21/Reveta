@@ -78,110 +78,81 @@ const Profile = () => {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [products, setProducts] = useState<ProductData[]>([]);
   const [favorites, setFavorites] = useState<ProductData[]>([]);
-  const [formData, setFormData] = useState(emptyForm);
-  const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [productToDelete, setProductToDelete] = useState<ProductData | null>(null);
-
-  const activeTab = useMemo(() => (searchParams.get('tab') === 'favorites' ? 'favorites' : 'products'), [searchParams]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState(emptyForm);
+  const [deleteProduct, setDeleteProduct] = useState<ProductData | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/auth');
-  }, [authLoading, navigate, user]);
+  }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (!user) return;
-    const loadProfilePage = async () => {
-      setLoading(true);
-      await Promise.all([fetchProfile(), fetchProducts(), fetchFavorites()]);
-      setLoading(false);
-    };
-    loadProfilePage();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+    if (user) fetchProfileData();
+  }, [user]);
 
-  const fetchProfile = async () => {
-    if (!user) return;
+  useEffect(() => {
+    if (searchParams.get('edit') === '1') setIsEditing(true);
+  }, [searchParams]);
 
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
-    if (error) {
-      console.error('Error fetching profile:', error);
-      toast({ title: 'Error', description: 'No se pudo cargar tu perfil', variant: 'destructive' });
-      return;
+  const fetchProfileData = async () => {
+    if (!user) return;
+    setLoading(true);
+
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (profileData) {
+      setProfile(profileData as ProfileData);
+      setFormData({
+        full_name: profileData.full_name || '',
+        username: profileData.username || '',
+        location: profileData.location || '',
+        phone: profileData.phone || '',
+        bio: profileData.bio || '',
+      });
     }
 
-    const fallbackProfile: ProfileData = {
-      id: user.id,
-      username: null,
-      full_name: user.email?.split('@')[0] || 'Usuario',
-      avatar_url: null,
-      location: null,
-      phone: null,
-      bio: null,
-      verified: false,
-      is_premium: false,
-    };
+    const { data: productsData } = await supabase
+      .from('products')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
 
-    const nextProfile = (data || fallbackProfile) as ProfileData;
-    setProfile(nextProfile);
-    setFormData({
-      full_name: nextProfile.full_name || '',
-      username: nextProfile.username || '',
-      location: nextProfile.location || '',
-      phone: nextProfile.phone || '',
-      bio: nextProfile.bio || '',
-    });
-  };
+    setProducts((productsData || []) as ProductData[]);
 
-  const fetchProducts = async () => {
-    if (!user) return;
-    const { data, error } = await supabase.from('products').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
-    if (error) {
-      console.error('Error fetching products:', error);
-      toast({ title: 'Error', description: 'No se pudieron cargar tus productos', variant: 'destructive' });
-      return;
-    }
-    setProducts((data || []) as ProductData[]);
-  };
+    const { data: favoriteRows } = await supabase
+      .from('favorites')
+      .select('products(*)')
+      .eq('user_id', user.id);
 
-  const fetchFavorites = async () => {
-    if (!user) return;
-    const { data, error } = await supabase.from('favorites').select('product_id, products(*)').eq('user_id', user.id);
-    if (error) {
-      console.error('Error fetching favorites:', error);
-      setFavorites([]);
-      return;
-    }
-    const favoriteProducts = (data || []).map((favorite: any) => favorite.products).filter(Boolean) as ProductData[];
+    const favoriteProducts = (favoriteRows || [])
+      .map((item: any) => item.products)
+      .filter(Boolean) as ProductData[];
+
     setFavorites(favoriteProducts);
+    setLoading(false);
   };
 
   const handleSaveProfile = async () => {
     if (!user) return;
-    setSaving(true);
 
-    const payload = {
-      id: user.id,
-      full_name: formData.full_name.trim() || null,
-      username: formData.username.trim() || null,
-      location: formData.location.trim() || null,
-      phone: formData.phone.trim() || null,
-      bio: formData.bio.trim() || null,
-      updated_at: new Date().toISOString(),
-    };
+    const { error } = await supabase
+      .from('profiles')
+      .update(formData)
+      .eq('id', user.id);
 
-    const { error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' });
     if (error) {
-      console.error('Error saving profile:', error);
       toast({ title: 'Error', description: 'No se pudo guardar el perfil', variant: 'destructive' });
-    } else {
-      toast({ title: 'Perfil actualizado', description: 'Los cambios se han guardado correctamente' });
-      setIsEditing(false);
-      await fetchProfile();
+      return;
     }
-    setSaving(false);
+
+    toast({ title: 'Perfil actualizado', description: 'Tus datos se han guardado correctamente' });
+    setIsEditing(false);
+    fetchProfileData();
   };
 
   const handleSignOut = async () => {
@@ -190,32 +161,39 @@ const Profile = () => {
   };
 
   const handleDeleteProduct = async () => {
-    if (!productToDelete) return;
-    const { error } = await supabase.from('products').delete().eq('id', productToDelete.id);
+    if (!deleteProduct) return;
+
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', deleteProduct.id);
+
     if (error) {
-      console.error('Error deleting product:', error);
       toast({ title: 'Error', description: 'No se pudo eliminar el producto', variant: 'destructive' });
-    } else {
-      toast({ title: 'Producto eliminado', description: 'El producto se ha eliminado correctamente' });
-      setProducts((current) => current.filter((product) => product.id !== productToDelete.id));
+      return;
     }
-    setProductToDelete(null);
-    setDeleteDialogOpen(false);
+
+    toast({ title: 'Producto eliminado', description: 'El producto se ha eliminado correctamente' });
+    setDeleteProduct(null);
+    fetchProfileData();
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Hoy';
+    if (diffDays === 1) return 'Ayer';
+    if (diffDays < 7) return `Hace ${diffDays}d`;
+    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
   };
 
   const renderProductImage = (product: ProductData) => {
     const image = getProductImage(product);
     if (!image) {
-      return (
-        <div className="w-full h-full bg-muted flex flex-col items-center justify-center text-muted-foreground">
-          <ImageOff className="h-8 w-8 mb-2" />
-          <span className="text-sm">Sin imagen</span>
-        </div>
-      );
+      return <div className="w-full h-full flex items-center justify-center bg-muted"><ImageOff className="h-8 w-8 text-muted-foreground" /></div>;
     }
     return <img src={image} alt={product.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" loading="lazy" />;
   };
@@ -231,6 +209,7 @@ const Profile = () => {
       <Helmet>
         <title>Mi Perfil | Reveta</title>
         <meta name="description" content="Gestiona tu perfil, productos y favoritos en Reveta" />
+        <meta name="robots" content="noindex,nofollow,noarchive" />
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
@@ -288,93 +267,54 @@ const Profile = () => {
                     </div>
 
                     <div className="space-y-2"><Label htmlFor="bio">Biografía</Label><Textarea id="bio" value={formData.bio} onChange={(event) => setFormData({ ...formData, bio: event.target.value })} placeholder="Cuéntanos sobre ti..." rows={3} /></div>
-                    <div className="flex gap-2 justify-end"><Button variant="outline" onClick={() => setIsEditing(false)}>Cancelar</Button><Button onClick={handleSaveProfile} disabled={saving}>{saving ? 'Guardando...' : 'Guardar cambios'}</Button></div>
+
+                    <div className="flex gap-2"><Button onClick={handleSaveProfile}>Guardar cambios</Button><Button variant="outline" onClick={() => setIsEditing(false)}>Cancelar</Button></div>
                   </CardContent>
                 </Card>
               ) : (
-                <Tabs defaultValue={activeTab}>
-                  <TabsList className="w-full justify-start">
-                    <TabsTrigger value="products" className="gap-2"><Package className="h-4 w-4" />Mis productos</TabsTrigger>
-                    <TabsTrigger value="favorites" className="gap-2"><Heart className="h-4 w-4" />Favoritos</TabsTrigger>
-                  </TabsList>
+                <Tabs defaultValue="products" className="w-full">
+                  <TabsList className="mb-6"><TabsTrigger value="products">Mis productos</TabsTrigger><TabsTrigger value="favorites">Favoritos</TabsTrigger></TabsList>
 
-                  <TabsContent value="products" className="mt-6">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      {products.map((product) => {
-                        const boosted = isBoosted(product.boosted_until);
-                        return (
+                  <TabsContent value="products" className="space-y-4">
+                    {products.length === 0 ? (
+                      <Card><CardContent className="p-8 text-center"><Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="font-medium mb-2">No tienes productos publicados</h3><p className="text-sm text-muted-foreground mb-4">Empieza vendiendo tu primer producto</p><Button asChild><Link to="/upload">Publicar producto</Link></Button></CardContent></Card>
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {products.map((product) => (
                           <Card key={product.id} className="overflow-hidden border-border/50 group">
-                            <Link to={`/product/${product.id}`}>
-                              <div className="relative aspect-video">
-                                {renderProductImage(product)}
-                                <div className="absolute top-2 right-2"><ProductStatusBadge status={product.status} /></div>
-                                {boosted && <div className="absolute top-2 left-2"><Badge className="gap-1"><Megaphone className="h-3 w-3" />Destacado</Badge></div>}
-                              </div>
-                            </Link>
-                            <CardContent className="p-4">
-                              <div className="flex items-start justify-between gap-3">
-                                <Link to={`/product/${product.id}`} className="min-w-0">
-                                  <h3 className="font-semibold truncate">{product.title}</h3>
-                                  <p className="text-lg font-bold text-primary">{product.price} €</p>
-                                </Link>
-                                <Button variant="ghost" size="icon" className="text-destructive shrink-0" onClick={() => { setProductToDelete(product); setDeleteDialogOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
-                              </div>
-                              <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground"><Clock className="h-3 w-3" />{formatDate(product.created_at)}</div>
-                              {boosted && <p className="text-xs text-primary font-medium mt-2">Destacado hasta el {formatBoostDate(product.boosted_until)}</p>}
-                              {product.status === 'active' && (
-                                <Button variant="outline" className="w-full mt-3 gap-2" onClick={() => navigate(`/boost/${product.id}`)}>
-                                  <Megaphone className="h-4 w-4" />
-                                  {boosted ? 'Ampliar destacado' : 'Destacar'}
-                                </Button>
-                              )}
-                            </CardContent>
+                            <div className="relative aspect-video bg-muted">{renderProductImage(product)}{isBoosted(product.boosted_until) && <Badge className="absolute left-2 top-2 bg-amber-500 text-white"><Megaphone className="mr-1 h-3 w-3" />Destacado hasta {formatBoostDate(product.boosted_until)}</Badge>}<ProductStatusBadge status={product.status || 'active'} className="absolute right-2 top-2" /></div>
+                            <CardContent className="p-4"><h3 className="font-medium line-clamp-1">{product.title}</h3><p className="text-lg font-bold text-primary mt-1">{product.price.toLocaleString('es-ES')} €</p><p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Clock className="h-3 w-3" />{formatDate(product.created_at)}</p><div className="flex gap-2 mt-4"><Button asChild variant="outline" size="sm" className="flex-1"><Link to={`/producto/${product.id}/${product.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>Ver</Link></Button><Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteProduct(product)}><Trash2 className="h-4 w-4" /></Button></div></CardContent>
                           </Card>
-                        );
-                      })}
-
-                      {products.length === 0 && <div className="sm:col-span-2 text-center py-12 bg-muted/50 rounded-xl"><Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">No tienes productos a la venta</p><Button className="mt-4" onClick={() => navigate('/upload')}>Subir mi primer producto</Button></div>}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </TabsContent>
 
-                  <TabsContent value="favorites" className="mt-6">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      {favorites.map((product) => (
-                        <Link to={`/product/${product.id}`} key={product.id}>
-                          <Card className="overflow-hidden border-border/50 group">
-                            <div className="relative aspect-video">{renderProductImage(product)}</div>
-                            <CardContent className="p-4">
-                              <h3 className="font-semibold truncate">{product.title}</h3>
-                              <p className="text-lg font-bold text-primary">{product.price} €</p>
-                              {product.location && <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground"><MapPin className="h-3 w-3" />{product.location}</div>}
-                            </CardContent>
-                          </Card>
-                        </Link>
-                      ))}
-
-                      {favorites.length === 0 && <div className="sm:col-span-2 text-center py-12 bg-muted/50 rounded-xl"><Heart className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><p className="text-muted-foreground">Aún no tienes productos favoritos</p><Button className="mt-4" variant="outline" onClick={() => navigate('/')}>Explorar productos</Button></div>}
-                    </div>
+                  <TabsContent value="favorites" className="space-y-4">
+                    {favorites.length === 0 ? (
+                      <Card><CardContent className="p-8 text-center"><Heart className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="font-medium mb-2">No tienes favoritos</h3><p className="text-sm text-muted-foreground mb-4">Guarda productos que te interesen</p><Button asChild><Link to="/search">Explorar productos</Link></Button></CardContent></Card>
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {favorites.map((product) => (
+                          <Card key={product.id} className="overflow-hidden border-border/50 group"><div className="relative aspect-video bg-muted">{renderProductImage(product)}</div><CardContent className="p-4"><h3 className="font-medium line-clamp-1">{product.title}</h3><p className="text-lg font-bold text-primary mt-1">{product.price.toLocaleString('es-ES')} €</p><Button asChild variant="outline" size="sm" className="w-full mt-4"><Link to={`/producto/${product.id}/${product.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>Ver producto</Link></Button></CardContent></Card>
+                        ))}
+                      </div>
+                    )}
                   </TabsContent>
                 </Tabs>
               )}
             </div>
           </div>
         </main>
-
         <Footer />
-
-        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive" />¿Eliminar producto?</AlertDialogTitle>
-              <AlertDialogDescription>Esta acción no se puede deshacer. El producto “{productToDelete?.title}” se eliminará permanentemente.</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setProductToDelete(null)}>Cancelar</AlertDialogCancel>
-              <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleDeleteProduct}>Eliminar</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
+
+      <AlertDialog open={!!deleteProduct} onOpenChange={() => setDeleteProduct(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive" />Eliminar producto</AlertDialogTitle><AlertDialogDescription>¿Estás seguro de que quieres eliminar "{deleteProduct?.title}"? Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleDeleteProduct} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
