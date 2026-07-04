@@ -11,7 +11,11 @@ const NotFound = () => {
 
   return (
     <>
-      <NoIndex title="Página no encontrada | Reveta" description="Esta página no existe en Reveta." />
+      <NoIndex
+        title="Página no encontrada | Reveta"
+        description="Esta página no existe en Reveta. Vuelve al inicio para seguir comprando y vendiendo productos de segunda mano."
+        robots="noindex,follow,noarchive"
+      />
       <div className="flex min-h-screen items-center justify-center bg-muted">
         <div className="text-center">
           <h1 className="mb-4 text-4xl font-bold">404</h1>
