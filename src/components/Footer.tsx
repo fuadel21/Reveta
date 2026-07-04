@@ -8,6 +8,7 @@ const cityLinks = [
   { to: "/segunda-mano/girona", label: "Segunda mano Girona" },
   { to: "/segunda-mano/tarragona", label: "Segunda mano Tarragona" },
   { to: "/segunda-mano/lleida", label: "Segunda mano Lleida" },
+  { to: "/segunda-mano/reus", label: "Segunda mano Reus" },
   { to: "/segunda-mano/badalona", label: "Segunda mano Badalona" },
   { to: "/segunda-mano/hospitalet-de-llobregat", label: "Segunda mano Hospitalet" },
   { to: "/segunda-mano/sabadell", label: "Segunda mano Sabadell" },
@@ -17,15 +18,22 @@ const cityLinks = [
   { to: "/segunda-mano/lloret-de-mar", label: "Segunda mano Lloret de Mar" },
   { to: "/segunda-mano/blanes", label: "Segunda mano Blanes" },
   { to: "/segunda-mano/malgrat-de-mar", label: "Segunda mano Malgrat de Mar" },
+  { to: "/segunda-mano/figueres", label: "Segunda mano Figueres" },
+  { to: "/segunda-mano/granollers", label: "Segunda mano Granollers" },
+  { to: "/segunda-mano/vic", label: "Segunda mano Vic" },
 ];
 
 const categoryLinks = [
   { to: "/segunda-mano/barcelona/electronica", label: "Electrónica Barcelona" },
   { to: "/segunda-mano/barcelona/iphone", label: "iPhone Barcelona" },
   { to: "/segunda-mano/barcelona/muebles", label: "Muebles Barcelona" },
+  { to: "/segunda-mano/barcelona/motor", label: "Motor Barcelona" },
   { to: "/segunda-mano/madrid/motor", label: "Motor Madrid" },
   { to: "/segunda-mano/madrid/electronica", label: "Electrónica Madrid" },
   { to: "/segunda-mano/valencia/iphone", label: "iPhone Valencia" },
+  { to: "/segunda-mano/valencia/muebles", label: "Muebles Valencia" },
+  { to: "/segunda-mano/girona/electronica", label: "Electrónica Girona" },
+  { to: "/segunda-mano/tarragona/muebles", label: "Muebles Tarragona" },
   { to: "/segunda-mano/badalona/electronica", label: "Electrónica Badalona" },
   { to: "/segunda-mano/hospitalet-de-llobregat/electronica", label: "Electrónica Hospitalet" },
   { to: "/segunda-mano/sabadell/electronica", label: "Electrónica Sabadell" },
@@ -134,6 +142,7 @@ const Footer = () => {
                 { to: '/terms', label: 'Términos de uso' },
                 { to: '/privacy', label: 'Política de privacidad' },
                 { to: '/cookies', label: 'Cookies' },
+                { to: '/sitemap.xml', label: 'Sitemap' },
               ].map(({ to, label }) => (
                 <li key={label}>
                   <Link 
