@@ -7,7 +7,7 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import ReportDialog from '@/components/ReportDialog';
 import BlockUserButton from '@/components/BlockUserButton';
 import { supabase } from '@/integrations/supabase/client';
-import { CalendarDays, CheckCircle2, MessageCircle, Package, Shield, ShoppingBag, Star, Trophy } from 'lucide-react';
+import { Award, CalendarDays, CheckCircle2, Clock3, MessageCircle, Package, Shield, ShoppingBag, Star, TrendingUp, Trophy } from 'lucide-react';
 
 interface SellerTrustCardProps {
   seller: {
@@ -37,12 +37,28 @@ const getAccountAgeInDays = (dateString: string) => {
   return Math.max(0, Math.floor((Date.now() - createdAt) / (1000 * 60 * 60 * 24)));
 };
 
+const getAccountAgeLabel = (days: number) => {
+  if (days >= 730) return 'Más de 2 años en Reveta';
+  if (days >= 365) return 'Más de 1 año en Reveta';
+  if (days >= 90) return 'Más de 3 meses en Reveta';
+  if (days >= 30) return 'Más de 1 mes en Reveta';
+  return 'Cuenta reciente';
+};
+
 const getTrustLabel = (score: number) => {
   if (score >= 85) return 'Excelente';
   if (score >= 70) return 'Muy fiable';
   if (score >= 50) return 'Fiable';
   if (score >= 30) return 'Nuevo en crecimiento';
   return 'Nuevo vendedor';
+};
+
+const getReputationLevel = (score: number) => {
+  if (score >= 85) return 'Vendedor destacado';
+  if (score >= 70) return 'Vendedor recomendado';
+  if (score >= 50) return 'Vendedor fiable';
+  if (score >= 30) return 'Vendedor en progreso';
+  return 'Vendedor nuevo';
 };
 
 const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, onContactSeller }: SellerTrustCardProps) => {
@@ -79,7 +95,7 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
 
   const accountAgeDays = getAccountAgeInDays(seller.created_at);
 
-  const trustScore = useMemo(() => {
+  const trustBreakdown = useMemo(() => {
     const verificationPoints = seller.verified ? 25 : 0;
     const ratingPoints = reviewStats.totalReviews > 0 ? Math.round((reviewStats.averageRating / 5) * 30) : 0;
     const reviewVolumePoints = Math.min(reviewStats.totalReviews * 3, 15);
@@ -87,10 +103,40 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
     const activeProductsPoints = Math.min(activeProductsCount * 2, 8);
     const seniorityPoints = accountAgeDays >= 365 ? 6 : accountAgeDays >= 90 ? 4 : accountAgeDays >= 30 ? 2 : 0;
 
-    return Math.min(100, verificationPoints + ratingPoints + reviewVolumePoints + soldPoints + activeProductsPoints + seniorityPoints);
+    return {
+      verificationPoints,
+      ratingPoints,
+      reviewVolumePoints,
+      soldPoints,
+      activeProductsPoints,
+      seniorityPoints,
+    };
   }, [seller.verified, reviewStats.averageRating, reviewStats.totalReviews, soldCount, activeProductsCount, accountAgeDays]);
 
+  const trustScore = useMemo(() => {
+    return Math.min(
+      100,
+      trustBreakdown.verificationPoints +
+        trustBreakdown.ratingPoints +
+        trustBreakdown.reviewVolumePoints +
+        trustBreakdown.soldPoints +
+        trustBreakdown.activeProductsPoints +
+        trustBreakdown.seniorityPoints,
+    );
+  }, [trustBreakdown]);
+
   const trustLabel = getTrustLabel(trustScore);
+  const reputationLevel = getReputationLevel(trustScore);
+  const accountAgeLabel = getAccountAgeLabel(accountAgeDays);
+  const averageRatingLabel = reviewStats.totalReviews > 0 ? reviewStats.averageRating.toFixed(1) : '—';
+
+  const trustSignals = [
+    seller.verified ? 'Identidad verificada' : 'Identidad pendiente de verificar',
+    reviewStats.totalReviews > 0 ? `${reviewStats.totalReviews} valoraciones públicas` : 'Todavía sin valoraciones',
+    soldCount > 0 ? `${soldCount} productos vendidos` : 'Sin ventas registradas todavía',
+    activeProductsCount > 0 ? `${activeProductsCount} anuncios activos` : 'Sin anuncios activos adicionales',
+    accountAgeLabel,
+  ];
 
   return (
     <div className="bg-card rounded-xl p-6 shadow-card border border-border/50">
@@ -115,14 +161,32 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
           <div className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-primary" />
             <div>
-              <p className="text-sm font-bold">Confianza del vendedor</p>
-              <p className="text-xs text-muted-foreground">{trustLabel}</p>
+              <p className="text-sm font-bold">Reputación del vendedor</p>
+              <p className="text-xs text-muted-foreground">{reputationLevel} · {trustLabel}</p>
             </div>
           </div>
           <Badge variant="secondary" className="text-sm font-bold">{trustScore}/100</Badge>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-muted">
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${trustScore}%` }} />
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Cálculo basado en verificación, valoraciones, ventas, anuncios activos y antigüedad de la cuenta.
+        </p>
+      </div>
+
+      <div className="mb-5 grid grid-cols-3 gap-2">
+        <div className="rounded-lg border border-border/60 p-3 text-center">
+          <p className="text-lg font-bold">{averageRatingLabel}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Nota media</p>
+        </div>
+        <div className="rounded-lg border border-border/60 p-3 text-center">
+          <p className="text-lg font-bold">{reviewStats.totalReviews}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Opiniones</p>
+        </div>
+        <div className="rounded-lg border border-border/60 p-3 text-center">
+          <p className="text-lg font-bold">{soldCount}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Vendidos</p>
         </div>
       </div>
 
@@ -132,23 +196,30 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
           <p className="text-xs text-muted-foreground flex items-center gap-1"><Package className="h-3.5 w-3.5" /> Anuncios activos</p>
         </div>
         <div className="rounded-lg border border-border/60 p-3">
-          <p className="text-lg font-bold">{soldCount}</p>
-          <p className="text-xs text-muted-foreground flex items-center gap-1"><ShoppingBag className="h-3.5 w-3.5" /> Vendidos</p>
-        </div>
-        <div className="rounded-lg border border-border/60 p-3">
-          <p className="text-lg font-bold">{reviewStats.totalReviews}</p>
-          <p className="text-xs text-muted-foreground flex items-center gap-1"><Star className="h-3.5 w-3.5" /> Valoraciones</p>
-        </div>
-        <div className="rounded-lg border border-border/60 p-3">
           <p className="text-lg font-bold">{seller.verified ? 'Sí' : 'Pendiente'}</p>
           <p className="text-xs text-muted-foreground flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> Verificación</p>
         </div>
       </div>
 
+      <div className="mb-5 rounded-xl border border-border/60 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-primary" />
+          <p className="text-sm font-semibold">Resumen de confianza</p>
+        </div>
+        <div className="space-y-2 text-sm text-muted-foreground">
+          {trustSignals.map((signal) => (
+            <div key={signal} className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+              <span>{signal}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="space-y-2 rounded-xl bg-primary/5 border border-primary/10 p-4 mb-5 text-sm">
-        <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /><span>Valoraciones visibles del vendedor</span></div>
-        <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /><span>Historial de ventas y actividad</span></div>
-        <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /><span>Chat seguro y compra protegida</span></div>
+        <div className="flex items-center gap-2"><Award className="h-4 w-4 text-primary" /><span>Nivel: {reputationLevel}</span></div>
+        <div className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-primary" /><span>{accountAgeLabel}</span></div>
+        <div className="flex items-center gap-2"><ShoppingBag className="h-4 w-4 text-primary" /><span>Historial de ventas y actividad visible</span></div>
       </div>
 
       {!isOwner && (
