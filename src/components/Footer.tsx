@@ -47,9 +47,11 @@ const exploreLinks = [
   { to: '/search?sort=recent', label: 'Últimos productos' },
   { to: '/search?sort=price_asc', label: 'Mejores ofertas' },
   { to: '/upload', label: 'Vender un producto' },
+  { to: '/seguridad', label: 'Reveta Protección' },
 ];
 
 const legalLinks = [
+  { to: '/seguridad', label: 'Centro de seguridad' },
   { to: '/terms', label: 'Términos de uso' },
   { to: '/privacy', label: 'Política de privacidad' },
   { to: '/cookies', label: 'Cookies' },
@@ -74,7 +76,7 @@ const Footer = () => {
               Marketplace para comprar y vender productos de segunda mano cerca de ti.
             </p>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Publica gratis, negocia por chat y encuentra oportunidades locales en tu ciudad.
+              Publica gratis, negocia por chat y compra con más confianza usando Reveta Protección.
             </p>
           </div>
           
@@ -167,6 +169,7 @@ const Footer = () => {
               <Link to="/segunda-mano/pineda-de-mar" className="hover:text-primary transition-colors">Pineda de Mar</Link>
               <Link to="/segunda-mano/blanes" className="hover:text-primary transition-colors">Blanes</Link>
               <Link to="/segunda-mano/lloret-de-mar" className="hover:text-primary transition-colors">Lloret de Mar</Link>
+              <Link to="/seguridad" className="hover:text-primary transition-colors">Reveta Protección</Link>
             </div>
           </div>
         </div>
