@@ -16,6 +16,7 @@ import ProductBuyerConfidence from '@/components/product/ProductBuyerConfidence'
 import PurchaseDecisionGuide from '@/components/product/PurchaseDecisionGuide';
 import RelatedProducts from '@/components/product/RelatedProducts';
 import SellerTrustCard from '@/components/product/SellerTrustCard';
+import ReportProductButton from '@/components/product/ReportProductButton';
 import { Chat } from '@/components/Chat';
 
 interface Product {
@@ -403,6 +404,7 @@ const ProductDetail = () => {
                   onContactSeller={handleContactSeller}
                 />
               )}
+              {seller && <ReportProductButton productId={product.id} sellerId={seller.id} productTitle={product.title} isOwner={isOwner} />}
               {seller && <div className="bg-card rounded-xl p-6 shadow-card border border-border/50"><Reviews userId={seller.id} productId={product.id} /></div>}
               <div className="bg-muted/50 rounded-xl p-6"><h3 className="font-medium mb-3 flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />Consejos de seguridad</h3><ul className="text-sm text-muted-foreground space-y-2"><li>• Queda en lugares públicos</li><li>• Verifica el producto antes de pagar</li><li>• Nunca envíes dinero por adelantado</li><li>• Usa el chat de la plataforma</li></ul></div>
             </div>
