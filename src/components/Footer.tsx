@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Facebook, Twitter, Instagram, Youtube, Heart, ArrowUpRight } from "lucide-react";
+import { Heart, ArrowUpRight } from "lucide-react";
 
 const cityLinks = [
   { to: "/segunda-mano/barcelona", label: "Segunda mano Barcelona" },
@@ -42,6 +42,19 @@ const categoryLinks = [
   { to: "/segunda-mano/pineda-de-mar/electronica", label: "Electrónica Pineda de Mar" },
 ];
 
+const exploreLinks = [
+  { to: '/search', label: 'Todas las categorías' },
+  { to: '/search?sort=recent', label: 'Últimos productos' },
+  { to: '/search?sort=price_asc', label: 'Mejores ofertas' },
+  { to: '/upload', label: 'Vender un producto' },
+];
+
+const legalLinks = [
+  { to: '/terms', label: 'Términos de uso' },
+  { to: '/privacy', label: 'Política de privacidad' },
+  { to: '/cookies', label: 'Cookies' },
+];
+
 const Footer = () => {
   return (
     <footer className="border-t border-border bg-card py-16 relative overflow-hidden">
@@ -57,37 +70,18 @@ const Footer = () => {
               </div>
               <span className="text-2xl font-bold text-foreground">Reveta</span>
             </Link>
-            <p className="text-muted-foreground mb-6 leading-relaxed">
+            <p className="text-muted-foreground mb-4 leading-relaxed">
               Marketplace para comprar y vender productos de segunda mano cerca de ti.
             </p>
-            <div className="flex gap-2">
-              {[
-                { icon: Facebook, label: 'Facebook' },
-                { icon: Twitter, label: 'Twitter' },
-                { icon: Instagram, label: 'Instagram' },
-                { icon: Youtube, label: 'YouTube' },
-              ].map(({ icon: Icon, label }) => (
-                <a 
-                  key={label}
-                  href="#" 
-                  aria-label={label}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-muted-foreground hover:bg-primary hover:text-primary-foreground transition-all duration-300 hover:scale-110 hover:shadow-lg"
-                >
-                  <Icon className="h-4 w-4" />
-                </a>
-              ))}
-            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Publica gratis, negocia por chat y encuentra oportunidades locales en tu ciudad.
+            </p>
           </div>
           
           <div>
             <h3 className="font-semibold text-foreground mb-6 text-lg">Explorar</h3>
             <ul className="space-y-3">
-              {[
-                { to: '/search', label: 'Todas las categorías' },
-                { to: '/search?sort=recent', label: 'Últimos productos' },
-                { to: '/search?sort=price_asc', label: 'Mejores ofertas' },
-                { to: '/upload', label: 'Vender un producto' },
-              ].map(({ to, label }) => (
+              {exploreLinks.map(({ to, label }) => (
                 <li key={label}>
                   <Link 
                     to={to} 
@@ -138,12 +132,7 @@ const Footer = () => {
           <div>
             <h3 className="font-semibold text-foreground mb-6 text-lg">Legal</h3>
             <ul className="space-y-3">
-              {[
-                { to: '/terms', label: 'Términos de uso' },
-                { to: '/privacy', label: 'Política de privacidad' },
-                { to: '/cookies', label: 'Cookies' },
-                { to: '/sitemap.xml', label: 'Sitemap' },
-              ].map(({ to, label }) => (
+              {legalLinks.map(({ to, label }) => (
                 <li key={label}>
                   <Link 
                     to={to} 
@@ -154,6 +143,15 @@ const Footer = () => {
                   </Link>
                 </li>
               ))}
+              <li>
+                <a
+                  href="/sitemap.xml"
+                  className="text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-1 group"
+                >
+                  Sitemap
+                  <ArrowUpRight className="h-3 w-3 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                </a>
+              </li>
             </ul>
           </div>
         </div>
