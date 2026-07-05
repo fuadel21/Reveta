@@ -13,7 +13,7 @@ import RecentReviews from '@/components/reviews/RecentReviews';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CalendarDays, CheckCircle2, Package, ShieldCheck, ShoppingBag, Star, Store, Users } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, MessageCircle, Package, ShieldCheck, ShoppingBag, Star, Store, Users } from 'lucide-react';
 
 interface Profile {
   id: string;
@@ -285,6 +285,31 @@ const PublicSellerProfile = () => {
                 <div className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-primary" /> Valoraciones visibles del vendedor</div>
                 <div className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-primary" /> Chat seguro dentro de Reveta</div>
                 <div className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-primary" /> Compra protegida en productos activos</div>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5 text-primary" />
+                  <h2 className="font-semibold">Cómo comprar con confianza</h2>
+                </div>
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <div className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-primary" /> Revisa valoraciones, antigüedad, productos vendidos y anuncios activos.</div>
+                  <div className="flex gap-2"><MessageCircle className="h-4 w-4 shrink-0 text-primary" /> Pregunta por fotos reales, estado, accesorios y forma de entrega.</div>
+                  <div className="flex gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-primary" /> Mantén acuerdos y pagos dentro de Reveta siempre que sea posible.</div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                <div className="mb-3 flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  <h2 className="font-semibold">Señales de alerta</h2>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <p>Desconfía si el vendedor pide pago externo, envía enlaces raros, evita responder preguntas o presiona para cerrar rápido.</p>
+                  <p>Si algo no cuadra, usa el chat de Reveta, guarda pruebas y reporta el producto o usuario.</p>
+                </div>
               </div>
             </div>
           </section>
