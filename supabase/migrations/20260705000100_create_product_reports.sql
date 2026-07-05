@@ -50,9 +50,9 @@ to authenticated
 using (
   exists (
     select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and coalesce(p.is_admin, false) = true
+    from public.user_roles ur
+    where ur.user_id = auth.uid()
+      and ur.role = 'admin'
   )
 );
 
@@ -63,17 +63,17 @@ to authenticated
 using (
   exists (
     select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and coalesce(p.is_admin, false) = true
+    from public.user_roles ur
+    where ur.user_id = auth.uid()
+      and ur.role = 'admin'
   )
 )
 with check (
   exists (
     select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and coalesce(p.is_admin, false) = true
+    from public.user_roles ur
+    where ur.user_id = auth.uid()
+      and ur.role = 'admin'
   )
 );
 
