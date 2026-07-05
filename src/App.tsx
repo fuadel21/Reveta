@@ -18,6 +18,7 @@ import Messages from "./pages/Messages";
 import ProductDetail from "./pages/ProductDetail";
 import Search from "./pages/Search";
 import SeoLanding from "./pages/SeoLanding";
+import Safety from "./pages/Safety";
 import Admin from "./pages/Admin";
 import AdminGrowth from "./pages/AdminGrowth";
 import AdminDisputeDetail from "./pages/AdminDisputeDetail";
@@ -69,6 +70,7 @@ const App = () => (
                 <Route path="/search" element={<Search />} />
                 <Route path="/segunda-mano/:city" element={<SeoLanding />} />
                 <Route path="/segunda-mano/:city/:category" element={<SeoLanding />} />
+                <Route path="/seguridad" element={<Safety />} />
                 <Route path="/admin" element={privatePage("Administración | Reveta", <Admin />)} />
                 <Route path="/admin/growth" element={privatePage("Growth admin | Reveta", <AdminGrowth />)} />
                 <Route path="/admin/disputes/:id" element={privatePage("Incidencia admin | Reveta", <AdminDisputeDetail />)} />
