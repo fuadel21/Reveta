@@ -7,11 +7,12 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import ReportDialog from '@/components/ReportDialog';
 import BlockUserButton from '@/components/BlockUserButton';
 import { supabase } from '@/integrations/supabase/client';
-import { Award, CalendarDays, CheckCircle2, Clock3, MessageCircle, Package, Shield, ShoppingBag, Star, TrendingUp, Trophy } from 'lucide-react';
+import { AlertTriangle, Award, CalendarDays, CheckCircle2, Clock3, MessageCircle, Package, Shield, ShoppingBag, Star, Store, TrendingUp, Trophy } from 'lucide-react';
 
 interface SellerTrustCardProps {
   seller: {
     id: string;
+    username?: string | null;
     full_name: string | null;
     avatar_url: string | null;
     created_at: string;
@@ -94,6 +95,8 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
   };
 
   const accountAgeDays = getAccountAgeInDays(seller.created_at);
+  const sellerProfilePath = `/usuario/${seller.username || seller.id}`;
+  const sellerName = seller.full_name || seller.username || 'Usuario';
 
   const trustBreakdown = useMemo(() => {
     const verificationPoints = seller.verified ? 25 : 0;
@@ -140,15 +143,18 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
 
   return (
     <div className="bg-card rounded-xl p-6 shadow-card border border-border/50">
-      <div className="flex items-start gap-4 mb-5">
-        <div className="h-14 w-14 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-xl font-bold text-primary-foreground overflow-hidden">
-          {seller.avatar_url ? <img src={seller.avatar_url} alt={seller.full_name || 'Vendedor'} className="h-full w-full object-cover" /> : seller.full_name?.[0]?.toUpperCase() || 'U'}
-        </div>
+      <div className="mb-5 flex items-start gap-4">
+        <Link to={sellerProfilePath} className="h-14 w-14 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-xl font-bold text-primary-foreground overflow-hidden transition hover:scale-105" aria-label={`Ver perfil de ${sellerName}`}>
+          {seller.avatar_url ? <img src={seller.avatar_url} alt={sellerName} className="h-full w-full object-cover" /> : sellerName[0]?.toUpperCase() || 'U'}
+        </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-semibold truncate">{seller.full_name || 'Usuario'}</p>
+            <Link to={sellerProfilePath} className="font-semibold truncate hover:text-primary hover:underline">
+              {sellerName}
+            </Link>
             {seller.verified ? <VerifiedBadge size="sm" /> : <Badge variant="outline">Sin verificar</Badge>}
           </div>
+          {seller.username && <p className="text-xs text-muted-foreground">@{seller.username}</p>}
           <SellerRating sellerId={seller.id} size="sm" />
           <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
             <CalendarDays className="h-4 w-4" /> Miembro desde {getMemberSince(seller.created_at)}
@@ -171,7 +177,7 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${trustScore}%` }} />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Cálculo basado en verificación, valoraciones, ventas, anuncios activos y antigüedad de la cuenta.
+          Cálculo orientativo basado en verificación, valoraciones, ventas, anuncios activos y antigüedad de la cuenta.
         </p>
       </div>
 
@@ -222,17 +228,31 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
         <div className="flex items-center gap-2"><ShoppingBag className="h-4 w-4 text-primary" /><span>Historial de ventas y actividad visible</span></div>
       </div>
 
+      <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950">
+        <div className="mb-2 flex items-center gap-2 font-semibold">
+          <AlertTriangle className="h-4 w-4" /> Antes de pagar
+        </div>
+        <ul className="space-y-1.5">
+          <li>• Revisa fotos, descripción, estado y accesorios incluidos.</li>
+          <li>• Mantén la conversación y los acuerdos dentro del chat.</li>
+          <li>• Desconfía si te pide pago externo o cerrar con urgencia.</li>
+        </ul>
+      </div>
+
       {!isOwner && (
         <div className="space-y-2">
           <Button className="w-full" onClick={onContactSeller}>
             <MessageCircle className="h-4 w-4 mr-2" /> Contactar con el vendedor
           </Button>
           <Button asChild variant="outline" className="w-full">
+            <Link to={sellerProfilePath}><Store className="h-4 w-4 mr-2" /> Ver perfil completo</Link>
+          </Button>
+          <Button asChild variant="outline" className="w-full">
             <Link to={`/search?seller=${seller.id}`}>Ver más productos del vendedor</Link>
           </Button>
           <div className="pt-2 flex flex-col gap-2">
             <ReportDialog productId={productId} userId={seller.id} />
-            <BlockUserButton userId={seller.id} userName={seller.full_name || 'este usuario'} />
+            <BlockUserButton userId={seller.id} userName={sellerName} />
           </div>
         </div>
       )}
