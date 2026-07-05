@@ -1,4 +1,5 @@
-import { BadgeCheck, CreditCard, MessageCircle, PackageCheck, ShieldCheck, Truck } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, BadgeCheck, CreditCard, MessageCircle, PackageCheck, ShieldCheck, Truck } from 'lucide-react';
 
 const trustItems = [
   {
@@ -53,9 +54,23 @@ export const ProductBuyerConfidence = () => {
         })}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <CreditCard className="h-4 w-4 text-primary" />
-        <span>Consejo: evita pagos externos si no conoces al vendedor.</span>
+      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+        <div className="flex gap-2">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            Alerta antifraude: no aceptes enlaces externos, pagos por adelantado ni vendedores que presionan para cerrar fuera de Reveta.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <CreditCard className="h-4 w-4 text-primary" />
+          <span>Consejo: evita pagos externos si no conoces al vendedor.</span>
+        </div>
+        <Link to="/seguridad" className="font-semibold text-primary hover:underline">
+          Ver Reveta Protección
+        </Link>
       </div>
     </section>
   );
