@@ -7,7 +7,7 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import ReportDialog from '@/components/ReportDialog';
 import BlockUserButton from '@/components/BlockUserButton';
 import { supabase } from '@/integrations/supabase/client';
-import { AlertTriangle, Award, CalendarDays, CheckCircle2, Clock3, MessageCircle, Package, Shield, ShoppingBag, Star, Store, TrendingUp, Trophy } from 'lucide-react';
+import { AlertTriangle, Award, CalendarDays, CheckCircle2, Clock3, MessageCircle, Package, Shield, ShoppingBag, Store, TrendingUp, Trophy } from 'lucide-react';
 
 interface SellerTrustCardProps {
   seller: {
