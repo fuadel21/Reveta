@@ -83,12 +83,46 @@ const safetyJsonLd = {
   ],
 };
 
+const webPageJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebPage',
+  name: 'Reveta Protección',
+  url: 'https://reveta.es/seguridad',
+  description: 'Centro de seguridad de Reveta para comprar y vender productos de segunda mano con más confianza.',
+  inLanguage: 'es-ES',
+  isPartOf: {
+    '@type': 'WebSite',
+    name: 'Reveta',
+    url: 'https://reveta.es/',
+  },
+};
+
+const breadcrumbJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    {
+      '@type': 'ListItem',
+      position: 1,
+      name: 'Reveta',
+      item: 'https://reveta.es/',
+    },
+    {
+      '@type': 'ListItem',
+      position: 2,
+      name: 'Reveta Protección',
+      item: 'https://reveta.es/seguridad',
+    },
+  ],
+};
+
 const Safety = () => {
   return (
     <>
       <Helmet>
         <title>Reveta Protección | Seguridad, antifraude y compra segura</title>
         <meta name="description" content="Centro de Seguridad de Reveta: consejos para comprar y vender segunda mano con más protección, evitar fraudes, detectar anuncios sospechosos y denunciar productos." />
+        <meta name="keywords" content="compra segura segunda mano, evitar estafas segunda mano, compra protegida, seguridad marketplace, antifraude, Reveta Protección" />
         <meta name="robots" content="index,follow,max-image-preview:large" />
         <link rel="canonical" href="https://reveta.es/seguridad" />
         <meta property="og:title" content="Reveta Protección | Seguridad y antifraude" />
@@ -96,10 +130,15 @@ const Safety = () => {
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://reveta.es/seguridad" />
         <meta property="og:image" content="https://reveta.es/og-image.png" />
+        <meta property="og:image:secure_url" content="https://reveta.es/og-image.png" />
         <meta property="og:site_name" content="Reveta" />
         <meta property="og:locale" content="es_ES" />
         <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Reveta Protección | Seguridad y antifraude" />
+        <meta name="twitter:description" content="Consejos para comprar y vender segunda mano con más confianza en Reveta." />
         <meta name="twitter:image" content="https://reveta.es/og-image.png" />
+        <script type="application/ld+json">{JSON.stringify(webPageJsonLd)}</script>
+        <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(safetyJsonLd)}</script>
       </Helmet>
 
