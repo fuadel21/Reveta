@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -52,11 +52,21 @@ const sortBoostedFirst = (items: Product[]) => {
 };
 
 const popularSearches = ['iPhone', 'bicicleta', 'muebles', 'PS5', 'coche', 'patinete', 'sofá', 'portátil'];
-const popularCities = ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Málaga', 'Pineda de Mar'];
+const popularCities = [
+  { label: 'Barcelona', href: '/segunda-mano/barcelona' },
+  { label: 'Madrid', href: '/segunda-mano/madrid' },
+  { label: 'Valencia', href: '/segunda-mano/valencia' },
+  { label: 'Badalona', href: '/segunda-mano/badalona' },
+  { label: 'Sabadell', href: '/segunda-mano/sabadell' },
+  { label: 'Terrassa', href: '/segunda-mano/terrassa' },
+  { label: 'Mataró', href: '/segunda-mano/mataro' },
+  { label: 'Pineda de Mar', href: '/segunda-mano/pineda-de-mar' },
+  { label: 'Lloret de Mar', href: '/segunda-mano/lloret-de-mar' },
+  { label: 'Blanes', href: '/segunda-mano/blanes' },
+];
 
 const SearchPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const { user } = useAuth();
   const geolocation = useGeolocation();
   const lastLoggedSearchRef = useRef('');
@@ -269,16 +279,6 @@ const SearchPage = () => {
     setSearchParams(params);
   };
 
-  const handlePopularCity = (city: string) => {
-    setLocation(city);
-    const params = new URLSearchParams(searchParams);
-    params.set('location', city);
-    params.delete('geo');
-    params.delete('radius');
-    setUseGeoFilter(false);
-    setSearchParams(params);
-  };
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString); const now = new Date(); const diffMs = now.getTime() - date.getTime(); const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     if (diffDays === 0) { const diffHours = Math.floor(diffMs / (1000 * 60 * 60)); return diffHours === 0 ? 'Hace unos min' : `Hace ${diffHours}h`; }
@@ -360,7 +360,9 @@ const SearchPage = () => {
                 <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><MapPin className="h-4 w-4 text-primary" />Ciudades populares</div>
                 <div className="flex flex-wrap gap-2">
                   {popularCities.map((city) => (
-                    <Button key={city} variant="outline" size="sm" onClick={() => handlePopularCity(city)}>{city}</Button>
+                    <Button key={city.href} variant="outline" size="sm" asChild>
+                      <Link to={city.href}>Segunda mano en {city.label}</Link>
+                    </Button>
                   ))}
                 </div>
               </div>
