@@ -99,11 +99,15 @@ const Profile = () => {
     if (!user) return;
     setLoading(true);
 
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .maybeSingle();
+    const { data: privateProfileData, error: privateProfileError } = await (supabase as any)
+      .rpc('get_private_profile');
+
+    if (privateProfileError) {
+      console.error('Error fetching private profile:', privateProfileError);
+      toast({ title: 'Error', description: 'No se pudo cargar tu perfil privado', variant: 'destructive' });
+    }
+
+    const profileData = Array.isArray(privateProfileData) ? privateProfileData[0] : privateProfileData;
 
     if (profileData) {
       setProfile(profileData as ProfileData);
@@ -283,22 +287,18 @@ const Profile = () => {
                         {products.map((product) => (
                           <Card key={product.id} className="overflow-hidden border-border/50 group">
                             <div className="relative aspect-video bg-muted">{renderProductImage(product)}{isBoosted(product.boosted_until) && <Badge className="absolute left-2 top-2 bg-amber-500 text-white"><Megaphone className="mr-1 h-3 w-3" />Destacado hasta {formatBoostDate(product.boosted_until)}</Badge>}<ProductStatusBadge status={product.status || 'active'} className="absolute right-2 top-2" /></div>
-                            <CardContent className="p-4"><h3 className="font-medium line-clamp-1">{product.title}</h3><p className="text-lg font-bold text-primary mt-1">{product.price.toLocaleString('es-ES')} €</p><p className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><Clock className="h-3 w-3" />{formatDate(product.created_at)}</p><div className="flex gap-2 mt-4"><Button asChild variant="outline" size="sm" className="flex-1"><Link to={`/producto/${product.id}/${product.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>Ver</Link></Button><Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteProduct(product)}><Trash2 className="h-4 w-4" /></Button></div></CardContent>
+                            <CardContent className="p-4"><h3 className="font-medium line-clamp-1">{product.title}</h3><p className="text-lg font-bold text-primary">{product.price.toLocaleString('es-ES')} €</p><p className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><Clock className="h-3 w-3" />{formatDate(product.created_at)}</p><div className="flex gap-2 mt-3"><Button size="sm" variant="outline" asChild><Link to={`/product/${product.id}`}>Ver</Link></Button><Button size="sm" variant="destructive" onClick={() => setDeleteProduct(product)}><Trash2 className="h-4 w-4" /></Button></div></CardContent>
                           </Card>
                         ))}
                       </div>
                     )}
                   </TabsContent>
 
-                  <TabsContent value="favorites" className="space-y-4">
+                  <TabsContent value="favorites">
                     {favorites.length === 0 ? (
-                      <Card><CardContent className="p-8 text-center"><Heart className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="font-medium mb-2">No tienes favoritos</h3><p className="text-sm text-muted-foreground mb-4">Guarda productos que te interesen</p><Button asChild><Link to="/search">Explorar productos</Link></Button></CardContent></Card>
+                      <Card><CardContent className="p-8 text-center"><Heart className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="font-medium mb-2">No tienes favoritos</h3><p className="text-sm text-muted-foreground">Guarda productos que te interesen</p></CardContent></Card>
                     ) : (
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        {favorites.map((product) => (
-                          <Card key={product.id} className="overflow-hidden border-border/50 group"><div className="relative aspect-video bg-muted">{renderProductImage(product)}</div><CardContent className="p-4"><h3 className="font-medium line-clamp-1">{product.title}</h3><p className="text-lg font-bold text-primary mt-1">{product.price.toLocaleString('es-ES')} €</p><Button asChild variant="outline" size="sm" className="w-full mt-4"><Link to={`/producto/${product.id}/${product.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>Ver producto</Link></Button></CardContent></Card>
-                        ))}
-                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">{favorites.map((product) => <Card key={product.id} className="overflow-hidden border-border/50"><div className="aspect-video bg-muted">{renderProductImage(product)}</div><CardContent className="p-4"><h3 className="font-medium line-clamp-1">{product.title}</h3><p className="text-lg font-bold text-primary">{product.price.toLocaleString('es-ES')} €</p><Button size="sm" variant="outline" asChild className="mt-3"><Link to={`/product/${product.id}`}>Ver producto</Link></Button></CardContent></Card>)}</div>
                     )}
                   </TabsContent>
                 </Tabs>
@@ -307,14 +307,20 @@ const Profile = () => {
           </div>
         </main>
         <Footer />
-      </div>
 
-      <AlertDialog open={!!deleteProduct} onOpenChange={() => setDeleteProduct(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive" />Eliminar producto</AlertDialogTitle><AlertDialogDescription>¿Estás seguro de que quieres eliminar "{deleteProduct?.title}"? Esta acción no se puede deshacer.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleDeleteProduct} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <AlertDialog open={!!deleteProduct} onOpenChange={() => setDeleteProduct(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive" />Eliminar producto</AlertDialogTitle>
+              <AlertDialogDescription>¿Seguro que quieres eliminar “{deleteProduct?.title}”? Esta acción no se puede deshacer.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteProduct} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </>
   );
 };
