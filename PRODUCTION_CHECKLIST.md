@@ -16,7 +16,7 @@ No pongas claves secretas de Stripe, Sendcloud ni `SUPABASE_SERVICE_ROLE_KEY` en
 
 ## 2. Migraciones de Supabase
 
-Antes de probar pagos, envíos, destacados, disputas, llamadas privadas, valoraciones, imágenes y aceptación de ofertas, aplica las migraciones:
+Antes de probar pagos, envíos, destacados, disputas, llamadas privadas, valoraciones, imágenes, aceptación de ofertas y privacidad de perfiles, aplica las migraciones:
 
 ```bash
 supabase db push
@@ -30,8 +30,9 @@ Migraciones críticas añadidas:
 - `20260708190000_reviews_runtime_compatibility.sql`
 - `20260708191000_storage_products_policies.sql`
 - `20260708192000_offer_acceptance_rpc.sql`
+- `20260708193000_profiles_privacy.sql`
 
-Estas migraciones crean/refuerzan RLS, columnas de Stripe, columnas de Sendcloud, tabla `product_boosts`, tabla `disputes`, columnas de ofertas, aceptación atómica de ofertas con `accept_offer`, bucket `products`, políticas de `storage.objects`, `call_sessions`, `call_signals` y compatibilidad de `reviews` con `reviewed_id`/`transaction_id`.
+Estas migraciones crean/refuerzan RLS, columnas de Stripe, columnas de Sendcloud, tabla `product_boosts`, tabla `disputes`, columnas de ofertas, aceptación atómica de ofertas con `accept_offer`, bucket `products`, políticas de `storage.objects`, `call_sessions`, `call_signals`, compatibilidad de `reviews` con `reviewed_id`/`transaction_id` y privacidad de perfiles con `get_private_profile`.
 
 ## 3. Secrets de Supabase Edge Functions
 
@@ -77,6 +78,8 @@ El webhook es obligatorio para que las compras y los destacados se sincronicen d
 ## 6. Prueba antes de abrir al público
 
 - Registro de usuario nuevo.
+- Editar perfil y confirmar que el propio usuario puede guardar/ver su teléfono.
+- Confirmar que un usuario anónimo o tercero no puede leer la columna `phone` de `profiles`.
 - Publicar producto con JPG/PNG/WEBP menor de 5 MB.
 - Crear chat y adjuntar imagen menor de 5 MB.
 - Enviar una oferta desde el comprador.
