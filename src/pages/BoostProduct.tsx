@@ -47,14 +47,6 @@ const getFunctionErrorMessage = async (error: any) => {
   return error?.message || 'No se pudo conectar con el servidor.';
 };
 
-const addDaysToBoost = (currentBoostedUntil: string | null | undefined, days: number) => {
-  const now = new Date();
-  const current = currentBoostedUntil ? new Date(currentBoostedUntil) : null;
-  const base = current && current > now ? current : now;
-  base.setDate(base.getDate() + days);
-  return base.toISOString();
-};
-
 const BoostPaymentForm = ({ product }: { product: Product }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -69,29 +61,6 @@ const BoostPaymentForm = ({ product }: { product: Product }) => {
 
   const plan = useMemo(() => BOOST_PLANS.find((item) => item.id === selectedPlan) || BOOST_PLANS[0], [selectedPlan]);
   const productImage = Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null;
-
-  const activateBoost = async (boostId: string) => {
-    if (!user) throw new Error('Debes iniciar sesión.');
-
-    const endsAt = addDaysToBoost(product.boosted_until, plan.days);
-    const now = new Date().toISOString();
-
-    const { error: boostError } = await (supabase as any)
-      .from('product_boosts')
-      .update({ status: 'paid', starts_at: now, ends_at: endsAt, updated_at: now })
-      .eq('id', boostId)
-      .eq('user_id', user.id);
-
-    if (boostError) throw boostError;
-
-    const { error: productError } = await supabase
-      .from('products')
-      .update({ boosted_until: endsAt } as any)
-      .eq('id', product.id)
-      .eq('user_id', user.id);
-
-    if (productError) throw productError;
-  };
 
   const handlePayment = async () => {
     if (submitLockRef.current) return;
@@ -116,8 +85,7 @@ const BoostPaymentForm = ({ product }: { product: Product }) => {
       }
 
       const clientSecret = data?.clientSecret;
-      const boostId = data?.boostId;
-      if (!clientSecret || !boostId) throw new Error('No se pudo preparar el pago del destacado.');
+      if (!clientSecret) throw new Error('No se pudo preparar el pago del destacado.');
 
       const result = await stripe.confirmCardPayment(clientSecret, {
         payment_method: { card },
@@ -126,11 +94,9 @@ const BoostPaymentForm = ({ product }: { product: Product }) => {
       if (result.error) throw new Error(result.error.message || 'El pago no se pudo completar.');
       if (result.paymentIntent?.status !== 'succeeded') throw new Error('El pago no se ha confirmado todavía.');
 
-      await activateBoost(boostId);
-
       toast({
-        title: 'Producto destacado',
-        description: `Tu producto se destacará durante ${plan.days} días.`,
+        title: 'Pago recibido',
+        description: 'El destacado se activará automáticamente cuando Stripe confirme el webhook.',
       });
       navigate('/profile', { replace: true });
     } catch (error: any) {
@@ -196,6 +162,7 @@ const BoostPaymentForm = ({ product }: { product: Product }) => {
             <Button className="w-full h-12 text-base font-bold" onClick={handlePayment} disabled={processing || !STRIPE_PAYMENTS_ENABLED}>
               {processing ? 'Procesando...' : `Pagar ${plan.price.toFixed(2)} € y destacar`}
             </Button>
+            <p className="text-xs text-muted-foreground">La activación final se hace desde el webhook de Stripe para evitar activaciones sin pago confirmado.</p>
           </CardContent>
         </Card>
       </div>
@@ -224,7 +191,7 @@ const BoostPaymentForm = ({ product }: { product: Product }) => {
           <CardContent className="pt-6 space-y-3 text-sm">
             <div className="flex gap-2"><Check className="h-4 w-4 text-primary shrink-0" /><span>Aparece antes en búsquedas.</span></div>
             <div className="flex gap-2"><Check className="h-4 w-4 text-primary shrink-0" /><span>Etiqueta visual de destacado.</span></div>
-            <div className="flex gap-2"><Shield className="h-4 w-4 text-primary shrink-0" /><span>Se activa solo cuando el pago se completa.</span></div>
+            <div className="flex gap-2"><Shield className="h-4 w-4 text-primary shrink-0" /><span>Se activa solo cuando Stripe confirma el pago.</span></div>
           </CardContent>
         </Card>
       </div>
