@@ -14,7 +14,22 @@ VITE_STRIPE_TEST_MODE=false
 
 No pongas claves secretas de Stripe, Sendcloud ni `SUPABASE_SERVICE_ROLE_KEY` en Vercel como variables públicas.
 
-## 2. Secrets de Supabase Edge Functions
+## 2. Migraciones de Supabase
+
+Antes de probar pagos, envíos, destacados y disputas, aplica las migraciones:
+
+```bash
+supabase db push
+```
+
+Migraciones críticas añadidas:
+
+- `20260708183000_harden_production_rls.sql`
+- `20260708184000_ensure_marketplace_runtime_schema.sql`
+
+Estas migraciones crean/refuerzan RLS, columnas de Stripe, columnas de Sendcloud, tabla `product_boosts`, tabla `disputes`, columnas de ofertas y bucket `products`.
+
+## 3. Secrets de Supabase Edge Functions
 
 Configura en Supabase:
 
@@ -28,7 +43,7 @@ supabase secrets set SENDCLOUD_SHIPPING_METHOD_ID=0
 supabase secrets set ALLOWED_ORIGIN=https://reveta.es
 ```
 
-## 3. Funciones obligatorias a desplegar
+## 4. Funciones obligatorias a desplegar
 
 ```bash
 supabase functions deploy create-payment-intent
@@ -39,7 +54,7 @@ supabase functions deploy delete-account
 supabase functions deploy stripe-webhook --no-verify-jwt
 ```
 
-## 4. Stripe webhook
+## 5. Stripe webhook
 
 En Stripe Dashboard, crea un endpoint hacia:
 
@@ -55,7 +70,7 @@ Eventos mínimos:
 
 El webhook es obligatorio para que las compras y los destacados se sincronicen de forma segura.
 
-## 5. Prueba antes de abrir al público
+## 6. Prueba antes de abrir al público
 
 - Registro de usuario nuevo.
 - Publicar producto con JPG/PNG/WEBP menor de 5 MB.
@@ -66,9 +81,10 @@ El webhook es obligatorio para que las compras y los destacados se sincronicen d
 - Verificar que Sendcloud crea un solo envío para la transacción.
 - Destacar producto y comprobar que `boosted_until` cambia desde el webhook.
 - Probar pago en persona.
-- Probar reporte/incidencia y resolución en admin.
+- Abrir una disputa y resolverla desde admin.
+- Confirmar que un tercer usuario no puede leer chats ni transacciones ajenas.
 
-## 6. Pendiente legal antes de campaña grande
+## 7. Pendiente legal antes de campaña grande
 
 Revisar con texto legal definitivo:
 
