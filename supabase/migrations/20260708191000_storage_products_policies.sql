@@ -1,5 +1,6 @@
 -- Reveta storage policies for product and chat images
 -- Matches frontend paths: user_id/file.ext and user_id/chat/file.ext
+-- Do not ALTER storage.objects ownership/RLS here: Supabase hosted owns that table.
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -13,8 +14,6 @@ on conflict (id) do update set
   public = excluded.public,
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
-
-alter table if exists storage.objects enable row level security;
 
 drop policy if exists "products_bucket_public_read" on storage.objects;
 create policy "products_bucket_public_read"
