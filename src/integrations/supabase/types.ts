@@ -7,6 +7,8 @@ export type Json =
   | Json[]
 
 type AppRole = 'admin' | 'user' | 'moderator'
+type CallStatus = 'requested' | 'active' | 'ended' | 'declined'
+type CallSignalType = 'offer' | 'answer' | 'ice'
 
 export type Database = {
   __InternalSupabase: {
@@ -58,6 +60,21 @@ export type Database = {
         Insert: { id?: string; conversation_id: string; sender_id: string; content: string; read?: boolean | null; created_at?: string }
         Update: { id?: string; conversation_id?: string; sender_id?: string; content?: string; read?: boolean | null; created_at?: string }
         Relationships: [{ foreignKeyName: 'messages_conversation_id_fkey'; columns: ['conversation_id']; isOneToOne: false; referencedRelation: 'conversations'; referencedColumns: ['id'] }]
+      }
+      call_sessions: {
+        Row: { id: string; conversation_id: string; product_id: string | null; caller_id: string; callee_id: string; status: CallStatus; created_at: string; updated_at: string; ended_at: string | null }
+        Insert: { id?: string; conversation_id: string; product_id?: string | null; caller_id: string; callee_id: string; status?: CallStatus; created_at?: string; updated_at?: string; ended_at?: string | null }
+        Update: { id?: string; conversation_id?: string; product_id?: string | null; caller_id?: string; callee_id?: string; status?: CallStatus; created_at?: string; updated_at?: string; ended_at?: string | null }
+        Relationships: [
+          { foreignKeyName: 'call_sessions_conversation_id_fkey'; columns: ['conversation_id']; isOneToOne: false; referencedRelation: 'conversations'; referencedColumns: ['id'] },
+          { foreignKeyName: 'call_sessions_product_id_fkey'; columns: ['product_id']; isOneToOne: false; referencedRelation: 'products'; referencedColumns: ['id'] }
+        ]
+      }
+      call_signals: {
+        Row: { id: string; call_id: string; sender_id: string; type: CallSignalType; payload: Json; created_at: string }
+        Insert: { id?: string; call_id: string; sender_id: string; type: CallSignalType; payload: Json; created_at?: string }
+        Update: { id?: string; call_id?: string; sender_id?: string; type?: CallSignalType; payload?: Json; created_at?: string }
+        Relationships: [{ foreignKeyName: 'call_signals_call_id_fkey'; columns: ['call_id']; isOneToOne: false; referencedRelation: 'call_sessions'; referencedColumns: ['id'] }]
       }
       transactions: {
         Row: { id: string; product_id: string; buyer_id: string; seller_id: string; amount: number; status: string; payment_provider: string | null; payment_status: string | null; stripe_payment_intent_id: string | null; paid_at: string | null; shipping_provider: string | null; shipping_status: string | null; sendcloud_parcel_id: string | null; sendcloud_tracking_number: string | null; sendcloud_tracking_url: string | null; shipping_address: Json | null; completed_at: string | null; created_at: string; updated_at: string | null }
@@ -202,5 +219,5 @@ export type Enums<
 > = DefaultSchemaEnumNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
-    ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
+    ? DatabaseWithoutInternals['public']['Enums'][DefaultSchemaEnumNameOrOptions]
     : never
