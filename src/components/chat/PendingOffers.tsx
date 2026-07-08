@@ -62,39 +62,10 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
     await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
   };
 
-  const reserveProductForAcceptedOffer = async (offer: Offer) => {
-    const { data: existingTransaction, error: existingError } = await supabase
-      .from('transactions')
-      .select('id')
-      .eq('product_id', offer.product_id)
-      .in('status', ['pending', 'pending_payment', 'paid', 'shipped', 'completed'])
-      .limit(1)
-      .maybeSingle();
-
-    if (existingError) throw existingError;
-    if (existingTransaction?.id) throw new Error('Este producto ya tiene una compra o reserva activa.');
-
-    const { error: transactionError } = await (supabase as any).from('transactions').insert({
-      product_id: offer.product_id,
-      buyer_id: offer.buyer_id,
-      seller_id: offer.seller_id,
-      amount: offer.amount,
-      status: 'pending',
-      offer_id: offer.id,
-    });
-
-    if (transactionError) throw transactionError;
-
-    const { data: updatedProduct, error: productError } = await supabase
-      .from('products')
-      .update({ status: 'reserved' })
-      .eq('id', offer.product_id)
-      .eq('status', 'active')
-      .select('id')
-      .maybeSingle();
-
-    if (productError) throw productError;
-    if (!updatedProduct) throw new Error('No se pudo reservar el producto porque ya no está activo.');
+  const acceptOfferAtomically = async (offer: Offer) => {
+    const { data: transactionId, error } = await (supabase as any).rpc('accept_offer', { p_offer_id: offer.id });
+    if (error) throw error;
+    return transactionId as string;
   };
 
   const canRespondToOffer = (offer: Offer) => {
@@ -110,14 +81,15 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
 
     setUpdatingId(offer.id);
     try {
-      if (status === 'accepted') await reserveProductForAcceptedOffer(offer);
-
-      const { error } = await (supabase as any)
-        .from('offers')
-        .update({ status, updated_at: new Date().toISOString() })
-        .eq('id', offer.id);
-
-      if (error) throw error;
+      if (status === 'accepted') {
+        await acceptOfferAtomically(offer);
+      } else {
+        const { error } = await (supabase as any)
+          .from('offers')
+          .update({ status, updated_at: new Date().toISOString() })
+          .eq('id', offer.id);
+        if (error) throw error;
+      }
 
       const amount = Number(offer.amount).toFixed(2);
       const content = status === 'accepted'
