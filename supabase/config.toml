@@ -1,10 +1,19 @@
 project_id = "dnjjvtjcjfeklgwbhwpy"
 
 [functions.delete-account]
-verify_jwt = false
+verify_jwt = true
+
+[functions.geocode-location]
+verify_jwt = true
 
 [functions.create-payment-intent]
 verify_jwt = true
 
+[functions.create-boost-payment-intent]
+verify_jwt = true
+
 [functions.create-sendcloud-parcel]
 verify_jwt = true
+
+[functions.stripe-webhook]
+verify_jwt = false
