@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
+import type { Tables, TablesUpdate } from '@/integrations/supabase/types';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -13,46 +14,19 @@ import { ArrowLeft, CheckCircle2, Loader2, MessageCircle, Package, ShieldAlert, 
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-interface DisputeDetail {
-  id: string;
-  transaction_id: string;
-  product_id: string;
-  buyer_id: string;
-  seller_id: string;
-  opened_by: string;
-  reason: string;
-  details: string | null;
-  status: string;
-  resolution: string | null;
-  created_at: string;
-  updated_at: string;
-  closed_at: string | null;
-}
+type DisputeDetail = Tables<'disputes'>;
+type ProductInfo = Pick<Tables<'products'>, 'id' | 'title' | 'price' | 'status' | 'images'>;
+type TransactionInfo = Pick<
+  Tables<'transactions'>,
+  'id' | 'status' | 'amount' | 'created_at' | 'completed_at' | 'shipping_status' | 'sendcloud_parcel_id' | 'sendcloud_tracking_number' | 'sendcloud_tracking_url'
+>;
 
-interface ProductInfo {
-  id: string;
-  title: string;
-  price: number;
-  status: string | null;
-  images: string[] | null;
-}
+type TransactionUpdate = TablesUpdate<'transactions'>;
 
 interface ProfileInfo {
   id?: string;
   full_name: string | null;
   username: string | null;
-}
-
-interface TransactionInfo {
-  id: string;
-  status: string;
-  amount: number;
-  created_at?: string;
-  completed_at?: string;
-  shipping_status?: string | null;
-  sendcloud_parcel_id?: string | null;
-  sendcloud_tracking_number?: string | null;
-  sendcloud_tracking_url?: string | null;
 }
 
 interface MessageInfo {
@@ -78,6 +52,13 @@ const getDisputeStatusBadge = (status: string) => {
     default:
       return <Badge variant="outline">{status}</Badge>;
   }
+};
+
+const getTransactionStatusAfterResolution = (nextStatus: string, now: string): TransactionUpdate | null => {
+  if (nextStatus === 'under_review') return { status: 'under_review', updated_at: now };
+  if (nextStatus === 'resolved_seller') return { status: 'completed', completed_at: now, updated_at: now };
+  if (nextStatus === 'resolved_buyer' || nextStatus === 'closed') return { status: 'disputed', completed_at: now, updated_at: now };
+  return null;
 };
 
 const AdminDisputeDetail = () => {
@@ -116,7 +97,7 @@ const AdminDisputeDetail = () => {
 
     setLoading(true);
 
-    const { data: disputeData, error: disputeError } = await (supabase as any)
+    const { data: disputeData, error: disputeError } = await supabase
       .from('disputes')
       .select('*')
       .eq('id', id)
@@ -131,23 +112,32 @@ const AdminDisputeDetail = () => {
 
     setDispute(disputeData);
 
-    const [{ data: productData }, { data: buyerData }, { data: sellerData }, { data: transactionData }] = await Promise.all([
-      supabase.from('products').select('id, title, price, status, images').eq('id', disputeData.product_id).maybeSingle(),
+    const [productResult, buyerResult, sellerResult, transactionResult] = await Promise.all([
+      disputeData.product_id
+        ? supabase.from('products').select('id, title, price, status, images').eq('id', disputeData.product_id).maybeSingle()
+        : Promise.resolve({ data: null }),
       supabase.from('profiles').select('full_name, username').eq('id', disputeData.buyer_id).maybeSingle(),
       supabase.from('profiles').select('full_name, username').eq('id', disputeData.seller_id).maybeSingle(),
-      supabase.from('transactions').select('*').eq('id', disputeData.transaction_id).maybeSingle(),
+      disputeData.transaction_id
+        ? supabase.from('transactions').select('id, status, amount, created_at, completed_at, shipping_status, sendcloud_parcel_id, sendcloud_tracking_number, sendcloud_tracking_url').eq('id', disputeData.transaction_id).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
 
-    setProduct(productData as ProductInfo | null);
-    setBuyer(buyerData as ProfileInfo | null);
-    setSeller(sellerData as ProfileInfo | null);
-    setTransaction(transactionData as TransactionInfo | null);
+    setProduct((productResult.data || null) as ProductInfo | null);
+    setBuyer((buyerResult.data || null) as ProfileInfo | null);
+    setSeller((sellerResult.data || null) as ProfileInfo | null);
+    setTransaction((transactionResult.data || null) as TransactionInfo | null);
 
     await fetchConversationMessages(disputeData.product_id, disputeData.buyer_id, disputeData.seller_id);
     setLoading(false);
   };
 
-  const fetchConversationMessages = async (productId: string, buyerId: string, sellerId: string) => {
+  const fetchConversationMessages = async (productId: string | null, buyerId: string, sellerId: string) => {
+    if (!productId) {
+      setMessages([]);
+      return;
+    }
+
     const { data: conversation } = await supabase
       .from('conversations')
       .select('id')
@@ -174,7 +164,7 @@ const AdminDisputeDetail = () => {
     }
 
     const enrichedMessages = await Promise.all(
-      (messageData || []).map(async (message: any) => {
+      (messageData || []).map(async (message) => {
         const { data: sender } = await supabase
           .from('profiles')
           .select('full_name, username')
@@ -204,7 +194,7 @@ const AdminDisputeDetail = () => {
       closed: 'Cerrada por Reveta',
     };
 
-    const { error: disputeError } = await (supabase as any)
+    const { error: disputeError } = await supabase
       .from('disputes')
       .update({
         status: nextStatus,
@@ -221,16 +211,17 @@ const AdminDisputeDetail = () => {
       return;
     }
 
-    if (nextStatus === 'under_review') {
-      await supabase.from('transactions').update({ status: 'under_review' } as any).eq('id', dispute.transaction_id);
-    }
+    const transactionUpdate = getTransactionStatusAfterResolution(nextStatus, now);
+    if (transactionUpdate && dispute.transaction_id) {
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .update(transactionUpdate)
+        .eq('id', dispute.transaction_id);
 
-    if (nextStatus === 'resolved_seller') {
-      await supabase.from('transactions').update({ status: 'completed', completed_at: now } as any).eq('id', dispute.transaction_id);
-    }
-
-    if (nextStatus === 'resolved_buyer' || nextStatus === 'closed') {
-      await supabase.from('transactions').update({ status: 'disputed', completed_at: now } as any).eq('id', dispute.transaction_id);
+      if (transactionError) {
+        console.error('Error updating disputed transaction:', transactionError);
+        toast.warning('Incidencia actualizada, pero no se pudo sincronizar la transacción. Revísala manualmente.');
+      }
     }
 
     toast.success('Incidencia actualizada');
@@ -270,7 +261,7 @@ const AdminDisputeDetail = () => {
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <ShieldAlert className="h-5 w-5 text-destructive" />
-                    Protección Reveta
+                    Incidencia Reveta
                   </CardTitle>
                   <CardDescription>{format(new Date(dispute.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}</CardDescription>
                 </div>
