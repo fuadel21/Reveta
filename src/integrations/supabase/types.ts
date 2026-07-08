@@ -91,7 +91,7 @@ export type Database = {
       product_boosts: {
         Row: { id: string; product_id: string; user_id: string; plan: string; amount_cents: number; currency: string; stripe_payment_intent_id: string | null; status: string; starts_at: string | null; ends_at: string | null; created_at: string; updated_at: string }
         Insert: { id?: string; product_id: string; user_id: string; plan: string; amount_cents: number; currency?: string; stripe_payment_intent_id?: string | null; status?: string; starts_at?: string | null; ends_at?: string | null; created_at?: string; updated_at?: string }
-        Update: { id?: string; product_id?: string; user_id?: string; plan?: string; amount_cents?: number; currency?: string; stripe_payment_intent_id?: string | null; status?: string; starts_at?: string | null; ends_at?: string | null; created_at?: string; updated_at?: string }
+        Update: { id?: string; product_id?: string; user_id?: string; plan?: string; amount_cents?: number; currency?: string; stripe_payment_intent_id?: string | null; status?: string; starts_at?: string | null; ends_at?: string }
         Relationships: [{ foreignKeyName: 'product_boosts_product_id_fkey'; columns: ['product_id']; isOneToOne: false; referencedRelation: 'products'; referencedColumns: ['id'] }]
       }
       disputes: {
@@ -113,10 +113,12 @@ export type Database = {
         Relationships: []
       }
       reviews: {
-        Row: { id: string; reviewer_id: string; seller_id: string; product_id: string | null; rating: number; comment: string | null; created_at: string }
-        Insert: { id?: string; reviewer_id: string; seller_id: string; product_id?: string | null; rating: number; comment?: string | null; created_at?: string }
-        Update: { id?: string; reviewer_id?: string; seller_id?: string; product_id?: string | null; rating?: number; comment?: string | null; created_at?: string }
-        Relationships: []
+        Row: { id: string; reviewer_id: string; reviewed_id: string | null; seller_id: string | null; product_id: string | null; transaction_id: string | null; rating: number; comment: string | null; created_at: string }
+        Insert: { id?: string; reviewer_id: string; reviewed_id: string; seller_id?: string | null; product_id?: string | null; transaction_id?: string | null; rating: number; comment?: string | null; created_at?: string }
+        Update: { id?: string; reviewer_id?: string; reviewed_id?: string | null; seller_id?: string | null; product_id?: string | null; transaction_id?: string | null; rating?: number; comment?: string | null; created_at?: string }
+        Relationships: [
+          { foreignKeyName: 'reviews_reviewed_id_fkey'; columns: ['reviewed_id']; isOneToOne: false; referencedRelation: 'profiles'; referencedColumns: ['id'] }
+        ]
       }
       notifications: {
         Row: { id: string; user_id: string; type: string; title: string; message: string; data: Json | null; read: boolean | null; created_at: string }
