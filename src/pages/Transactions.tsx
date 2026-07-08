@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json, Tables } from '@/integrations/supabase/types';
 import { useAuth } from '@/hooks/useAuth';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -12,43 +13,31 @@ import { Badge } from '@/components/ui/badge';
 import { ShoppingBag, Package, ArrowUpRight, ArrowDownLeft, MessageCircle, XCircle, CheckCircle2, Truck, ExternalLink, ShieldAlert, Star, HandCoins } from 'lucide-react';
 import { toast } from 'sonner';
 
-interface Dispute {
-  id: string;
-  transaction_id: string;
-  reason: string;
-  details: string | null;
-  status: string;
-  opened_by: string;
-  created_at: string;
+type Dispute = Pick<Tables<'disputes'>, 'id' | 'transaction_id' | 'reason' | 'details' | 'status' | 'opened_by' | 'created_at'>;
+type BaseTransaction = Tables<'transactions'> & { offer_id?: string | null };
+
+interface ShippingAddressView {
+  fullName?: string;
+  phone?: string;
+  address?: string;
+  houseNumber?: string;
+  postalCode?: string;
+  city?: string;
+  country?: string;
 }
 
-interface Transaction {
-  id: string;
-  product_id: string;
-  seller_id: string;
-  buyer_id: string;
-  amount: number;
-  status: string;
-  completed_at: string;
-  created_at?: string;
-  offer_id?: string | null;
-  shipping_provider?: string | null;
-  shipping_status?: string | null;
-  sendcloud_parcel_id?: string | null;
-  sendcloud_tracking_number?: string | null;
-  sendcloud_tracking_url?: string | null;
-  shipping_address?: { fullName?: string; phone?: string; address?: string; houseNumber?: string; postalCode?: string; city?: string; country?: string; } | null;
+interface Transaction extends BaseTransaction {
   dispute?: Dispute | null;
-  product?: { id: string; title: string; images: string[] | null; } | null;
-  seller_profile?: { full_name: string | null; } | null;
-  buyer_profile?: { full_name: string | null; } | null;
+  product?: { id: string; title: string; images: string[] | null } | null;
+  seller_profile?: { full_name: string | null } | null;
+  buyer_profile?: { full_name: string | null } | null;
 }
 
 const DISPUTE_REASONS = ['No he recibido el producto', 'Producto diferente al anunciado', 'Producto dañado', 'El vendedor no responde', 'El comprador no confirma recepción', 'Otro motivo'];
 const REVIEWABLE_STATUSES = ['completed', 'paid', 'shipped'];
 
 const getStatusLabel = (status: string) => ({
-  pending: 'Pendiente de pago',
+  pending: 'Reservado / pendiente',
   pending_payment: 'Pendiente de pago',
   paid: 'Pago confirmado',
   shipped: 'Enviado',
@@ -73,6 +62,15 @@ const getDisputeStatusLabel = (status: string) => ({
   closed: 'Cerrada',
 } as Record<string, string>)[status] || status;
 
+const isShippingAddressView = (value: Json | null): value is ShippingAddressView => {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+};
+
+const getShippingAddressText = (shippingAddress: Json | null) => {
+  if (!isShippingAddressView(shippingAddress)) return '';
+  return `${shippingAddress.address || ''} ${shippingAddress.houseNumber || ''}, ${shippingAddress.postalCode || ''} ${shippingAddress.city || ''}`.trim();
+};
+
 const Transactions = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -90,9 +88,9 @@ const Transactions = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  const enrichTransaction = async (transaction: any, type: 'purchase' | 'sale') => {
+  const enrichTransaction = async (transaction: BaseTransaction, type: 'purchase' | 'sale') => {
     const { data: product } = await supabase.from('products').select('id, title, images').eq('id', transaction.product_id).maybeSingle();
-    const { data: dispute } = await (supabase as any)
+    const { data: dispute } = await supabase
       .from('disputes')
       .select('id, transaction_id, reason, details, status, opened_by, created_at')
       .eq('transaction_id', transaction.id)
@@ -115,8 +113,8 @@ const Transactions = () => {
     setLoading(true);
 
     const [{ data: purchasesData, error: purchasesError }, { data: salesData, error: salesError }] = await Promise.all([
-      supabase.from('transactions').select('*').eq('buyer_id', user.id).order('completed_at', { ascending: false }),
-      supabase.from('transactions').select('*').eq('seller_id', user.id).order('completed_at', { ascending: false }),
+      supabase.from('transactions').select('*').eq('buyer_id', user.id).order('created_at', { ascending: false }),
+      supabase.from('transactions').select('*').eq('seller_id', user.id).order('created_at', { ascending: false }),
     ]);
 
     if (purchasesError) {
@@ -128,18 +126,28 @@ const Transactions = () => {
       toast.error('No se pudieron cargar tus ventas');
     }
 
-    setPurchases(await Promise.all((purchasesData || []).map((transaction) => enrichTransaction(transaction, 'purchase'))));
-    setSales(await Promise.all((salesData || []).map((transaction) => enrichTransaction(transaction, 'sale'))));
+    setPurchases(await Promise.all(((purchasesData || []) as BaseTransaction[]).map((transaction) => enrichTransaction(transaction, 'purchase'))));
+    setSales(await Promise.all(((salesData || []) as BaseTransaction[]).map((transaction) => enrichTransaction(transaction, 'sale'))));
     setLoading(false);
   };
 
-  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+  const formatDate = (dateString?: string | null) => new Date(dateString || new Date().toISOString()).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
 
   const updateTransactionStatus = async (transaction: Transaction, nextStatus: string) => {
     setUpdatingId(transaction.id);
-    const updatePayload: any = { status: nextStatus, completed_at: new Date().toISOString() };
-    if (nextStatus === 'shipped') updatePayload.shipping_status = 'shipped';
-    if (nextStatus === 'completed') updatePayload.shipping_status = 'delivered';
+    const now = new Date().toISOString();
+    const updatePayload: { status: string; completed_at?: string | null; shipping_status?: string | null } = { status: nextStatus };
+
+    if (nextStatus === 'cancelled') updatePayload.completed_at = now;
+    if (nextStatus === 'paid') updatePayload.completed_at = now;
+    if (nextStatus === 'shipped') {
+      updatePayload.shipping_status = 'shipped';
+      updatePayload.completed_at = now;
+    }
+    if (nextStatus === 'completed') {
+      updatePayload.shipping_status = 'delivered';
+      updatePayload.completed_at = now;
+    }
 
     const { error } = await supabase.from('transactions').update(updatePayload).eq('id', transaction.id);
     if (error) {
@@ -174,7 +182,7 @@ const Transactions = () => {
     const comment = window.prompt('Comentario opcional sobre la operación:') || '';
     setUpdatingId(transaction.id);
 
-    const { error } = await (supabase as any).from('reviews').insert({
+    const { error } = await supabase.from('reviews').insert({
       reviewer_id: user.id,
       reviewed_id: reviewedId,
       product_id: transaction.product_id,
@@ -185,7 +193,7 @@ const Transactions = () => {
 
     if (error) {
       console.error('Error creating review:', error);
-      toast.error(error.code === '23505' ? 'Ya has valorado esta operación.' : 'No se pudo guardar la valoración. Ejecuta el SQL de reseñas si falta.');
+      toast.error(error.code === '23505' ? 'Ya has valorado esta operación.' : 'No se pudo guardar la valoración. Ejecuta la migración de reseñas si falta.');
       setUpdatingId(null);
       return;
     }
@@ -214,7 +222,7 @@ const Transactions = () => {
     const details = window.prompt('Describe brevemente qué ha pasado. Este texto ayudará a revisar la incidencia:') || '';
     setUpdatingId(transaction.id);
 
-    const { error: disputeError } = await (supabase as any).from('disputes').insert({
+    const { error: disputeError } = await supabase.from('disputes').insert({
       transaction_id: transaction.id,
       product_id: transaction.product_id,
       buyer_id: transaction.buyer_id,
@@ -246,7 +254,7 @@ const Transactions = () => {
       await supabase.from('messages').insert({
         conversation_id: conversation.id,
         sender_id: user.id,
-        content: `He abierto una incidencia de Protección Reveta. Motivo: ${reason}. ${details ? `Detalles: ${details}` : ''}`,
+        content: `He abierto una incidencia Reveta. Motivo: ${reason}. ${details ? `Detalles: ${details}` : ''}`,
       });
     }
 
@@ -276,11 +284,11 @@ const Transactions = () => {
 
   const TransactionCard = ({ transaction, type }: { transaction: Transaction; type: 'purchase' | 'sale' }) => {
     const isPending = transaction.status === 'pending' || transaction.status === 'pending_payment';
-    const canOpenDispute = !['cancelled', 'completed', 'disputed'].includes(transaction.status) && !transaction.dispute;
+    const canOpenDispute = !['cancelled', 'disputed'].includes(transaction.status) && !transaction.dispute;
     const canReview = REVIEWABLE_STATUSES.includes(transaction.status);
     const productImage = transaction.product?.images?.[0] || '/placeholder.svg';
     const hasSendcloudParcel = Boolean(transaction.sendcloud_parcel_id || transaction.sendcloud_tracking_number || transaction.sendcloud_tracking_url);
-    const shippingAddressText = transaction.shipping_address ? `${transaction.shipping_address.address || ''} ${transaction.shipping_address.houseNumber || ''}, ${transaction.shipping_address.postalCode || ''} ${transaction.shipping_address.city || ''}`.trim() : '';
+    const shippingAddressText = getShippingAddressText(transaction.shipping_address);
     const cameFromAcceptedOffer = Boolean(transaction.offer_id);
     const displayAmount = Number(transaction.amount || 0).toLocaleString('es-ES');
 
@@ -303,7 +311,7 @@ const Transactions = () => {
                   <p className="text-sm text-muted-foreground truncate">
                     {type === 'purchase' ? `Vendedor: ${transaction.seller_profile?.full_name || 'Usuario'}` : `Comprador: ${transaction.buyer_profile?.full_name || 'Usuario'}`}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">{formatDate(transaction.completed_at || transaction.created_at || new Date().toISOString())}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{formatDate(transaction.completed_at || transaction.created_at)}</p>
                   {cameFromAcceptedOffer && (
                     <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
                       <HandCoins className="h-3 w-3" />
@@ -327,7 +335,7 @@ const Transactions = () => {
 
               {transaction.dispute && (
                 <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs space-y-1">
-                  <div className="flex items-center gap-2 font-medium text-destructive"><ShieldAlert className="h-4 w-4" /><span>Protección Reveta: {getDisputeStatusLabel(transaction.dispute.status)}</span></div>
+                  <div className="flex items-center gap-2 font-medium text-destructive"><ShieldAlert className="h-4 w-4" /><span>Incidencia Reveta: {getDisputeStatusLabel(transaction.dispute.status)}</span></div>
                   <p>Motivo: {transaction.dispute.reason}</p>
                   {transaction.dispute.details && <p>Detalles: {transaction.dispute.details}</p>}
                 </div>
@@ -350,7 +358,7 @@ const Transactions = () => {
                 {canOpenDispute && <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" disabled={updatingId === transaction.id} onClick={() => openDispute(transaction)}><ShieldAlert className="h-4 w-4 mr-2" />Abrir incidencia</Button>}
                 {type === 'purchase' && isPending && <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={updatingId === transaction.id} onClick={() => updateTransactionStatus(transaction, 'cancelled')}><XCircle className="h-4 w-4 mr-2" />Cancelar</Button>}
                 {type === 'sale' && isPending && <Button size="sm" disabled={updatingId === transaction.id} onClick={() => updateTransactionStatus(transaction, 'paid')}><CheckCircle2 className="h-4 w-4 mr-2" />Confirmar pago recibido</Button>}
-                {type === 'sale' && ['paid', 'pending'].includes(transaction.status) && <Button size="sm" variant="outline" disabled={updatingId === transaction.id} onClick={() => updateTransactionStatus(transaction, 'shipped')}><Truck className="h-4 w-4 mr-2" />Marcar como enviado</Button>}
+                {type === 'sale' && transaction.status === 'paid' && <Button size="sm" variant="outline" disabled={updatingId === transaction.id} onClick={() => updateTransactionStatus(transaction, 'shipped')}><Truck className="h-4 w-4 mr-2" />Marcar como enviado</Button>}
                 {type === 'purchase' && ['paid', 'shipped'].includes(transaction.status) && <Button size="sm" disabled={updatingId === transaction.id} onClick={() => updateTransactionStatus(transaction, 'completed')}><CheckCircle2 className="h-4 w-4 mr-2" />Confirmar recibido</Button>}
               </div>
             </div>
