@@ -14,6 +14,10 @@ interface Message { id: string; conversation_id?: string; sender_id: string; con
 interface Conversation { id: string; product_id: string; buyer_id: string; seller_id: string; updated_at?: string; product?: ProductSummary | null; buyer?: Profile | null; seller?: Profile | null; }
 interface ChatProps { productId?: string; sellerId?: string; onClose?: () => void; }
 
+const MAX_CHAT_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const isValidChatImageFile = (file: File) => ALLOWED_CHAT_IMAGE_TYPES.has(file.type) && file.size <= MAX_CHAT_IMAGE_SIZE_BYTES;
+
 export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -198,11 +202,18 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user || !selectedConversation) return;
+
+    if (!isValidChatImageFile(file)) {
+      toast({ title: 'Imagen no válida', description: 'Solo se permiten JPG, PNG o WEBP de hasta 5 MB.', variant: 'destructive' });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     setUploadingImage(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('products').upload(fileName, file);
+      const fileExt = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+      const fileName = `${user.id}/chat/${crypto.randomUUID()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('products').upload(fileName, file, { contentType: file.type, upsert: false });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(fileName);
       const { error: msgError } = await supabase.from('messages').insert({ conversation_id: selectedConversation.id, sender_id: user.id, content: publicUrl });
@@ -246,7 +257,7 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
           </div>
 
           <form onSubmit={handleSendMessage} className="border-t p-4 flex gap-2 bg-white">
-            <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
+            <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/jpeg,image/png,image/webp" className="hidden" />
             <button type="button" onClick={handleSendOffer} disabled={sendingOffer || loading || user?.id !== selectedConversation.buyer_id} className="p-2 rounded-lg text-muted-foreground hover:bg-slate-100 disabled:opacity-50 transition" aria-label="Hacer oferta" title="Hacer oferta"><HandCoins size={22} /></button>
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingImage} className="p-2 rounded-lg text-muted-foreground hover:bg-slate-100 disabled:opacity-50 transition" aria-label="Adjuntar imagen"><ImageIcon size={22} /></button>
             <input type="text" value={newMessage} onChange={(e) => { setNewMessage(e.target.value); if (otherUser?.full_name) startTyping(otherUser.full_name); }} onBlur={() => stopTyping()} placeholder="Escribe un mensaje..." className="flex-1 px-4 py-2 bg-slate-100 border-none rounded-full focus:outline-none focus:ring-2 focus:ring-primary/20" disabled={loading} />
