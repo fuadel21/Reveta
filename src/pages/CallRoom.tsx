@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json, Tables } from '@/integrations/supabase/types';
 import { useAuth } from '@/hooks/useAuth';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -10,22 +11,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { Mic, MicOff, Phone, PhoneOff, Shield } from 'lucide-react';
 
-type CallSession = {
-  id: string;
-  conversation_id: string;
-  product_id: string;
-  caller_id: string;
-  callee_id: string;
-  status: 'requested' | 'active' | 'ended' | 'declined';
-};
-
-type CallSignal = {
-  id: string;
-  call_id: string;
-  sender_id: string;
-  type: 'offer' | 'answer' | 'ice';
-  payload: any;
-};
+type CallSession = Tables<'call_sessions'>;
+type CallSignal = Tables<'call_signals'>;
 
 const rtcConfig: RTCConfiguration = {
   iceServers: [
@@ -74,7 +61,7 @@ const CallRoom = () => {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'call_signals', filter: `call_id=eq.${call.id}` },
-        (payload) => handleIncomingSignal(payload.new as CallSignal)
+        (payload) => handleIncomingSignal(payload.new as CallSignal),
       )
       .on(
         'postgres_changes',
@@ -86,7 +73,7 @@ const CallRoom = () => {
             cleanupCall();
             setStatusText(updated.status === 'declined' ? 'Llamada rechazada' : 'Llamada finalizada');
           }
-        }
+        },
       )
       .subscribe();
 
@@ -102,7 +89,7 @@ const CallRoom = () => {
   const fetchCall = async () => {
     if (!id) return;
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from('call_sessions')
       .select('*')
       .eq('id', id)
@@ -125,7 +112,7 @@ const CallRoom = () => {
 
     peer.onicecandidate = async (event) => {
       if (!event.candidate) return;
-      await sendSignal('ice', event.candidate.toJSON());
+      await sendSignal('ice', event.candidate.toJSON() as unknown as Json);
     };
 
     peer.ontrack = (event) => {
@@ -151,10 +138,10 @@ const CallRoom = () => {
     return peer;
   };
 
-  const sendSignal = async (type: 'offer' | 'answer' | 'ice', payload: any) => {
+  const sendSignal = async (type: CallSignal['type'], payload: Json) => {
     if (!user || !call) return;
 
-    const { error } = await (supabase as any).from('call_signals').insert({
+    const { error } = await supabase.from('call_signals').insert({
       call_id: call.id,
       sender_id: user.id,
       type,
@@ -177,21 +164,21 @@ const CallRoom = () => {
 
       if (signal.type === 'offer') {
         setStatusText('Oferta recibida. Conectando...');
-        await peer.setRemoteDescription(new RTCSessionDescription(signal.payload));
+        await peer.setRemoteDescription(new RTCSessionDescription(signal.payload as unknown as RTCSessionDescriptionInit));
         const answer = await peer.createAnswer();
         await peer.setLocalDescription(answer);
-        await sendSignal('answer', answer);
+        await sendSignal('answer', answer as unknown as Json);
         await updateCallStatus('active');
       }
 
       if (signal.type === 'answer') {
         setStatusText('Respuesta recibida. Estableciendo llamada...');
-        await peer.setRemoteDescription(new RTCSessionDescription(signal.payload));
+        await peer.setRemoteDescription(new RTCSessionDescription(signal.payload as unknown as RTCSessionDescriptionInit));
         await updateCallStatus('active');
       }
 
       if (signal.type === 'ice') {
-        await peer.addIceCandidate(new RTCIceCandidate(signal.payload));
+        await peer.addIceCandidate(new RTCIceCandidate(signal.payload as unknown as RTCIceCandidateInit));
       }
     } catch (error) {
       console.error('Error handling call signal:', error);
@@ -202,14 +189,14 @@ const CallRoom = () => {
   const loadExistingSignals = async () => {
     if (!call || !user) return;
 
-    const { data } = await (supabase as any)
+    const { data } = await supabase
       .from('call_signals')
       .select('*')
       .eq('call_id', call.id)
       .order('created_at', { ascending: true });
 
     for (const signal of data || []) {
-      await handleIncomingSignal(signal as CallSignal);
+      await handleIncomingSignal(signal);
     }
   };
 
@@ -235,7 +222,7 @@ const CallRoom = () => {
         setStatusText('Creando llamada privada...');
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
-        await sendSignal('offer', offer);
+        await sendSignal('offer', offer as unknown as Json);
         setStatusText('Esperando al otro usuario...');
       } else {
         setStatusText('Entrando en la llamada privada...');
@@ -252,7 +239,7 @@ const CallRoom = () => {
 
   const updateCallStatus = async (status: CallSession['status']) => {
     if (!call) return;
-    await (supabase as any)
+    await supabase
       .from('call_sessions')
       .update({ status, updated_at: new Date().toISOString(), ...(status === 'ended' ? { ended_at: new Date().toISOString() } : {}) })
       .eq('id', call.id);
