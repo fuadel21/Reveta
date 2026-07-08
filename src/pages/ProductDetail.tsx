@@ -108,7 +108,7 @@ const ProductDetail = () => {
       return;
     }
 
-    setProduct(data);
+    setProduct(data as Product);
     await supabase.from('products').update({ views: (data.views || 0) + 1 }).eq('id', id);
 
     const { data: sellerData } = await supabase.from('profiles').select('*').eq('id', data.user_id).maybeSingle();
@@ -199,7 +199,7 @@ const ProductDetail = () => {
       const conversation = await getOrCreateConversation();
       if (!conversation?.id) throw new Error('No se pudo crear la conversación');
 
-      const { data: callSession, error: callError } = await (supabase as any)
+      const { data: callSession, error: callError } = await supabase
         .from('call_sessions')
         .insert({ conversation_id: conversation.id, product_id: product.id, caller_id: user.id, callee_id: seller.id, status: 'requested' })
         .select('*')
