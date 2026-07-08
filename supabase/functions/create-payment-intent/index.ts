@@ -3,13 +3,20 @@ import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": Deno.env.get("ALLOWED_ORIGIN") || "https://reveta.es",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 405,
+    });
   }
 
   try {
@@ -36,7 +43,8 @@ serve(async (req) => {
     if (userError || !user) throw new Error("Sesión no válida");
 
     const body = await req.json();
-    const { productId, shippingAmount = 0, currency = "eur" } = body;
+    const { productId, shippingAmount = 0 } = body;
+    const currency = "eur";
 
     if (!productId) throw new Error("Falta productId");
 
@@ -62,7 +70,7 @@ serve(async (req) => {
     if (existingOpenTransaction?.id) throw new Error("Este producto ya está reservado o vendido");
 
     const parsedShippingAmount = Number(shippingAmount || 0);
-    if (!Number.isFinite(parsedShippingAmount) || parsedShippingAmount < 0) {
+    if (!Number.isFinite(parsedShippingAmount) || parsedShippingAmount < 0 || parsedShippingAmount > 20000) {
       throw new Error("Importe de envío no válido");
     }
 
@@ -71,6 +79,7 @@ serve(async (req) => {
     const totalAmount = productAmountCents + shippingAmountCents;
 
     if (totalAmount <= 0) throw new Error("El importe debe ser mayor que cero");
+    if (totalAmount > 999999) throw new Error("El importe supera el límite permitido");
 
     const stripe = new Stripe(stripeKey, {
       apiVersion: "2023-10-16",
@@ -96,10 +105,11 @@ serve(async (req) => {
       status: 200,
     });
   } catch (error) {
-    console.error("ERROR DETECTADO EN EDGE FUNCTION:", error?.message || error);
+    const message = error instanceof Error ? error.message : "Error al crear el pago";
+    console.error("ERROR DETECTADO EN EDGE FUNCTION:", message);
     return new Response(
       JSON.stringify({
-        error: error?.message || "Error al crear el pago",
+        error: message,
         details: "Revisa los logs de Supabase para más información",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
