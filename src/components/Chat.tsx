@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { TablesInsert } from '@/integrations/supabase/types';
 import { useAuth } from '@/hooks/useAuth';
 import { Send, X, Image as ImageIcon, ArrowLeft, MessageCircle, HandCoins } from 'lucide-react';
 import { MessageBubble } from '@/components/chat/MessageBubble';
@@ -13,6 +14,8 @@ interface ProductSummary { id: string; title: string; images: string[] | null; }
 interface Message { id: string; conversation_id?: string; sender_id: string; content: string; created_at: string; read?: boolean | null; }
 interface Conversation { id: string; product_id: string; buyer_id: string; seller_id: string; updated_at?: string; product?: ProductSummary | null; buyer?: Profile | null; seller?: Profile | null; }
 interface ChatProps { productId?: string; sellerId?: string; onClose?: () => void; }
+
+type OfferInsert = TablesInsert<'offers'>;
 
 const MAX_CHAT_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -176,7 +179,7 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     const note = window.prompt('Mensaje opcional para el vendedor:') || '';
     setSendingOffer(true);
     try {
-      const { error: offerError } = await (supabase as any).from('offers').insert({
+      const offerPayload: OfferInsert = {
         product_id: selectedConversation.product_id,
         conversation_id: selectedConversation.id,
         buyer_id: selectedConversation.buyer_id,
@@ -184,7 +187,8 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
         amount: normalizedAmount,
         message: note,
         status: 'pending',
-      });
+      };
+      const { error: offerError } = await supabase.from('offers').insert(offerPayload);
       if (offerError) throw offerError;
       const content = `💶 Oferta enviada: ${normalizedAmount.toFixed(2)} €${note ? `\nMensaje: ${note}` : ''}`;
       const { error: messageError } = await supabase.from('messages').insert({ conversation_id: selectedConversation.id, sender_id: user.id, content });
