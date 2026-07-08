@@ -16,7 +16,7 @@ No pongas claves secretas de Stripe, Sendcloud ni `SUPABASE_SERVICE_ROLE_KEY` en
 
 ## 2. Migraciones de Supabase
 
-Antes de probar pagos, envíos, destacados, disputas, llamadas privadas, valoraciones e imágenes, aplica las migraciones:
+Antes de probar pagos, envíos, destacados, disputas, llamadas privadas, valoraciones, imágenes y aceptación de ofertas, aplica las migraciones:
 
 ```bash
 supabase db push
@@ -29,8 +29,9 @@ Migraciones críticas añadidas:
 - `20260708185000_private_call_sessions.sql`
 - `20260708190000_reviews_runtime_compatibility.sql`
 - `20260708191000_storage_products_policies.sql`
+- `20260708192000_offer_acceptance_rpc.sql`
 
-Estas migraciones crean/refuerzan RLS, columnas de Stripe, columnas de Sendcloud, tabla `product_boosts`, tabla `disputes`, columnas de ofertas, bucket `products`, políticas de `storage.objects`, `call_sessions`, `call_signals` y compatibilidad de `reviews` con `reviewed_id`/`transaction_id`.
+Estas migraciones crean/refuerzan RLS, columnas de Stripe, columnas de Sendcloud, tabla `product_boosts`, tabla `disputes`, columnas de ofertas, aceptación atómica de ofertas con `accept_offer`, bucket `products`, políticas de `storage.objects`, `call_sessions`, `call_signals` y compatibilidad de `reviews` con `reviewed_id`/`transaction_id`.
 
 ## 3. Secrets de Supabase Edge Functions
 
@@ -78,6 +79,8 @@ El webhook es obligatorio para que las compras y los destacados se sincronicen d
 - Registro de usuario nuevo.
 - Publicar producto con JPG/PNG/WEBP menor de 5 MB.
 - Crear chat y adjuntar imagen menor de 5 MB.
+- Enviar una oferta desde el comprador.
+- Aceptar una oferta desde el vendedor y verificar que se crea una sola transacción y el producto queda reservado.
 - Comprar con tarjeta.
 - Verificar que Stripe llama al webhook.
 - Verificar que la transacción queda completada.
