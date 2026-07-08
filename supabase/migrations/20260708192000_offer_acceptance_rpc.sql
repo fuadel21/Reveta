@@ -5,6 +5,10 @@ alter table if exists public.offers
   add column if not exists created_by uuid,
   add column if not exists updated_at timestamptz default now();
 
+-- Default creator from the authenticated user so existing frontend inserts keep working with RLS.
+alter table if exists public.offers
+  alter column created_by set default auth.uid();
+
 alter table if exists public.transactions
   add column if not exists offer_id uuid references public.offers(id) on delete set null;
 
