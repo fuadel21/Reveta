@@ -3,7 +3,7 @@ import { AlertTriangle, BadgeCheck, CheckCircle2, CreditCard, MessageCircle, Pac
 const trustItems = [
   {
     icon: ShieldCheck,
-    title: 'Compra protegida',
+    title: 'Compra con registro',
     description: 'Prioriza el pago dentro de Reveta para que la operación quede registrada y sea más fácil revisarla si hay un problema.',
   },
   {
@@ -86,7 +86,7 @@ export const ProductBuyerConfidence = () => {
 
       <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <CreditCard className="h-4 w-4 text-primary" />
-        <span>Consejo Reveta: usa chat, pago protegido y reporta cualquier comportamiento sospechoso.</span>
+        <span>Consejo Reveta: usa chat, pago dentro de Reveta y reporta cualquier comportamiento sospechoso.</span>
       </div>
     </section>
   );
