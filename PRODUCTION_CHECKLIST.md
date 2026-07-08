@@ -16,7 +16,7 @@ No pongas claves secretas de Stripe, Sendcloud ni `SUPABASE_SERVICE_ROLE_KEY` en
 
 ## 2. Migraciones de Supabase
 
-Antes de probar pagos, envíos, destacados y disputas, aplica las migraciones:
+Antes de probar pagos, envíos, destacados, disputas y llamadas privadas, aplica las migraciones:
 
 ```bash
 supabase db push
@@ -26,8 +26,9 @@ Migraciones críticas añadidas:
 
 - `20260708183000_harden_production_rls.sql`
 - `20260708184000_ensure_marketplace_runtime_schema.sql`
+- `20260708185000_private_call_sessions.sql`
 
-Estas migraciones crean/refuerzan RLS, columnas de Stripe, columnas de Sendcloud, tabla `product_boosts`, tabla `disputes`, columnas de ofertas y bucket `products`.
+Estas migraciones crean/refuerzan RLS, columnas de Stripe, columnas de Sendcloud, tabla `product_boosts`, tabla `disputes`, columnas de ofertas, bucket `products`, `call_sessions` y `call_signals`.
 
 ## 3. Secrets de Supabase Edge Functions
 
@@ -82,7 +83,8 @@ El webhook es obligatorio para que las compras y los destacados se sincronicen d
 - Destacar producto y comprobar que `boosted_until` cambia desde el webhook.
 - Probar pago en persona.
 - Abrir una disputa y resolverla desde admin.
-- Confirmar que un tercer usuario no puede leer chats ni transacciones ajenas.
+- Crear una llamada privada entre comprador y vendedor.
+- Confirmar que un tercer usuario no puede leer chats, transacciones ni señales de llamada ajenas.
 
 ## 7. Pendiente legal antes de campaña grande
 
