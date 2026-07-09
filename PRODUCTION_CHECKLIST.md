@@ -54,10 +54,12 @@ supabase secrets set ALLOWED_ORIGIN=https://reveta.es
 supabase functions deploy create-payment-intent
 supabase functions deploy create-boost-payment-intent
 supabase functions deploy create-sendcloud-parcel
-supabase functions deploy geocode-location
+supabase functions deploy geocode-location --no-verify-jwt
 supabase functions deploy delete-account
 supabase functions deploy stripe-webhook --no-verify-jwt
 ```
+
+`geocode-location` es pública para no romper búsquedas o publicación por ciudad, pero mantiene CORS por `ALLOWED_ORIGIN`.
 
 ## 5. Stripe webhook
 
@@ -80,6 +82,7 @@ El webhook es obligatorio para que las compras y los destacados se sincronicen d
 - Registro de usuario nuevo.
 - Editar perfil y confirmar que el propio usuario puede guardar/ver su teléfono.
 - Confirmar que un usuario anónimo o tercero no puede leer la columna `phone` de `profiles`.
+- Buscar/publicar con ciudad escrita y confirmar que `geocode-location` responde sin sesión.
 - Publicar producto con JPG/PNG/WEBP menor de 5 MB.
 - Crear chat y adjuntar imagen menor de 5 MB.
 - Enviar una oferta desde el comprador.
