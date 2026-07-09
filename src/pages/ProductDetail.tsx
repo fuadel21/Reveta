@@ -111,7 +111,11 @@ const ProductDetail = () => {
     setProduct(data as Product);
     await supabase.from('products').update({ views: (data.views || 0) + 1 }).eq('id', id);
 
-    const { data: sellerData } = await supabase.from('profiles').select('*').eq('id', data.user_id).maybeSingle();
+    const { data: sellerData } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url, created_at, verified')
+      .eq('id', data.user_id)
+      .maybeSingle();
     if (sellerData) setSeller(sellerData);
 
     const { count: activeCount } = await supabase
@@ -219,204 +223,70 @@ const ProductDetail = () => {
       navigate(`/call/${callSession.id}`);
     } catch (error) {
       console.error('Error requesting private call:', error);
-      toast({ title: 'No se pudo crear la llamada', description: 'Ejecuta la migración de llamadas o inténtalo de nuevo.', variant: 'destructive' });
+      toast({ title: 'No se pudo crear la llamada', description: 'Inténtalo de nuevo desde el chat.', variant: 'destructive' });
     } finally {
       setRequestingCall(false);
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) {
-      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-      if (diffHours === 0) return 'Hace unos minutos';
-      return `Hace ${diffHours}h`;
-    }
-    if (diffDays === 1) return 'Ayer';
-    if (diffDays < 7) return `Hace ${diffDays} días`;
-    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
-  };
-
-  const nextImage = () => {
-    if (product && product.images.length > 1) setCurrentImageIndex((prev) => (prev === product.images.length - 1 ? 0 : prev + 1));
-  };
-
-  const prevImage = () => {
-    if (product && product.images.length > 1) setCurrentImageIndex((prev) => (prev === 0 ? product.images.length - 1 : prev - 1));
-  };
-
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
-  }
-
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
   if (!product) return null;
 
-  const isOwner = user?.id === product.user_id;
-  const productSlug = createProductSlug(product.title);
-  const canonicalUrl = `https://reveta.es/producto/${product.id}/${productSlug}`;
-  const locationText = product.location ? ` en ${product.location}` : '';
-  const categoryText = category?.name ? ` de ${category.name}` : '';
-  const descriptionBase = product.description || `${product.title}${categoryText} de segunda mano por ${product.price}€${locationText}. Compra, negocia por chat y consulta anuncios similares en Reveta.`;
-  const cleanDescription = descriptionBase.replace(/\s+/g, ' ').trim().slice(0, 160);
-  const rawTitle = `${product.title} segunda mano${locationText} · ${product.price}€ | Reveta`;
-  const seoTitle = rawTitle.length > 65 ? `${product.title.slice(0, 42)} · ${product.price}€${locationText ? ` ${locationText}` : ''} | Reveta` : rawTitle;
-  const seoKeywords = [
-    product.title,
-    `${product.title} segunda mano`,
-    product.location ? `${product.title} ${product.location}` : null,
-    category?.name ? `${category.name} segunda mano` : null,
-    product.location ? `segunda mano ${product.location}` : null,
-    'comprar segunda mano',
-    'Reveta',
-  ].filter(Boolean).join(', ');
-  const primaryImage = product.images?.[0];
-  const socialImage = absoluteUrl(primaryImage);
-  const schemaImages = product.images && product.images.length > 0 ? product.images.map((image) => absoluteUrl(image)) : [socialImage];
-  const shouldIndex = product.status === 'active';
-  const availability = product.status === 'sold' ? 'https://schema.org/SoldOut' : product.status === 'reserved' ? 'https://schema.org/LimitedAvailability' : 'https://schema.org/InStock';
-  const itemCondition = ['nuevo', 'new'].includes((product.condition || '').toLowerCase()) ? 'https://schema.org/NewCondition' : 'https://schema.org/UsedCondition';
-
-  const productJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: product.title,
-    description: cleanDescription,
-    url: canonicalUrl,
-    image: schemaImages,
-    ...(category && { category: category.name }),
-    itemCondition,
-    sku: product.id,
-    datePublished: product.created_at,
-    offers: {
-      '@type': 'Offer',
-      url: canonicalUrl,
-      priceCurrency: 'EUR',
-      price: product.price,
-      availability,
-      itemCondition,
-      ...(seller?.full_name && { seller: { '@type': 'Person', name: seller.full_name } }),
-    },
-  };
-
-  const breadcrumbJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Inicio', item: 'https://reveta.es/' },
-      { '@type': 'ListItem', position: 2, name: 'Buscar', item: 'https://reveta.es/search' },
-      ...(category ? [{ '@type': 'ListItem', position: 3, name: category.name, item: `https://reveta.es/search?category=${category.id}` }] : []),
-      { '@type': 'ListItem', position: category ? 4 : 3, name: product.title, item: canonicalUrl },
-    ],
-  };
+  const productImage = product.images?.[currentImageIndex];
+  const canonicalUrl = `https://reveta.es/producto/${product.id}/${createProductSlug(product.title)}`;
 
   return (
     <>
       <Helmet>
-        <title>{seoTitle}</title>
-        <meta name="description" content={cleanDescription} />
-        <meta name="keywords" content={seoKeywords} />
-        <meta name="robots" content={shouldIndex ? 'index,follow,max-image-preview:large' : 'noindex,follow'} />
+        <title>{product.title} | Reveta</title>
+        <meta name="description" content={(product.description || `${product.title} en venta en Reveta`).slice(0, 155)} />
         <link rel="canonical" href={canonicalUrl} />
-        <meta property="og:type" content="product" />
-        <meta property="og:title" content={seoTitle} />
-        <meta property="og:description" content={cleanDescription} />
+        <meta property="og:title" content={`${product.title} | Reveta`} />
+        <meta property="og:description" content={(product.description || `${product.title} en venta en Reveta`).slice(0, 155)} />
+        <meta property="og:image" content={absoluteUrl(productImage)} />
         <meta property="og:url" content={canonicalUrl} />
-        <meta property="og:site_name" content="Reveta" />
-        <meta property="og:locale" content="es_ES" />
-        <meta property="og:image" content={socialImage} />
-        <meta property="og:image:secure_url" content={socialImage} />
-        <meta property="og:image:alt" content={product.title} />
-        <meta property="product:price:amount" content={String(product.price)} />
-        <meta property="product:price:currency" content="EUR" />
-        <meta property="product:availability" content={availability} />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={seoTitle} />
-        <meta name="twitter:description" content={cleanDescription} />
-        <meta name="twitter:image" content={socialImage} />
-        <script type="application/ld+json">{JSON.stringify(productJsonLd)}</script>
-        <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
-        <main className="flex-1 container py-6">
-          <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"><ChevronLeft className="h-4 w-4" />Volver</Link>
-
-          <div className="grid gap-8 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-muted">
-                {product.images && product.images.length > 0 ? (
-                  <>
-                    <img src={product.images[currentImageIndex]} alt={product.title} className="h-full w-full object-cover" />
-                    {product.images.length > 1 && (
-                      <>
-                        <button onClick={prevImage} className="absolute left-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors"><ChevronLeft className="h-5 w-5" /></button>
-                        <button onClick={nextImage} className="absolute right-4 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-card/80 backdrop-blur-sm flex items-center justify-center hover:bg-card transition-colors"><ChevronRight className="h-5 w-5" /></button>
-                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">{product.images.map((_, index) => <button key={index} onClick={() => setCurrentImageIndex(index)} className={`h-2 w-2 rounded-full transition-colors ${index === currentImageIndex ? 'bg-primary' : 'bg-card/80'}`} />)}</div>
-                      </>
-                    )}
-                  </>
-                ) : <div className="h-full w-full flex items-center justify-center"><span className="text-muted-foreground">Sin imagen</span></div>}
+        <main className="flex-1 container py-8">
+          <Button variant="ghost" onClick={() => navigate(-1)} className="mb-4"><ChevronLeft className="h-4 w-4 mr-2" />Volver</Button>
+          <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
+            <div className="space-y-4">
+              <div className="relative aspect-square rounded-xl overflow-hidden bg-muted">
+                {productImage ? <img src={productImage} alt={product.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-muted-foreground">Sin imagen</div>}
+                {product.images?.length > 1 && <><Button size="icon" variant="secondary" className="absolute left-2 top-1/2 -translate-y-1/2" onClick={() => setCurrentImageIndex((i) => Math.max(0, i - 1))}><ChevronLeft /></Button><Button size="icon" variant="secondary" className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setCurrentImageIndex((i) => Math.min(product.images.length - 1, i + 1))}><ChevronRight /></Button></>}
               </div>
-
-              {product.images && product.images.length > 1 && <div className="flex gap-2 mt-4 overflow-x-auto pb-2">{product.images.map((img, index) => <button key={index} onClick={() => setCurrentImageIndex(index)} className={`shrink-0 h-20 w-20 rounded-lg overflow-hidden border-2 transition-colors ${index === currentImageIndex ? 'border-primary' : 'border-transparent hover:border-border'}`}><img src={img} alt="" className="h-full w-full object-cover" /></button>)}</div>}
-
-              <div className="mt-8"><h2 className="text-lg font-semibold mb-4">Descripción</h2><p className="text-muted-foreground whitespace-pre-wrap">{product.description || 'Sin descripción'}</p></div>
-              <div className="mt-6"><ProductBuyerConfidence /></div>
+              <div className="flex gap-2 overflow-x-auto">{product.images?.map((image, index) => <button key={image} onClick={() => setCurrentImageIndex(index)} className={`h-20 w-20 rounded-lg overflow-hidden border-2 ${index === currentImageIndex ? 'border-primary' : 'border-transparent'}`}><img src={image} alt="" className="w-full h-full object-cover" /></button>)}</div>
             </div>
 
-            <div className="space-y-6">
-              <div className="bg-card rounded-xl p-6 shadow-card border border-border/50">
-                <div className="flex items-start justify-between mb-4">
-                  <div><div className="flex items-center gap-2 mb-2"><p className="text-3xl font-bold text-foreground">{product.price.toLocaleString('es-ES')} €</p><ProductStatusBadge status={product.status} /></div>{product.condition && <Badge variant="secondary" className="font-medium">{product.condition}</Badge>}</div>
-                  <div className="flex gap-2"><Button variant="outline" size="icon" onClick={toggleFavorite} className={isFavorite ? 'text-destructive' : ''}><Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} /></Button><SocialShareButtons title={seoTitle} description={cleanDescription} compact /></div>
-                </div>
-
-                <h1 className="text-xl font-semibold mb-4">{product.title}</h1>
-                <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-6">{product.location && <div className="flex items-center gap-1"><MapPin className="h-4 w-4" />{product.location}</div>}<div className="flex items-center gap-1"><Clock className="h-4 w-4" />{formatDate(product.created_at)}</div><div className="flex items-center gap-1"><Eye className="h-4 w-4" />{product.views || 0} visitas</div></div>
-                {category && <Link to={`/search?category=${category.id}`} className="inline-block text-sm text-primary hover:underline mb-6">{category.name}</Link>}
-
-                {!isOwner && product.status === 'active' && (
-                  <div className="space-y-3">
-                    <Button className="w-full h-14 text-lg font-bold" onClick={handleContactSeller}><MessageCircle className="h-5 w-5 mr-2" />Hacer oferta / Chat</Button>
-                    <Button variant="secondary" className="w-full h-14 text-lg font-bold border-2 border-primary/20" onClick={() => navigate(`/checkout/${product.id}`)}>Comprar ahora</Button>
-                    <Button variant="outline" className="w-full h-12 text-base font-bold border-primary/30" onClick={handleRequestPrivateCall} disabled={requestingCall}><Phone className="h-5 w-5 mr-2" />{requestingCall ? 'Creando...' : 'Solicitar llamada privada'}</Button>
-                    <p className="text-xs text-muted-foreground text-center">Negocia por chat, envía una oferta o compra directamente con registro de pago en Reveta.</p>
-                    <PurchaseDecisionGuide />
-                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 mt-4"><div className="flex items-start gap-3"><Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" /><div><p className="text-sm font-bold text-foreground">Compra con registro Reveta</p><p className="text-xs text-muted-foreground mt-1">Paga con Stripe dentro de Reveta para que la operación, el envío y cualquier incidencia queden registrados en la plataforma.</p></div></div></div>
-                  </div>
-                )}
-
-                {!isOwner && product.status !== 'active' && <div className="text-center p-4 bg-muted rounded-lg"><p className="text-muted-foreground">{product.status === 'sold' ? 'Este producto ya ha sido vendido' : 'Este producto está reservado'}</p></div>}
-                {isOwner && <div className="space-y-3"><Button variant="outline" className="w-full h-12" onClick={() => navigate('/profile')}>Gestionar producto</Button><p className="text-xs text-center text-muted-foreground italic">Eres el vendedor de este producto</p></div>}
+            <aside className="space-y-5">
+              <div className="rounded-xl border p-5 bg-card">
+                <div className="flex items-start justify-between gap-3"><h1 className="text-2xl font-bold">{product.title}</h1><ProductStatusBadge status={product.status || 'active'} /></div>
+                <p className="text-3xl font-bold text-primary mt-3">{product.price.toLocaleString('es-ES')} €</p>
+                <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mt-3">{product.location && <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{product.location}</span>}<span className="flex items-center gap-1"><Eye className="h-4 w-4" />{product.views || 0} vistas</span><span className="flex items-center gap-1"><Clock className="h-4 w-4" />{new Date(product.created_at).toLocaleDateString('es-ES')}</span></div>
+                <div className="mt-5 flex gap-2"><Button className="flex-1" onClick={handleContactSeller}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button><Button variant="outline" onClick={toggleFavorite}><Heart className={`h-4 w-4 ${isFavorite ? 'fill-current text-red-500' : ''}`} /></Button></div>
+                <Button variant="secondary" className="w-full mt-2" onClick={handleRequestPrivateCall} disabled={requestingCall || !user || product.user_id === user?.id}><Phone className="h-4 w-4 mr-2" />Llamada privada</Button>
               </div>
 
-              {seller && (
-                <SellerTrustCard
-                  seller={seller}
-                  productId={product.id}
-                  isOwner={isOwner}
-                  activeProductsCount={sellerActiveProductsCount}
-                  onContactSeller={handleContactSeller}
-                />
-              )}
-              {seller && <ReportProductButton productId={product.id} sellerId={seller.id} productTitle={product.title} isOwner={isOwner} />}
-              {seller && <div className="bg-card rounded-xl p-6 shadow-card border border-border/50"><Reviews userId={seller.id} productId={product.id} /></div>}
-              <div className="bg-muted/50 rounded-xl p-6"><h3 className="font-medium mb-3 flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />Consejos de seguridad</h3><ul className="text-sm text-muted-foreground space-y-2"><li>• Queda en lugares públicos</li><li>• Verifica el producto antes de pagar</li><li>• Nunca envíes dinero por adelantado</li><li>• Usa el chat de la plataforma</li></ul></div>
-            </div>
+              <SellerTrustCard seller={seller} activeProductsCount={sellerActiveProductsCount} />
+              <ProductBuyerConfidence />
+              <PurchaseDecisionGuide />
+              <ReportProductButton productId={product.id} sellerId={product.user_id} />
+              <SocialShareButtons title={product.title} url={canonicalUrl} />
+            </aside>
           </div>
 
-          <RelatedProducts currentProductId={product.id} categoryId={product.category_id} location={product.location} />
+          <section className="mt-8 grid gap-8 lg:grid-cols-[1fr_380px]">
+            <div className="rounded-xl border p-5 bg-card"><h2 className="font-bold text-xl mb-3">Descripción</h2><p className="whitespace-pre-wrap text-muted-foreground">{product.description || 'Sin descripción.'}</p>{category && <Badge variant="outline" className="mt-4">{category.name}</Badge>}</div>
+            <div className="rounded-xl border p-5 bg-card"><div className="flex items-center gap-2 mb-4"><Shield className="h-5 w-5 text-primary" /><h2 className="font-bold text-xl">Valoraciones</h2></div><Reviews userId={product.user_id} sellerName={seller?.full_name || 'Vendedor'} /></div>
+          </section>
+
+          <RelatedProducts currentProductId={product.id} categoryId={product.category_id} />
         </main>
-
         <Footer />
+        {showChat && product && <div className="fixed bottom-4 right-4 z-50 h-[600px] max-h-[80vh] w-[420px] max-w-[calc(100vw-2rem)]"><Chat productId={product.id} sellerId={product.user_id} onClose={() => setShowChat(false)} /></div>}
       </div>
-
-      {showChat && seller && <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"><div className="bg-white rounded-xl w-full max-w-2xl h-[600px] flex flex-col relative overflow-hidden"><Chat productId={product.id} sellerId={seller.id} onClose={() => setShowChat(false)} /></div></div>}
     </>
   );
 };
