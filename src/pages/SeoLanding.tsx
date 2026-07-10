@@ -148,7 +148,7 @@ const SeoLanding = () => {
     },
     {
       question: '¿Cómo puedo comprar con más confianza?',
-      answer: 'Puedes revisar valoraciones, hablar por chat, consultar la información del producto y usar Protección Reveta cuando esté disponible.',
+      answer: 'Puedes revisar valoraciones, hablar por chat, consultar la información del producto y priorizar operaciones con pago y comunicación registrados dentro de Reveta cuando estén disponibles.',
     },
   ];
 
@@ -178,6 +178,12 @@ const SeoLanding = () => {
       {
         '@type': 'ListItem',
         position: 2,
+        name: 'Segunda mano',
+        item: 'https://reveta.es/segunda-mano',
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
         name: `Segunda mano en ${cityName}`,
         item: `https://reveta.es/segunda-mano/${city}`,
       },
@@ -185,7 +191,7 @@ const SeoLanding = () => {
         ? [
             {
               '@type': 'ListItem',
-              position: 3,
+              position: 4,
               name: `${categoryName} en ${cityName}`,
               item: canonicalUrl,
             },
@@ -286,7 +292,7 @@ const SeoLanding = () => {
                 <CardContent className="pt-6">
                   <ShieldCheck className="mb-3 h-6 w-6 text-primary" />
                   <h2 className="font-semibold">Más confianza</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Consulta valoraciones, historial de operaciones y usa Protección Reveta en tus compras.</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Consulta valoraciones, historial de operaciones y usa chat, pago y registro de operación dentro de Reveta cuando estén disponibles.</p>
                 </CardContent>
               </Card>
             </div>
@@ -306,7 +312,7 @@ const SeoLanding = () => {
                   : `Si buscas ${categoryName.toLowerCase()} en ${cityName}, esta página te ayuda a encontrar anuncios relacionados con ${categoryIntent}. También puedes publicar tus propios productos para llegar a compradores locales.`}
               </p>
               <p>
-                El objetivo de Reveta es facilitar una compraventa local más clara, rápida y segura: productos cerca de ti, comunicación directa, valoraciones y herramientas para acordar operaciones con confianza.
+                El objetivo de Reveta es facilitar una compraventa local más clara y rápida: productos cerca de ti, comunicación directa, valoraciones y herramientas para acordar operaciones con confianza.
               </p>
             </div>
           </section>
