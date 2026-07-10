@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, User, Heart, MessageCircle, Search, Shield, Settings, BookMarked, Receipt } from "lucide-react";
+import { Plus, User, Heart, MessageCircle, Search, Shield, Settings, BookMarked, Receipt, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
@@ -108,6 +108,15 @@ const Header = () => {
           <span className="text-xl font-bold text-primary hidden sm:block transition-colors group-hover:text-primary/80">Reveta</span>
         </Link>
 
+        <nav className="hidden lg:flex items-center gap-1" aria-label="Navegación principal">
+          <Button variant="ghost" className="rounded-full px-4 text-muted-foreground hover:text-primary" asChild>
+            <Link to="/segunda-mano">
+              <MapPin className="mr-2 h-4 w-4" />
+              Segunda mano
+            </Link>
+          </Button>
+        </nav>
+
         <form onSubmit={handleSearch} className="flex-1 max-w-xl hidden md:block">
           <div className="relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
@@ -154,7 +163,11 @@ const Header = () => {
                     <User className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem asChild>
+                    <Link to="/segunda-mano" className="flex items-center gap-2"><MapPin className="h-4 w-4" />Segunda mano</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link to="/profile" className="flex items-center gap-2"><User className="h-4 w-4" />Mi Perfil</Link>
                   </DropdownMenuItem>
@@ -184,6 +197,9 @@ const Header = () => {
             </>
           ) : (
             <>
+              <Button variant="outline" className="hidden sm:inline-flex h-10 px-4 rounded-full border-2 border-border text-foreground hover:bg-muted hover:border-primary/30 font-medium transition-all duration-300" asChild>
+                <Link to="/segunda-mano">Segunda mano</Link>
+              </Button>
               <Button variant="outline" className="h-10 px-4 sm:px-6 rounded-full border-2 border-border text-foreground hover:bg-muted hover:border-primary/30 font-medium transition-all duration-300" asChild>
                 <Link to="/auth"><span className="hidden sm:inline">Regístrate o inicia sesión</span><span className="sm:hidden">Entrar</span></Link>
               </Button>
