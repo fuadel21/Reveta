@@ -63,6 +63,21 @@ const absoluteUrl = (url?: string | null) => {
   return `https://reveta.es${url.startsWith('/') ? url : `/${url}`}`;
 };
 
+const schemaAvailability = (status?: string | null) => {
+  if (status === 'sold' || status === 'completed') return 'https://schema.org/SoldOut';
+  if (status === 'reserved' || status === 'pending') return 'https://schema.org/LimitedAvailability';
+  if (status === 'inactive' || status === 'cancelled') return 'https://schema.org/OutOfStock';
+  return 'https://schema.org/InStock';
+};
+
+const schemaCondition = (condition?: string | null) => {
+  const normalized = (condition || '').toLowerCase();
+  if (normalized.includes('nuevo') || normalized.includes('new')) return 'https://schema.org/NewCondition';
+  if (normalized.includes('reacondicionado') || normalized.includes('refurbished')) return 'https://schema.org/RefurbishedCondition';
+  if (normalized.includes('dañado') || normalized.includes('defecto') || normalized.includes('for parts')) return 'https://schema.org/DamagedCondition';
+  return 'https://schema.org/UsedCondition';
+};
+
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -234,6 +249,34 @@ const ProductDetail = () => {
 
   const productImage = product.images?.[currentImageIndex];
   const canonicalUrl = `https://reveta.es/producto/${product.id}/${createProductSlug(product.title)}`;
+  const productJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    '@id': `${canonicalUrl}#product`,
+    name: product.title,
+    description: product.description || `${product.title} en venta en Reveta`,
+    image: product.images?.length ? product.images.map((image) => absoluteUrl(image)) : [absoluteUrl(productImage)],
+    category: category?.name,
+    itemCondition: schemaCondition(product.condition),
+    url: canonicalUrl,
+    brand: {
+      '@type': 'Brand',
+      name: 'Reveta',
+    },
+    offers: {
+      '@type': 'Offer',
+      url: canonicalUrl,
+      priceCurrency: 'EUR',
+      price: product.price.toFixed(2),
+      availability: schemaAvailability(product.status),
+      itemCondition: schemaCondition(product.condition),
+      seller: {
+        '@type': 'Person',
+        name: seller?.full_name || 'Vendedor Reveta',
+      },
+      areaServed: product.location || 'España',
+    },
+  };
 
   return (
     <>
@@ -245,6 +288,7 @@ const ProductDetail = () => {
         <meta property="og:description" content={(product.description || `${product.title} en venta en Reveta`).slice(0, 155)} />
         <meta property="og:image" content={absoluteUrl(productImage)} />
         <meta property="og:url" content={canonicalUrl} />
+        <script type="application/ld+json">{JSON.stringify(productJsonLd)}</script>
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
