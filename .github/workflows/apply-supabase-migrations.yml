@@ -4,15 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'dry-run solo muestra migraciones; apply las aplica en Supabase'
+        description: 'dry-run preview, repair-history marca migraciones como aplicadas, apply aplica migraciones nuevas'
         required: true
         default: 'dry-run'
         type: choice
         options:
           - dry-run
+          - repair-history
           - apply
       confirm:
-        description: 'Para aplicar migraciones escribe exactamente: APPLY_MIGRATIONS'
+        description: 'Para repair-history escribe REPAIR_MIGRATIONS. Para apply escribe APPLY_MIGRATIONS.'
         required: false
         default: ''
         type: string
@@ -50,6 +51,60 @@ jobs:
         if: ${{ github.event.inputs.mode == 'dry-run' }}
         shell: bash
         run: supabase db push --linked --dry-run --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Check repair confirmation
+        if: ${{ github.event.inputs.mode == 'repair-history' }}
+        shell: bash
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "REPAIR_MIGRATIONS" ]; then
+            echo "To repair migration history, set confirm to REPAIR_MIGRATIONS"
+            exit 1
+          fi
+
+      - name: Repair remote migration history
+        if: ${{ github.event.inputs.mode == 'repair-history' }}
+        shell: bash
+        run: |
+          versions=(
+            20260122215425
+            20260202222757
+            20260206082359
+            20260613000100
+            20260613000200
+            20260613000300
+            20260613000400
+            20260613000500
+            20260614000100
+            20260614000200
+            20260614000300
+            20260614000400
+            20260614000500
+            20260614000600
+            20260614000700
+            20260614000800
+            20260614000900
+            20260614001000
+            20260614001100
+            20260616000100
+            20260616000200
+            20260616000400
+            20260616000500
+            20260616000600
+            20260616000700
+            20260705000100
+            20260708183000
+            20260708184000
+            20260708185000
+            20260708190000
+            20260708191000
+            20260708192000
+            20260708193000
+          )
+
+          for version in "${versions[@]}"; do
+            echo "Marking migration $version as applied in remote history"
+            supabase migration repair --status applied "$version" --linked || true
+          done
 
       - name: Check apply confirmation
         if: ${{ github.event.inputs.mode == 'apply' }}
