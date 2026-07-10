@@ -43,11 +43,12 @@ const categoryLinks = [
 ];
 
 const exploreLinks = [
+  { to: '/segunda-mano', label: 'Segunda mano cerca de ti' },
   { to: '/search', label: 'Todas las categorías' },
   { to: '/search?sort=recent', label: 'Últimos productos' },
   { to: '/search?sort=price_asc', label: 'Mejores ofertas' },
   { to: '/upload', label: 'Vender un producto' },
-  { to: '/seguridad', label: 'Reveta Protección' },
+  { to: '/seguridad', label: 'Centro de seguridad' },
 ];
 
 const legalLinks = [
@@ -76,7 +77,7 @@ const Footer = () => {
               Marketplace para comprar y vender productos de segunda mano cerca de ti.
             </p>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Publica gratis, negocia por chat y compra con más confianza usando Reveta Protección.
+              Publica gratis, negocia por chat y usa valoraciones, ofertas y operaciones registradas para comprar y vender con más claridad.
             </p>
           </div>
           
@@ -164,12 +165,13 @@ const Footer = () => {
               Hecho con <Heart className="h-4 w-4 text-destructive fill-destructive animate-pulse" /> en España © 2026 Reveta
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-muted-foreground">
+              <Link to="/segunda-mano" className="hover:text-primary transition-colors">Segunda mano</Link>
               <Link to="/segunda-mano/barcelona" className="hover:text-primary transition-colors">Barcelona</Link>
               <Link to="/segunda-mano/girona" className="hover:text-primary transition-colors">Girona</Link>
               <Link to="/segunda-mano/pineda-de-mar" className="hover:text-primary transition-colors">Pineda de Mar</Link>
               <Link to="/segunda-mano/blanes" className="hover:text-primary transition-colors">Blanes</Link>
               <Link to="/segunda-mano/lloret-de-mar" className="hover:text-primary transition-colors">Lloret de Mar</Link>
-              <Link to="/seguridad" className="hover:text-primary transition-colors">Reveta Protección</Link>
+              <Link to="/seguridad" className="hover:text-primary transition-colors">Seguridad</Link>
             </div>
           </div>
         </div>
