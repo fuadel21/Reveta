@@ -34,6 +34,7 @@ import Checkout from "./pages/Checkout";
 import CallRoom from "./pages/CallRoom";
 import BoostProduct from "./pages/BoostProduct";
 import MobileSellButton from "@/components/MobileSellButton";
+import ScrollToTop from "@/components/ScrollToTop";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
+              <ScrollToTop />
               <MobileSellButton />
               <Routes>
                 <Route path="/" element={<Index />} />
