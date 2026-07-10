@@ -17,6 +17,7 @@ import Upload from "./pages/Upload";
 import Messages from "./pages/Messages";
 import ProductDetail from "./pages/ProductDetail";
 import Search from "./pages/Search";
+import SeoIndex from "./pages/SeoIndex";
 import SeoLanding from "./pages/SeoLanding";
 import Safety from "./pages/Safety";
 import Admin from "./pages/Admin";
@@ -68,6 +69,7 @@ const App = () => (
                 <Route path="/boost/:productId" element={privatePage("Destacar producto | Reveta", <BoostProduct />)} />
                 <Route path="/call/:id" element={privatePage("Llamada privada | Reveta", <CallRoom />)} />
                 <Route path="/search" element={<Search />} />
+                <Route path="/segunda-mano" element={<SeoIndex />} />
                 <Route path="/segunda-mano/:city" element={<SeoLanding />} />
                 <Route path="/segunda-mano/:city/:category" element={<SeoLanding />} />
                 <Route path="/seguridad" element={<Safety />} />
