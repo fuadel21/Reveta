@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -69,6 +69,8 @@ const App = () => (
                 <Route path="/boost/:productId" element={privatePage("Destacar producto | Reveta", <BoostProduct />)} />
                 <Route path="/call/:id" element={privatePage("Llamada privada | Reveta", <CallRoom />)} />
                 <Route path="/search" element={<Search />} />
+                <Route path="/segunda" element={<Navigate to="/segunda-mano" replace />} />
+                <Route path="/segunda-ma" element={<Navigate to="/segunda-mano" replace />} />
                 <Route path="/segunda-mano" element={<SeoIndex />} />
                 <Route path="/segunda-mano/:city" element={<SeoLanding />} />
                 <Route path="/segunda-mano/:city/:category" element={<SeoLanding />} />
