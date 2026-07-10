@@ -1,0 +1,4 @@
+-- Remote migration history placeholder.
+-- This version already exists in the Supabase remote migration history.
+-- The original local migration file was missing from the repository, so this no-op file keeps local and remote migration versions aligned.
+-- Do not add SQL here: the remote database already has this migration marked as applied.
