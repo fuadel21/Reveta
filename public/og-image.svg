@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Reveta - Marketplace de segunda mano">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0fdf4"/>
+      <stop offset="0.48" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#dcfce7"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#10b981"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#064e3b" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1030" cy="95" r="210" fill="#10b981" opacity="0.10"/>
+  <circle cx="150" cy="560" r="260" fill="#10b981" opacity="0.08"/>
+  <path d="M827 476c95-34 197-27 294 22v132H719c-18-63 17-124 108-154Z" fill="#10b981" opacity="0.08"/>
+
+  <g filter="url(#shadow)">
+    <rect x="78" y="72" width="1044" height="486" rx="46" fill="#ffffff"/>
+  </g>
+
+  <g transform="translate(118 124)">
+    <rect width="136" height="136" rx="32" fill="#ffffff" stroke="#e5e7eb" stroke-width="5"/>
+    <text x="48" y="91" font-family="Arial Black, Arial, sans-serif" font-size="76" font-weight="900" fill="#20252a">R</text>
+    <path d="M45 94V60H28l39-39 39 39H89v34c0 9-7 16-16 16H61c-9 0-16-7-16-16Z" fill="url(#green)"/>
+    <path d="M88 94h28V79l30 30-30 30v-15H88c-9 0-16-7-16-16v-1c0-9 7-13 16-13Z" fill="url(#green)"/>
+  </g>
+
+  <text x="290" y="170" font-family="Inter, Arial, sans-serif" font-size="54" font-weight="900" fill="#111827">Reveta</text>
+  <text x="290" y="218" font-family="Inter, Arial, sans-serif" font-size="25" font-weight="700" fill="#059669">Compraventa de segunda mano cerca de ti</text>
+
+  <text x="118" y="325" font-family="Inter, Arial, sans-serif" font-size="62" font-weight="900" fill="#111827">Compra y vende</text>
+  <text x="118" y="390" font-family="Inter, Arial, sans-serif" font-size="62" font-weight="900" fill="#111827">productos usados</text>
+  <text x="118" y="450" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="500" fill="#4b5563">Chat, ofertas, valoraciones y anuncios locales en España.</text>
+
+  <g transform="translate(118 494)">
+    <rect width="222" height="48" rx="24" fill="#10b981"/>
+    <text x="28" y="32" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" fill="#ffffff">Publicar gratis</text>
+  </g>
+  <g transform="translate(358 494)">
+    <rect width="214" height="48" rx="24" fill="#ecfdf5" stroke="#bbf7d0"/>
+    <text x="28" y="32" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" fill="#047857">reveta.es</text>
+  </g>
+
+  <g transform="translate(760 188)">
+    <rect width="230" height="112" rx="26" fill="#f9fafb" stroke="#e5e7eb"/>
+    <circle cx="56" cy="56" r="31" fill="#d1fae5"/>
+    <path d="M43 60h26m-13-13v26" stroke="#059669" stroke-width="7" stroke-linecap="round"/>
+    <text x="102" y="52" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" fill="#111827">Vende rápido</text>
+    <text x="102" y="78" font-family="Inter, Arial, sans-serif" font-size="15" fill="#6b7280">Fotos + chat</text>
+  </g>
+  <g transform="translate(820 326)">
+    <rect width="250" height="112" rx="26" fill="#f9fafb" stroke="#e5e7eb"/>
+    <circle cx="56" cy="56" r="31" fill="#dbeafe"/>
+    <path d="M42 56h28m-28 14h46" stroke="#2563eb" stroke-width="7" stroke-linecap="round"/>
+    <text x="102" y="52" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="800" fill="#111827">Busca cerca</text>
+    <text x="102" y="78" font-family="Inter, Arial, sans-serif" font-size="15" fill="#6b7280">Ciudad y categoría</text>
+  </g>
+</svg>
