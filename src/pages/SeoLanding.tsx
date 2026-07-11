@@ -74,7 +74,27 @@ const CATEGORY_INTENTS: Record<string, string> = {
   coleccionismo: 'objetos de colección, antigüedades, figuras y artículos especiales',
 };
 
-const POPULAR_CITIES = ['barcelona', 'madrid', 'valencia', 'badalona', 'hospitalet-de-llobregat', 'sabadell', 'terrassa', 'mataro', 'pineda-de-mar', 'girona', 'lloret-de-mar', 'blanes'];
+const POPULAR_CITIES = [
+  'barcelona',
+  'madrid',
+  'valencia',
+  'badalona',
+  'hospitalet-de-llobregat',
+  'sabadell',
+  'terrassa',
+  'mataro',
+  'girona',
+  'tarragona',
+  'lleida',
+  'reus',
+  'pineda-de-mar',
+  'lloret-de-mar',
+  'blanes',
+  'malgrat-de-mar',
+  'figueres',
+  'granollers',
+  'vic',
+];
 const POPULAR_CATEGORIES = ['motor', 'electronica', 'iphone', 'muebles', 'bicicletas', 'moda', 'hogar', 'juegos', 'libros', 'deportes'];
 
 const slugToLabel = (slug?: string) => {
@@ -115,7 +135,7 @@ const SeoLanding = () => {
 
   const relatedCityLinks = POPULAR_CITIES
     .filter((item) => item !== city)
-    .slice(0, 6)
+    .slice(0, 10)
     .map((item) => ({
       label: categoryName ? `${categoryName} en ${CITY_NAMES[item] || slugToLabel(item)}` : `Segunda mano en ${CITY_NAMES[item] || slugToLabel(item)}`,
       href: categoryName ? `/segunda-mano/${item}/${category}` : `/segunda-mano/${item}`,
