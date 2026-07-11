@@ -294,19 +294,9 @@ const ProductDetail = () => {
         name: 'Segunda mano',
         item: 'https://reveta.es/segunda-mano',
       },
-      ...(category?.name
-        ? [
-            {
-              '@type': 'ListItem',
-              position: 3,
-              name: category.name,
-              item: `https://reveta.es/search?category=${encodeURIComponent(category.id)}`,
-            },
-          ]
-        : []),
       {
         '@type': 'ListItem',
-        position: category?.name ? 4 : 3,
+        position: 3,
         name: product.title,
         item: canonicalUrl,
       },
