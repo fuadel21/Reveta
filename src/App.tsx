@@ -7,6 +7,7 @@ import { HelmetProvider } from "react-helmet-async";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import NoIndex from "@/components/seo/NoIndex";
+import GlobalJsonLd from "@/components/seo/GlobalJsonLd";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -53,6 +54,7 @@ const App = () => (
           <TooltipProvider>
             <Toaster />
             <Sonner />
+            <GlobalJsonLd />
             <BrowserRouter>
               <ScrollToTop />
               <MobileSellButton />
