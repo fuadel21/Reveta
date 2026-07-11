@@ -8,6 +8,8 @@ const Privacy = () => {
       <Helmet>
         <title>Política de Privacidad | Reveta</title>
         <meta name="description" content="Política de privacidad y protección de datos de Reveta" />
+        <meta name="robots" content="index,follow,max-image-preview:large" />
+        <link rel="canonical" href="https://reveta.es/privacy" />
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
