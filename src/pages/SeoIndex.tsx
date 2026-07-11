@@ -37,7 +37,7 @@ const POPULAR_CATEGORIES = [
 const title = 'Segunda mano cerca de ti | Comprar y vender usado en Reveta';
 const description = 'Encuentra productos de segunda mano por ciudad y categoría en Reveta. Compra, vende, negocia por chat y publica anuncios gratis cerca de ti.';
 const canonicalUrl = 'https://reveta.es/segunda-mano';
-const ogImage = 'https://reveta.es/og-image.png';
+const ogImage = 'https://reveta.es/og-image.svg?v=20260710';
 
 const SeoIndex = () => {
   const collectionPageJsonLd = {
@@ -86,6 +86,10 @@ const SeoIndex = () => {
         <meta property="og:type" content="website" />
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:image" content={ogImage} />
+        <meta property="og:image:secure_url" content={ogImage} />
+        <meta property="og:image:type" content="image/svg+xml" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
         <meta property="og:site_name" content="Reveta" />
         <meta property="og:locale" content="es_ES" />
         <meta name="twitter:card" content="summary_large_image" />
