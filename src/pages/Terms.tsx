@@ -8,6 +8,8 @@ const Terms = () => {
       <Helmet>
         <title>Términos de Uso | Reveta</title>
         <meta name="description" content="Términos y condiciones de uso de Reveta" />
+        <meta name="robots" content="index,follow,max-image-preview:large" />
+        <link rel="canonical" href="https://reveta.es/terms" />
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
