@@ -1,21 +1,55 @@
 User-agent: *
 Allow: /
 
+# Private and account pages
 Disallow: /admin
 Disallow: /admin/
+Disallow: /admin/*
 Disallow: /profile
-Disallow: /upload
-Disallow: /messages
-Disallow: /transactions
+Disallow: /profile/
+Disallow: /profile/*
 Disallow: /settings
+Disallow: /settings/
+Disallow: /settings/*
 Disallow: /saved-searches
-Disallow: /checkout
-Disallow: /boost
-Disallow: /call
+Disallow: /saved-searches/
+Disallow: /saved-searches/*
+
+# Auth and password flows
 Disallow: /auth
+Disallow: /auth/
+Disallow: /auth/*
 Disallow: /reset-password
+Disallow: /reset-password/
 Disallow: /forgot-password
+Disallow: /forgot-password/
+
+# Messages, transactions and checkout flows
+Disallow: /messages
+Disallow: /messages/
+Disallow: /messages/*
+Disallow: /transactions
+Disallow: /transactions/
+Disallow: /transactions/*
+Disallow: /checkout
+Disallow: /checkout/
+Disallow: /checkout/*
+Disallow: /boost
+Disallow: /boost/
+Disallow: /boost/*
+Disallow: /call
+Disallow: /call/
+Disallow: /call/*
+
+# Publishing and API routes
+Disallow: /upload
+Disallow: /upload/
+Disallow: /upload/*
 Disallow: /api
 Disallow: /api/
+Disallow: /api/*
+
+# Filter/search URLs are crawlable through links but not intended for indexing.
+# The /search page also sends noindex via meta and X-Robots-Tag.
 
 Sitemap: https://reveta.es/sitemap.xml
