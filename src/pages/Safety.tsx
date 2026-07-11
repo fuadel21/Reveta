@@ -52,6 +52,8 @@ const protectionCards = [
   },
 ];
 
+const socialImage = 'https://reveta.es/og-image.svg?v=20260710';
+
 const safetyJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'FAQPage',
@@ -129,14 +131,17 @@ const Safety = () => {
         <meta property="og:description" content="Compra y vende segunda mano con más confianza: evita pagos externos, detecta fraude y denuncia anuncios sospechosos." />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://reveta.es/seguridad" />
-        <meta property="og:image" content="https://reveta.es/og-image.png" />
-        <meta property="og:image:secure_url" content="https://reveta.es/og-image.png" />
+        <meta property="og:image" content={socialImage} />
+        <meta property="og:image:secure_url" content={socialImage} />
+        <meta property="og:image:type" content="image/svg+xml" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
         <meta property="og:site_name" content="Reveta" />
         <meta property="og:locale" content="es_ES" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Reveta Protección | Seguridad y antifraude" />
         <meta name="twitter:description" content="Consejos para comprar y vender segunda mano con más confianza en Reveta." />
-        <meta name="twitter:image" content="https://reveta.es/og-image.png" />
+        <meta name="twitter:image" content={socialImage} />
         <script type="application/ld+json">{JSON.stringify(webPageJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(safetyJsonLd)}</script>
