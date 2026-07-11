@@ -58,7 +58,7 @@ const createProductSlug = (title: string) => {
 };
 
 const absoluteUrl = (url?: string | null) => {
-  if (!url) return 'https://reveta.es/og-image.png';
+  if (!url) return 'https://reveta.es/og-image.svg?v=20260710';
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   return `https://reveta.es${url.startsWith('/') ? url : `/${url}`}`;
 };
@@ -278,6 +278,41 @@ const ProductDetail = () => {
     },
   };
 
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Reveta',
+        item: 'https://reveta.es/',
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Segunda mano',
+        item: 'https://reveta.es/segunda-mano',
+      },
+      ...(category?.name
+        ? [
+            {
+              '@type': 'ListItem',
+              position: 3,
+              name: category.name,
+              item: `https://reveta.es/search?category=${encodeURIComponent(category.id)}`,
+            },
+          ]
+        : []),
+      {
+        '@type': 'ListItem',
+        position: category?.name ? 4 : 3,
+        name: product.title,
+        item: canonicalUrl,
+      },
+    ],
+  };
+
   return (
     <>
       <Helmet>
@@ -289,6 +324,7 @@ const ProductDetail = () => {
         <meta property="og:image" content={absoluteUrl(productImage)} />
         <meta property="og:url" content={canonicalUrl} />
         <script type="application/ld+json">{JSON.stringify(productJsonLd)}</script>
+        <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
