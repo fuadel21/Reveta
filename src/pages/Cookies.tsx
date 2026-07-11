@@ -9,6 +9,8 @@ const Cookies = () => {
       <Helmet>
         <title>Política de Cookies | Reveta</title>
         <meta name="description" content="Información sobre el uso de cookies en Reveta" />
+        <meta name="robots" content="index,follow,max-image-preview:large" />
+        <link rel="canonical" href="https://reveta.es/cookies" />
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
