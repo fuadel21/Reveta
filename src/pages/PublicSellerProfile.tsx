@@ -63,7 +63,7 @@ const getRelativeTime = (dateString: string) => {
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 const absoluteUrl = (url?: string | null) => {
-  if (!url) return 'https://reveta.es/og-image.png';
+  if (!url) return 'https://reveta.es/og-image.svg?v=20260710';
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   return `https://reveta.es${url.startsWith('/') ? url : `/${url}`}`;
 };
@@ -145,6 +145,7 @@ const PublicSellerProfile = () => {
   const socialImage = absoluteUrl(seller?.avatar_url);
   const pageTitle = `${displayName} | Vendedor en Reveta`;
   const pageDescription = `Perfil de ${displayName} en Reveta: ${products.length} anuncios activos, ${soldCount} productos vendidos, valoraciones y señales de confianza para comprar segunda mano.`;
+  const shouldIndexProfile = products.length > 0;
 
   const personJsonLd = seller
     ? {
@@ -162,6 +163,25 @@ const PublicSellerProfile = () => {
         ...(seller.username && { alternateName: `@${seller.username}` }),
       }
     : null;
+
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Reveta',
+        item: 'https://reveta.es/',
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: displayName,
+        item: profileUrl,
+      },
+    ],
+  };
 
   const productItemListJsonLd = {
     '@context': 'https://schema.org',
@@ -204,7 +224,7 @@ const PublicSellerProfile = () => {
       <Helmet>
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
-        <meta name="robots" content="index,follow,max-image-preview:large" />
+        <meta name="robots" content={shouldIndexProfile ? 'index,follow,max-image-preview:large' : 'noindex,follow'} />
         <link rel="canonical" href={profileUrl} />
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={pageDescription} />
@@ -220,6 +240,7 @@ const PublicSellerProfile = () => {
         <meta name="twitter:description" content={pageDescription} />
         <meta name="twitter:image" content={socialImage} />
         {personJsonLd && <script type="application/ld+json">{JSON.stringify(personJsonLd)}</script>}
+        <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
         {sortedProducts.length > 0 && <script type="application/ld+json">{JSON.stringify(productItemListJsonLd)}</script>}
       </Helmet>
 
