@@ -111,7 +111,7 @@ const SeoLanding = () => {
   const keywords = categoryName
     ? `${categoryName.toLowerCase()} segunda mano ${cityName.toLowerCase()}, comprar ${categoryName.toLowerCase()} usado, vender ${categoryName.toLowerCase()} ${cityName.toLowerCase()}, anuncios ${categoryName.toLowerCase()} ${cityName.toLowerCase()}, Reveta`
     : `segunda mano ${cityName.toLowerCase()}, comprar usado ${cityName.toLowerCase()}, vender segunda mano ${cityName.toLowerCase()}, anuncios gratis ${cityName.toLowerCase()}, marketplace local, Reveta`;
-  const ogImage = 'https://reveta.es/og-image.png';
+  const ogImage = 'https://reveta.es/og-image.svg?v=20260710';
 
   const relatedCityLinks = POPULAR_CITIES
     .filter((item) => item !== city)
@@ -231,6 +231,9 @@ const SeoLanding = () => {
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:image" content={ogImage} />
         <meta property="og:image:secure_url" content={ogImage} />
+        <meta property="og:image:type" content="image/svg+xml" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
         <meta property="og:site_name" content="Reveta" />
         <meta property="og:locale" content="es_ES" />
         <meta name="twitter:card" content="summary_large_image" />
