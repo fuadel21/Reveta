@@ -68,6 +68,9 @@ const getFunctionErrorMessage = async (error: any) => {
 const isDuplicateTransactionError = (error: any) =>
   error?.code === '23505' || String(error?.message || '').includes('transactions_one_open_per_product_idx');
 
+const normalizeText = (value: string) => value.trim().replace(/\s+/g, ' ');
+const normalizePhone = (value: string) => value.trim().replace(/\s+/g, ' ');
+
 const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | null }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -93,16 +96,42 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
   const updateAddressField = (field: keyof ShippingAddress, value: string) =>
     setShippingAddress((current) => ({ ...current, [field]: value }));
 
+  const normalizedShippingAddress = () => ({
+    fullName: normalizeText(shippingAddress.fullName),
+    phone: normalizePhone(shippingAddress.phone),
+    address: normalizeText(shippingAddress.address),
+    houseNumber: normalizeText(shippingAddress.houseNumber),
+    postalCode: shippingAddress.postalCode.trim(),
+    city: normalizeText(shippingAddress.city),
+    country: 'ES',
+  });
+
   const validateShippingAddress = () => {
+    const normalized = normalizedShippingAddress();
     const requiredFields: Array<keyof ShippingAddress> = ['fullName', 'phone', 'address', 'houseNumber', 'postalCode', 'city'];
-    const missingField = requiredFields.find((field) => !shippingAddress[field].trim());
+    const missingField = requiredFields.find((field) => !normalized[field]);
     if (missingField) {
       toast.error('Completa todos los datos de envío antes de continuar.');
       return false;
     }
 
-    if (!/^\d{5}$/.test(shippingAddress.postalCode.trim())) {
+    if (normalized.fullName.length < 3) {
+      toast.error('Introduce un nombre completo válido.');
+      return false;
+    }
+
+    if (!/^\+?[0-9\s-]{9,18}$/.test(normalized.phone)) {
+      toast.error('Introduce un teléfono válido para coordinar la entrega.');
+      return false;
+    }
+
+    if (!/^\d{5}$/.test(normalized.postalCode)) {
       toast.error('Introduce un código postal español válido de 5 dígitos.');
+      return false;
+    }
+
+    if (normalized.address.length < 3 || normalized.city.length < 2) {
+      toast.error('Introduce una dirección y ciudad válidas.');
       return false;
     }
 
@@ -152,7 +181,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     if (!user) return null;
     const { data, error } = await supabase
       .from('transactions')
-      .select('id, status')
+      .select('id, status, stripe_payment_intent_id')
       .eq('product_id', product.id)
       .eq('buyer_id', user.id)
       .in('status', OPEN_TRANSACTION_STATUSES)
@@ -168,16 +197,33 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     return data;
   };
 
-  const recordTransaction = async (status: 'completed' | 'pending'): Promise<RecordTransactionResult> => {
+  const recordTransaction = async (status: 'completed' | 'pending', paymentIntentId?: string): Promise<RecordTransactionResult> => {
     if (!user) throw new Error('Debes iniciar sesión para comprar.');
-    await ensureProductStillAvailable();
 
     const existingTransaction = await findExistingOpenTransaction();
     if (existingTransaction?.id) return { created: false, transactionId: existingTransaction.id };
 
+    await ensureProductStillAvailable();
+    const now = new Date().toISOString();
+    const insertPayload: any = {
+      product_id: product.id,
+      buyer_id: user.id,
+      seller_id: product.user_id,
+      amount: totalAmount,
+      status,
+    };
+
+    if (paymentIntentId) {
+      insertPayload.payment_provider = 'stripe';
+      insertPayload.payment_status = 'succeeded';
+      insertPayload.stripe_payment_intent_id = paymentIntentId;
+      insertPayload.paid_at = now;
+      insertPayload.completed_at = now;
+    }
+
     const { data: insertedTransaction, error: transactionError } = await supabase
       .from('transactions')
-      .insert({ product_id: product.id, buyer_id: user.id, seller_id: product.user_id, amount: totalAmount, status })
+      .insert(insertPayload)
       .select('id')
       .single();
 
@@ -205,16 +251,17 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
   const createSendcloudParcel = async (transactionId: string | null) => {
     if (!transactionId) throw new Error('No se puede crear envío sin transacción.');
+    const normalized = normalizedShippingAddress();
 
     const { data, error } = await supabase.functions.invoke('create-sendcloud-parcel', {
       body: {
         transactionId,
-        buyerName: shippingAddress.fullName,
-        buyerPhone: shippingAddress.phone,
-        address: shippingAddress.address,
-        houseNumber: shippingAddress.houseNumber,
-        postalCode: shippingAddress.postalCode,
-        city: shippingAddress.city,
+        buyerName: normalized.fullName,
+        buyerPhone: normalized.phone,
+        address: normalized.address,
+        houseNumber: normalized.houseNumber,
+        postalCode: normalized.postalCode,
+        city: normalized.city,
         country: 'ES',
         weight: '0.5',
         requestLabel: false,
@@ -232,27 +279,20 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
   const saveShippingDetails = async (transactionId: string | null, parcel: any) => {
     if (!transactionId) return;
+    const normalized = normalizedShippingAddress();
     const updatePayload = {
-      shipping_provider: 'sendcloud',
-      shipping_status: parcel?.status?.message || parcel?.status || 'created',
+      shipping_provider: parcel ? 'sendcloud' : selectedShipping?.name || 'manual',
+      shipping_status: parcel?.status?.message || parcel?.status || 'pending_coordination',
       sendcloud_parcel_id: parcel?.id ? String(parcel.id) : null,
       sendcloud_tracking_number: parcel?.tracking_number || parcel?.tracking_code || null,
       sendcloud_tracking_url: parcel?.tracking_url || parcel?.tracking_url_provider || null,
-      shipping_address: {
-        fullName: shippingAddress.fullName,
-        phone: shippingAddress.phone,
-        address: shippingAddress.address,
-        houseNumber: shippingAddress.houseNumber,
-        postalCode: shippingAddress.postalCode,
-        city: shippingAddress.city,
-        country: 'ES',
-      },
+      shipping_address: normalized,
     };
     const { error } = await supabase.from('transactions').update(updatePayload).eq('id', transactionId);
-    if (error) console.error('Error saving Sendcloud details:', error);
+    if (error) console.error('Error saving shipping details:', error);
   };
 
-  const createParcelAfterTransaction = async (transactionId: string | null, conversationId: string | null) => {
+  const createParcelAfterPaidTransaction = async (transactionId: string | null, conversationId: string | null) => {
     try {
       const parcel = await createSendcloudParcel(transactionId);
       await saveShippingDetails(transactionId, parcel);
@@ -264,22 +304,34 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
       if (conversationId) await sendTransactionMessage(conversationId, `Envío nacional España creado con Sendcloud para “${product.title}”.${parcelId}${tracking}`);
     } catch (error: any) {
       console.error('Sendcloud parcel error:', error);
-      toast.warning('Compra registrada, pero no se pudo crear el envío en Sendcloud. Revisa la configuración de Sendcloud.');
+      toast.warning('Pago registrado, pero no se pudo crear el envío en Sendcloud. Revisa la configuración de Sendcloud.');
     }
   };
 
-  const completeCardPayment = async () => {
-    const transactionResult = await recordTransaction('completed');
+  const saveManualDeliveryAfterReservation = async (transactionId: string | null, conversationId: string | null) => {
+    await saveShippingDetails(transactionId, null);
+    if (conversationId) {
+      const normalized = normalizedShippingAddress();
+      await sendTransactionMessage(
+        conversationId,
+        `He reservado “${product.title}” para pago en persona por ${totalAmount.toFixed(2)} €. Datos de entrega/contacto: ${normalized.address} ${normalized.houseNumber}, ${normalized.postalCode} ${normalized.city}, España. Teléfono: ${normalized.phone}.`,
+      );
+    }
+  };
+
+  const completeCardPayment = async (paymentIntentId: string) => {
+    const transactionResult = await recordTransaction('completed', paymentIntentId);
     const conversationId = await ensureConversation();
+    const normalized = normalizedShippingAddress();
 
     if (conversationId) {
       await sendTransactionMessage(
         conversationId,
-        `He pagado “${product.title}” con tarjeta por ${totalAmount.toFixed(2)} €. Dirección de envío: ${shippingAddress.address} ${shippingAddress.houseNumber}, ${shippingAddress.postalCode} ${shippingAddress.city}, España.`,
+        `He pagado “${product.title}” con tarjeta por ${totalAmount.toFixed(2)} €. Dirección de envío: ${normalized.address} ${normalized.houseNumber}, ${normalized.postalCode} ${normalized.city}, España.`,
       );
     }
 
-    await createParcelAfterTransaction(transactionResult.transactionId, conversationId);
+    await createParcelAfterPaidTransaction(transactionResult.transactionId, conversationId);
     toast.success(transactionResult.created ? 'Pago con tarjeta completado' : 'Pago confirmado');
     navigate('/transactions', { replace: true });
   };
@@ -314,8 +366,8 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
       throw new Error(result.error.message || 'Error al procesar el pago');
     }
 
-    if (result.paymentIntent?.status !== 'succeeded') throw new Error('El pago no se ha completado. Inténtalo de nuevo.');
-    await completeCardPayment();
+    if (result.paymentIntent?.status !== 'succeeded' || !result.paymentIntent.id) throw new Error('El pago no se ha completado. Inténtalo de nuevo.');
+    await completeCardPayment(result.paymentIntent.id);
   };
 
   const handleInPersonPayment = async () => {
@@ -327,14 +379,8 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     }
 
     const conversationId = await ensureConversation();
-    if (conversationId) {
-      await sendTransactionMessage(
-        conversationId,
-        `He reservado “${product.title}” para pagar en persona por ${totalAmount.toFixed(2)} €. Dirección de envío: ${shippingAddress.address} ${shippingAddress.houseNumber}, ${shippingAddress.postalCode} ${shippingAddress.city}, España.`,
-      );
-    }
-    await createParcelAfterTransaction(transactionResult.transactionId, conversationId);
-    toast.success('Reserva registrada para pago en persona.');
+    await saveManualDeliveryAfterReservation(transactionResult.transactionId, conversationId);
+    toast.success('Reserva registrada para pago en persona. No se crea envío automático hasta que la operación esté confirmada.');
     navigate('/transactions', { replace: true });
   };
 
@@ -441,7 +487,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                 <input value={shippingAddress.city} onChange={(event) => updateAddressField('city', event.target.value)} placeholder="Ciudad" className="w-full rounded-md border px-3 py-2 text-sm" />
                 <input value="España" readOnly className="w-full rounded-md border px-3 py-2 text-sm bg-muted" />
               </div>
-              <p className="text-xs text-muted-foreground">Estos datos se usan para crear el envío nacional con Sendcloud.</p>
+              <p className="text-xs text-muted-foreground">Con tarjeta se usa para crear el envío nacional con Sendcloud. En pago en persona se guarda para coordinar la operación.</p>
             </CardContent>
           </Card>
         </div>
@@ -482,7 +528,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                 <Shield className="h-5 w-5 text-primary flex-shrink-0" />
                 <div className="text-sm">
                   <p className="font-semibold text-primary">{paymentMethod === 'card' ? 'Pago seguro con Stripe' : 'Reserva para pago en persona'}</p>
-                  <p className="text-muted-foreground">{paymentMethod === 'card' ? 'El pago se procesa con Stripe y después se crea el envío nacional con Sendcloud.' : 'La operación queda pendiente y se crea el envío nacional para coordinar entrega y pago.'}</p>
+                  <p className="text-muted-foreground">{paymentMethod === 'card' ? 'El pago se procesa con Stripe y después se crea el envío nacional con Sendcloud.' : 'La operación queda pendiente. No se crea envío automático hasta que el pago se confirme entre comprador y vendedor.'}</p>
                 </div>
               </div>
             </CardContent>
@@ -494,7 +540,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
           <div className="flex gap-2 p-3 bg-muted rounded-lg text-xs text-muted-foreground">
             <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-            <p>{paymentMethod === 'card' ? cardHelpText : 'El pago en persona se gestiona fuera de Reveta. Usa el chat para coordinar entrega, lugar y forma de pago.'}</p>
+            <p>{paymentMethod === 'card' ? cardHelpText : 'El pago en persona se gestiona fuera de Reveta. Usa el chat para coordinar entrega, lugar y forma de pago. Reveta no marcará la operación como pagada automáticamente.'}</p>
           </div>
         </div>
       </div>
@@ -553,7 +599,11 @@ const Checkout = () => {
 
   return (
     <>
-      <Helmet><title>Checkout - Reveta</title><meta name="description" content="Completa tu compra en Reveta" /></Helmet>
+      <Helmet>
+        <title>Checkout - Reveta</title>
+        <meta name="description" content="Completa tu compra en Reveta" />
+        <meta name="robots" content="noindex,nofollow" />
+      </Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <main className="flex-1 container max-w-6xl mx-auto py-8 px-4">
