@@ -38,6 +38,9 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
   const { toast } = useToast();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [counterOfferId, setCounterOfferId] = useState<string | null>(null);
+  const [counterAmount, setCounterAmount] = useState('');
+  const [counterNote, setCounterNote] = useState('');
 
   const fetchOffers = useCallback(async () => {
     const { data, error } = await (supabase as any)
@@ -127,6 +130,23 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
     }
   };
 
+  const openCounterOfferForm = async (offer: Offer) => {
+    if (!canRespondToOffer(offer)) {
+      toast({ title: 'No puedes contraofertar tu propia oferta.' });
+      return;
+    }
+
+    try {
+      await ensureProductAcceptsOffers(offer);
+      setCounterOfferId(offer.id);
+      setCounterAmount('');
+      setCounterNote('');
+    } catch (error: any) {
+      toast({ title: 'No se puede contraofertar', description: error?.message || 'El producto no está disponible.', variant: 'destructive' });
+      await fetchOffers();
+    }
+  };
+
   const sendCounterOffer = async (offer: Offer) => {
     if (!canRespondToOffer(offer)) {
       toast({ title: 'No puedes contraofertar tu propia oferta.' });
@@ -141,16 +161,13 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
       return;
     }
 
-    const amountText = window.prompt('Introduce tu contraoferta en euros:');
-    if (!amountText) return;
-
-    const amount = Number(amountText.replace(',', '.'));
+    const amount = Number(counterAmount.replace(',', '.'));
     if (!Number.isFinite(amount) || amount <= 0) {
       toast({ title: 'Contraoferta no válida', description: 'Introduce una cantidad mayor que 0.', variant: 'destructive' });
       return;
     }
 
-    const note = window.prompt('Mensaje opcional:') || '';
+    const note = counterNote.trim();
     setUpdatingId(offer.id);
 
     try {
@@ -176,6 +193,9 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
       if (counterError) throw counterError;
 
       await sendChatMessage(`🔁 Contraoferta enviada: ${amount.toFixed(2)} €${note ? `\nMensaje: ${note}` : ''}`);
+      setCounterOfferId(null);
+      setCounterAmount('');
+      setCounterNote('');
       await fetchOffers();
       toast({ title: 'Contraoferta enviada' });
     } catch (error: any) {
@@ -193,6 +213,7 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
       {offers.map((offer) => {
         const isOwnOffer = offer.created_by ? offer.created_by === currentUserId : currentUserId === offer.buyer_id;
         const canAct = canRespondToOffer(offer);
+        const isCounterOpen = counterOfferId === offer.id;
 
         return (
           <div key={offer.id} className="rounded-xl border border-primary/20 bg-white p-3 shadow-sm">
@@ -213,7 +234,7 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
                     <CheckCircle2 className="h-3 w-3" />
                     Aceptar
                   </button>
-                  <button type="button" disabled={updatingId === offer.id} onClick={() => sendCounterOffer(offer)} className="inline-flex items-center justify-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground disabled:opacity-50">
+                  <button type="button" disabled={updatingId === offer.id} onClick={() => openCounterOfferForm(offer)} className="inline-flex items-center justify-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-bold text-primary-foreground disabled:opacity-50">
                     <RotateCcw className="h-3 w-3" />
                     Contraofertar
                   </button>
@@ -224,6 +245,40 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
                 </div>
               )}
             </div>
+            {isCounterOpen && (
+              <div className="mt-3 rounded-xl border bg-muted/30 p-3 space-y-2">
+                <p className="text-xs font-bold text-foreground">Enviar contraoferta</p>
+                <div className="grid gap-2 sm:grid-cols-[130px_1fr]">
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={counterAmount}
+                    onChange={(event) => setCounterAmount(event.target.value)}
+                    placeholder="Importe €"
+                    className="rounded-lg border px-3 py-2 text-sm"
+                    disabled={updatingId === offer.id}
+                  />
+                  <input
+                    type="text"
+                    value={counterNote}
+                    onChange={(event) => setCounterNote(event.target.value)}
+                    placeholder="Mensaje opcional"
+                    className="rounded-lg border px-3 py-2 text-sm"
+                    disabled={updatingId === offer.id}
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" disabled={updatingId === offer.id} onClick={() => sendCounterOffer(offer)} className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50">
+                    {updatingId === offer.id ? 'Enviando...' : 'Enviar contraoferta'}
+                  </button>
+                  <button type="button" disabled={updatingId === offer.id} onClick={() => setCounterOfferId(null)} className="rounded-full border px-4 py-2 text-xs font-bold disabled:opacity-50">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
