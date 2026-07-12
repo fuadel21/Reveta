@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Edit2, Heart, LogOut, MapPin, Package, Trash2, AlertTriangle, Clock, ImageOff, Megaphone } from 'lucide-react';
+import { Edit2, Heart, LogOut, MapPin, Package, Trash2, AlertTriangle, Clock, ImageOff, Megaphone, RotateCcw } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,6 +55,15 @@ type ProductData = {
 };
 
 const emptyForm = { full_name: '', username: '', location: '', phone: '', bio: '' };
+const USERNAME_REGEX = /^[a-z0-9._-]{3,30}$/;
+const PHONE_REGEX = /^\+?[0-9\s-]{9,18}$/;
+const MAX_BIO_LENGTH = 500;
+
+const normalizeText = (value: string) => value.trim().replace(/\s+/g, ' ');
+const normalizeUsername = (value: string) => normalizeText(value).toLowerCase().replace(/^@+/, '');
+const normalizePhone = (value: string) => value.trim().replace(/\s+/g, ' ');
+const normalizeBio = (value: string) => value.trim().replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n');
+const hasPublicContactText = (value: string) => /\b(whatsapp|telegram|bizum|transferencia|correo|email|gmail|hotmail|tel[eé]fono|tlf|\+34)\b/i.test(value);
 
 const getProductImage = (product: ProductData) => {
   return Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null;
@@ -80,8 +89,12 @@ const Profile = () => {
   const [favorites, setFavorites] = useState<ProductData[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [updatingProductId, setUpdatingProductId] = useState<string | null>(null);
   const [formData, setFormData] = useState(emptyForm);
-  const [deleteProduct, setDeleteProduct] = useState<ProductData | null>(null);
+  const [retireProduct, setRetireProduct] = useState<ProductData | null>(null);
+
+  const activeProductsCount = useMemo(() => products.filter((product) => product.status === 'active').length, [products]);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/auth');
@@ -120,19 +133,21 @@ const Profile = () => {
       });
     }
 
-    const { data: productsData } = await supabase
+    const { data: productsData, error: productsError } = await supabase
       .from('products')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
+    if (productsError) console.error('Error fetching profile products:', productsError);
     setProducts((productsData || []) as ProductData[]);
 
-    const { data: favoriteRows } = await supabase
+    const { data: favoriteRows, error: favoritesError } = await supabase
       .from('favorites')
       .select('products(*)')
       .eq('user_id', user.id);
 
+    if (favoritesError) console.error('Error fetching favorites:', favoritesError);
     const favoriteProducts = (favoriteRows || [])
       .map((item: any) => item.products)
       .filter(Boolean) as ProductData[];
@@ -141,21 +156,64 @@ const Profile = () => {
     setLoading(false);
   };
 
+  const validateProfileForm = () => {
+    const payload = {
+      full_name: normalizeText(formData.full_name) || null,
+      username: normalizeUsername(formData.username) || null,
+      location: normalizeText(formData.location) || null,
+      phone: normalizePhone(formData.phone) || null,
+      bio: normalizeBio(formData.bio) || null,
+    };
+
+    if (payload.full_name && payload.full_name.length < 2) {
+      toast({ title: 'Nombre demasiado corto', description: 'Escribe un nombre válido o deja el campo vacío.', variant: 'destructive' });
+      return null;
+    }
+
+    if (payload.username && !USERNAME_REGEX.test(payload.username)) {
+      toast({ title: 'Usuario no válido', description: 'Usa 3-30 caracteres: letras, números, punto, guion o guion bajo.', variant: 'destructive' });
+      return null;
+    }
+
+    if (payload.phone && !PHONE_REGEX.test(payload.phone)) {
+      toast({ title: 'Teléfono no válido', description: 'Introduce un teléfono válido o deja el campo vacío.', variant: 'destructive' });
+      return null;
+    }
+
+    if (payload.bio && payload.bio.length > MAX_BIO_LENGTH) {
+      toast({ title: 'Biografía demasiado larga', description: `Máximo ${MAX_BIO_LENGTH} caracteres.`, variant: 'destructive' });
+      return null;
+    }
+
+    if (payload.bio && hasPublicContactText(payload.bio)) {
+      toast({ title: 'Evita datos de contacto públicos', description: 'El teléfono privado va en su campo. No lo publiques en la biografía.', variant: 'destructive' });
+      return null;
+    }
+
+    return payload;
+  };
+
   const handleSaveProfile = async () => {
     if (!user) return;
+    const payload = validateProfileForm();
+    if (!payload) return;
 
+    setSavingProfile(true);
     const { error } = await supabase
       .from('profiles')
-      .update(formData)
+      .update(payload)
       .eq('id', user.id);
 
     if (error) {
-      toast({ title: 'Error', description: 'No se pudo guardar el perfil', variant: 'destructive' });
+      console.error('Error saving profile:', error);
+      toast({ title: 'Error', description: error.code === '23505' ? 'Ese nombre de usuario ya está en uso.' : 'No se pudo guardar el perfil', variant: 'destructive' });
+      setSavingProfile(false);
       return;
     }
 
     toast({ title: 'Perfil actualizado', description: 'Tus datos se han guardado correctamente' });
     setIsEditing(false);
+    setSavingProfile(false);
     fetchProfileData();
   };
 
@@ -164,22 +222,56 @@ const Profile = () => {
     navigate('/');
   };
 
-  const handleDeleteProduct = async () => {
-    if (!deleteProduct) return;
+  const handleRetireProduct = async () => {
+    if (!retireProduct || !user) return;
 
-    const { error } = await supabase
-      .from('products')
-      .delete()
-      .eq('id', deleteProduct.id);
-
-    if (error) {
-      toast({ title: 'Error', description: 'No se pudo eliminar el producto', variant: 'destructive' });
+    if (retireProduct.status && !['active', 'inactive'].includes(retireProduct.status)) {
+      toast({ title: 'No se puede retirar', description: 'Este producto tiene una operación en curso o ya está vendido.', variant: 'destructive' });
+      setRetireProduct(null);
       return;
     }
 
-    toast({ title: 'Producto eliminado', description: 'El producto se ha eliminado correctamente' });
-    setDeleteProduct(null);
-    fetchProfileData();
+    setUpdatingProductId(retireProduct.id);
+    const { error } = await supabase
+      .from('products')
+      .update({ status: 'inactive' })
+      .eq('id', retireProduct.id)
+      .eq('user_id', user.id)
+      .in('status', ['active', 'inactive']);
+
+    if (error) {
+      console.error('Error retiring product:', error);
+      toast({ title: 'Error', description: 'No se pudo retirar el anuncio', variant: 'destructive' });
+      setUpdatingProductId(null);
+      return;
+    }
+
+    toast({ title: 'Anuncio retirado', description: 'El producto deja de aparecer como disponible, pero conserva historial y conversaciones.' });
+    setRetireProduct(null);
+    await fetchProfileData();
+    setUpdatingProductId(null);
+  };
+
+  const handleReactivateProduct = async (product: ProductData) => {
+    if (!user) return;
+    setUpdatingProductId(product.id);
+    const { error } = await supabase
+      .from('products')
+      .update({ status: 'active' })
+      .eq('id', product.id)
+      .eq('user_id', user.id)
+      .eq('status', 'inactive');
+
+    if (error) {
+      console.error('Error reactivating product:', error);
+      toast({ title: 'Error', description: 'No se pudo reactivar el anuncio', variant: 'destructive' });
+      setUpdatingProductId(null);
+      return;
+    }
+
+    toast({ title: 'Anuncio reactivado', description: 'El producto vuelve a estar disponible.' });
+    await fetchProfileData();
+    setUpdatingProductId(null);
   };
 
   const formatDate = (dateString: string) => {
@@ -212,7 +304,7 @@ const Profile = () => {
     <>
       <Helmet>
         <title>Mi Perfil | Reveta</title>
-        <meta name="description" content="Gestiona tu perfil, productos y favoritos en Reveta" />
+        <meta name="description" content="Gestiona tu perfil privado, productos y favoritos en Reveta" />
         <meta name="robots" content="noindex,nofollow,noarchive" />
       </Helmet>
 
@@ -241,8 +333,12 @@ const Profile = () => {
                   {profile?.location && <div className="flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4" />{profile.location}</div>}
                   {profile?.bio && <p className="text-sm text-muted-foreground whitespace-pre-wrap">{profile.bio}</p>}
 
+                  <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+                    Tu teléfono es privado. Solo se usa dentro de tu cuenta y no se muestra en el perfil público.
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
-                    <div className="text-center"><p className="text-2xl font-bold">{products.length}</p><p className="text-xs text-muted-foreground">Productos</p></div>
+                    <div className="text-center"><p className="text-2xl font-bold">{activeProductsCount}</p><p className="text-xs text-muted-foreground">Activos</p></div>
                     <div className="text-center"><p className="text-2xl font-bold">{favorites.length}</p><p className="text-xs text-muted-foreground">Favoritos</p></div>
                   </div>
 
@@ -261,18 +357,18 @@ const Profile = () => {
                   <CardHeader><CardTitle>Editar perfil</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2"><Label htmlFor="full_name">Nombre completo</Label><Input id="full_name" value={formData.full_name} onChange={(event) => setFormData({ ...formData, full_name: event.target.value })} /></div>
-                      <div className="space-y-2"><Label htmlFor="username">Nombre de usuario</Label><Input id="username" value={formData.username} onChange={(event) => setFormData({ ...formData, username: event.target.value })} placeholder="usuario" /></div>
+                      <div className="space-y-2"><Label htmlFor="full_name">Nombre completo</Label><Input id="full_name" value={formData.full_name} onChange={(event) => setFormData({ ...formData, full_name: event.target.value })} maxLength={80} /></div>
+                      <div className="space-y-2"><Label htmlFor="username">Nombre de usuario</Label><Input id="username" value={formData.username} onChange={(event) => setFormData({ ...formData, username: event.target.value })} placeholder="usuario" maxLength={30} /><p className="text-xs text-muted-foreground">3-30 caracteres. Letras, números, punto, guion o guion bajo.</p></div>
                     </div>
 
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2"><Label htmlFor="location">Ubicación</Label><Input id="location" value={formData.location} onChange={(event) => setFormData({ ...formData, location: event.target.value })} placeholder="Ciudad, País" /></div>
-                      <div className="space-y-2"><Label htmlFor="phone">Teléfono</Label><Input id="phone" value={formData.phone} onChange={(event) => setFormData({ ...formData, phone: event.target.value })} placeholder="+34 600 000 000" /></div>
+                      <div className="space-y-2"><Label htmlFor="location">Ubicación</Label><Input id="location" value={formData.location} onChange={(event) => setFormData({ ...formData, location: event.target.value })} placeholder="Ciudad, País" maxLength={120} /></div>
+                      <div className="space-y-2"><Label htmlFor="phone">Teléfono privado</Label><Input id="phone" value={formData.phone} onChange={(event) => setFormData({ ...formData, phone: event.target.value })} placeholder="+34 600 000 000" maxLength={18} /><p className="text-xs text-muted-foreground">No se muestra en el perfil público.</p></div>
                     </div>
 
-                    <div className="space-y-2"><Label htmlFor="bio">Biografía</Label><Textarea id="bio" value={formData.bio} onChange={(event) => setFormData({ ...formData, bio: event.target.value })} placeholder="Cuéntanos sobre ti..." rows={3} /></div>
+                    <div className="space-y-2"><Label htmlFor="bio">Biografía pública</Label><Textarea id="bio" value={formData.bio} onChange={(event) => setFormData({ ...formData, bio: event.target.value })} placeholder="Cuéntanos sobre ti..." rows={3} maxLength={MAX_BIO_LENGTH} /><p className="text-xs text-muted-foreground">No publiques teléfono, email, WhatsApp, Bizum ni enlaces externos.</p></div>
 
-                    <div className="flex gap-2"><Button onClick={handleSaveProfile}>Guardar cambios</Button><Button variant="outline" onClick={() => setIsEditing(false)}>Cancelar</Button></div>
+                    <div className="flex gap-2"><Button onClick={handleSaveProfile} disabled={savingProfile}>{savingProfile ? 'Guardando...' : 'Guardar cambios'}</Button><Button variant="outline" onClick={() => setIsEditing(false)} disabled={savingProfile}>Cancelar</Button></div>
                   </CardContent>
                 </Card>
               ) : (
@@ -287,7 +383,19 @@ const Profile = () => {
                         {products.map((product) => (
                           <Card key={product.id} className="overflow-hidden border-border/50 group">
                             <div className="relative aspect-video bg-muted">{renderProductImage(product)}{isBoosted(product.boosted_until) && <Badge className="absolute left-2 top-2 bg-amber-500 text-white"><Megaphone className="mr-1 h-3 w-3" />Destacado hasta {formatBoostDate(product.boosted_until)}</Badge>}<ProductStatusBadge status={product.status || 'active'} className="absolute right-2 top-2" /></div>
-                            <CardContent className="p-4"><h3 className="font-medium line-clamp-1">{product.title}</h3><p className="text-lg font-bold text-primary">{product.price.toLocaleString('es-ES')} €</p><p className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><Clock className="h-3 w-3" />{formatDate(product.created_at)}</p><div className="flex gap-2 mt-3"><Button size="sm" variant="outline" asChild><Link to={`/product/${product.id}`}>Ver</Link></Button><Button size="sm" variant="destructive" onClick={() => setDeleteProduct(product)}><Trash2 className="h-4 w-4" /></Button></div></CardContent>
+                            <CardContent className="p-4">
+                              <h3 className="font-medium line-clamp-1">{product.title}</h3>
+                              <p className="text-lg font-bold text-primary">{product.price.toLocaleString('es-ES')} €</p>
+                              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><Clock className="h-3 w-3" />{formatDate(product.created_at)}</p>
+                              <div className="flex flex-wrap gap-2 mt-3">
+                                <Button size="sm" variant="outline" asChild><Link to={`/product/${product.id}`}>Ver</Link></Button>
+                                {product.status === 'inactive' ? (
+                                  <Button size="sm" variant="outline" disabled={updatingProductId === product.id} onClick={() => handleReactivateProduct(product)}><RotateCcw className="h-4 w-4 mr-1" />Reactivar</Button>
+                                ) : (
+                                  <Button size="sm" variant="destructive" disabled={updatingProductId === product.id || (product.status !== 'active' && product.status !== 'inactive')} onClick={() => setRetireProduct(product)}><Trash2 className="h-4 w-4 mr-1" />Retirar</Button>
+                                )}
+                              </div>
+                            </CardContent>
                           </Card>
                         ))}
                       </div>
@@ -308,15 +416,15 @@ const Profile = () => {
         </main>
         <Footer />
 
-        <AlertDialog open={!!deleteProduct} onOpenChange={() => setDeleteProduct(null)}>
+        <AlertDialog open={!!retireProduct} onOpenChange={() => setRetireProduct(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive" />Eliminar producto</AlertDialogTitle>
-              <AlertDialogDescription>¿Seguro que quieres eliminar “{deleteProduct?.title}”? Esta acción no se puede deshacer.</AlertDialogDescription>
+              <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive" />Retirar anuncio</AlertDialogTitle>
+              <AlertDialogDescription>¿Seguro que quieres retirar “{retireProduct?.title}”? El producto dejará de estar disponible, pero se conserva el historial, favoritos, chats y enlaces relacionados.</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteProduct} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
+              <AlertDialogAction onClick={handleRetireProduct} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Retirar anuncio</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
