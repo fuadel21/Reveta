@@ -249,6 +249,7 @@ const ProductDetail = () => {
 
   const productImage = product.images?.[currentImageIndex];
   const canonicalUrl = `https://reveta.es/producto/${product.id}/${createProductSlug(product.title)}`;
+  const shouldIndexProduct = product.status === 'active';
   const productJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -308,6 +309,7 @@ const ProductDetail = () => {
       <Helmet>
         <title>{product.title} | Reveta</title>
         <meta name="description" content={(product.description || `${product.title} en venta en Reveta`).slice(0, 155)} />
+        <meta name="robots" content={shouldIndexProduct ? 'index,follow,max-image-preview:large' : 'noindex,follow'} />
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:title" content={`${product.title} | Reveta`} />
         <meta property="og:description" content={(product.description || `${product.title} en venta en Reveta`).slice(0, 155)} />
