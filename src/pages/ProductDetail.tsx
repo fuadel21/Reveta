@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -178,6 +178,10 @@ const ProductDetail = () => {
       navigate('/auth');
       return;
     }
+    if (!product || product.status !== 'active') {
+      toast({ title: 'Producto no disponible', description: 'Este producto ya no acepta nuevas conversaciones ni ofertas.', variant: 'destructive' });
+      return;
+    }
     setShowChat(true);
   };
 
@@ -212,6 +216,10 @@ const ProductDetail = () => {
     }
 
     if (!product || !seller) return;
+    if (product.status !== 'active') {
+      toast({ title: 'Producto no disponible', description: 'No se pueden crear llamadas nuevas para productos no activos.', variant: 'destructive' });
+      return;
+    }
     setRequestingCall(true);
 
     try {
@@ -249,7 +257,8 @@ const ProductDetail = () => {
 
   const productImage = product.images?.[currentImageIndex];
   const canonicalUrl = `https://reveta.es/producto/${product.id}/${createProductSlug(product.title)}`;
-  const shouldIndexProduct = product.status === 'active';
+  const isProductAvailable = product.status === 'active';
+  const shouldIndexProduct = isProductAvailable;
   const productJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -323,6 +332,11 @@ const ProductDetail = () => {
         <Header />
         <main className="flex-1 container py-8">
           <Button variant="ghost" onClick={() => navigate(-1)} className="mb-4"><ChevronLeft className="h-4 w-4 mr-2" />Volver</Button>
+          {!isProductAvailable && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+              Este producto ya no está activo. Puedes consultar la información, pero no acepta nuevas conversaciones, llamadas ni ofertas.
+            </div>
+          )}
           <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
             <div className="space-y-4">
               <div className="relative aspect-square rounded-xl overflow-hidden bg-muted">
@@ -337,8 +351,8 @@ const ProductDetail = () => {
                 <div className="flex items-start justify-between gap-3"><h1 className="text-2xl font-bold">{product.title}</h1><ProductStatusBadge status={product.status || 'active'} /></div>
                 <p className="text-3xl font-bold text-primary mt-3">{product.price.toLocaleString('es-ES')} €</p>
                 <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mt-3">{product.location && <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{product.location}</span>}<span className="flex items-center gap-1"><Eye className="h-4 w-4" />{product.views || 0} vistas</span><span className="flex items-center gap-1"><Clock className="h-4 w-4" />{new Date(product.created_at).toLocaleDateString('es-ES')}</span></div>
-                <div className="mt-5 flex gap-2"><Button className="flex-1" onClick={handleContactSeller}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button><Button variant="outline" onClick={toggleFavorite}><Heart className={`h-4 w-4 ${isFavorite ? 'fill-current text-red-500' : ''}`} /></Button></div>
-                <Button variant="secondary" className="w-full mt-2" onClick={handleRequestPrivateCall} disabled={requestingCall || !user || product.user_id === user?.id}><Phone className="h-4 w-4 mr-2" />Llamada privada</Button>
+                <div className="mt-5 flex gap-2"><Button className="flex-1" onClick={handleContactSeller} disabled={!isProductAvailable || product.user_id === user?.id}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button><Button variant="outline" onClick={toggleFavorite}><Heart className={`h-4 w-4 ${isFavorite ? 'fill-current text-red-500' : ''}`} /></Button></div>
+                <Button variant="secondary" className="w-full mt-2" onClick={handleRequestPrivateCall} disabled={requestingCall || !user || product.user_id === user?.id || !isProductAvailable}><Phone className="h-4 w-4 mr-2" />Llamada privada</Button>
               </div>
 
               <SellerTrustCard seller={seller} activeProductsCount={sellerActiveProductsCount} />
