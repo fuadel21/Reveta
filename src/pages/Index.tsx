@@ -9,6 +9,8 @@ import FeaturedProducts from "@/components/FeaturedProducts";
 import Stats from "@/components/Stats";
 import Footer from "@/components/Footer";
 
+const socialImage = "https://reveta.es/og-image.svg?v=20260710";
+
 const cityLinks = [
   { label: "Barcelona", href: "/segunda-mano/barcelona" },
   { label: "Madrid", href: "/segunda-mano/madrid" },
@@ -50,6 +52,7 @@ const categoryLinks = [
 const organizationJsonLd = {
   "@context": "https://schema.org",
   "@type": "Organization",
+  "@id": "https://reveta.es/#organization",
   name: "Reveta",
   url: "https://reveta.es/",
   logo: "https://reveta.es/favicon.svg",
@@ -59,8 +62,13 @@ const organizationJsonLd = {
 const websiteJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebSite",
+  "@id": "https://reveta.es/#website",
   name: "Reveta",
   url: "https://reveta.es/",
+  inLanguage: "es-ES",
+  publisher: {
+    "@id": "https://reveta.es/#organization",
+  },
   potentialAction: {
     "@type": "SearchAction",
     target: "https://reveta.es/search?q={search_term_string}",
@@ -85,26 +93,33 @@ const Index = () => {
     <>
       <Helmet>
         <title>Reveta - Compra y vende de segunda mano cerca de ti</title>
-        <meta 
-          name="description" 
-          content="Compra y vende productos de segunda mano en tu ciudad. Encuentra ofertas locales en tecnología, muebles, motor, moda, bicicletas, hogar y mucho más en Reveta." 
+        <meta
+          name="description"
+          content="Compra y vende productos de segunda mano en tu ciudad. Encuentra ofertas locales en tecnología, muebles, motor, moda, bicicletas, hogar y mucho más en Reveta."
         />
         <meta name="keywords" content="segunda mano, comprar segunda mano, vender segunda mano, marketplace España, productos usados, ofertas cerca de mí, segunda mano Barcelona, segunda mano Madrid" />
+        <meta name="robots" content="index,follow,max-image-preview:large" />
         <link rel="canonical" href="https://reveta.es/" />
         <meta property="og:title" content="Reveta - Compra y vende de segunda mano cerca de ti" />
         <meta property="og:description" content="Compra y vende productos de segunda mano en tu ciudad. Encuentra ofertas locales en tecnología, muebles, motor, moda, bicicletas, hogar y mucho más en Reveta." />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://reveta.es/" />
-        <meta property="og:image" content="https://reveta.es/og-image.png" />
+        <meta property="og:image" content={socialImage} />
+        <meta property="og:image:secure_url" content={socialImage} />
+        <meta property="og:image:type" content="image/svg+xml" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
         <meta property="og:site_name" content="Reveta" />
         <meta property="og:locale" content="es_ES" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:image" content="https://reveta.es/og-image.png" />
+        <meta name="twitter:title" content="Reveta - Compra y vende de segunda mano cerca de ti" />
+        <meta name="twitter:description" content="Compra y vende productos de segunda mano en tu ciudad. Encuentra ofertas locales en tecnología, muebles, motor, moda, bicicletas, hogar y mucho más en Reveta." />
+        <meta name="twitter:image" content={socialImage} />
         <script type="application/ld+json">{JSON.stringify(organizationJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(websiteJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(cityItemListJsonLd)}</script>
       </Helmet>
-      
+
       <div className="min-h-screen bg-background">
         <Header />
         <CategoryNav />
