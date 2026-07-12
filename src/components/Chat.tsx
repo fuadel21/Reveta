@@ -34,6 +34,9 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
   const [initLoading, setInitLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [sendingOffer, setSendingOffer] = useState(false);
+  const [offerPanelOpen, setOfferPanelOpen] = useState(false);
+  const [offerAmount, setOfferAmount] = useState('');
+  const [offerNote, setOfferNote] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -138,6 +141,13 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
 
   useEffect(() => {
     if (!selectedConversation) return;
+    setOfferPanelOpen(false);
+    setOfferAmount('');
+    setOfferNote('');
+  }, [selectedConversation?.id]);
+
+  useEffect(() => {
+    if (!selectedConversation) return;
     const fetchMessages = async () => {
       const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', selectedConversation.id).order('created_at', { ascending: true });
       if (error) {
@@ -184,6 +194,48 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     return data || null;
   };
 
+  const ensureCanOffer = async () => {
+    if (!user || !selectedConversation) return false;
+    if (user.id !== selectedConversation.buyer_id) {
+      toast({ title: 'Solo el comprador puede hacer una oferta', description: 'El vendedor podrá responder en el siguiente paso.' });
+      return false;
+    }
+
+    const latestProduct = await refreshSelectedProduct();
+    if (!isActiveProduct(latestProduct)) {
+      toast({ title: 'Producto no disponible', description: 'Este producto ya no acepta nuevas ofertas.', variant: 'destructive' });
+      return false;
+    }
+
+    const { data: pendingOffers, error: pendingError } = await (supabase as any)
+      .from('offers')
+      .select('id, created_by, buyer_id, status')
+      .eq('conversation_id', selectedConversation.id)
+      .eq('status', 'pending');
+
+    if (pendingError) throw pendingError;
+    const hasOwnPendingOffer = (pendingOffers || []).some((offer: any) => offer.created_by === user.id || (!offer.created_by && offer.buyer_id === user.id));
+    if (hasOwnPendingOffer) {
+      toast({ title: 'Ya tienes una oferta pendiente', description: 'Espera respuesta o envía una contraoferta cuando te respondan.' });
+      return false;
+    }
+
+    return true;
+  };
+
+  const openOfferPanel = async () => {
+    try {
+      const canOffer = await ensureCanOffer();
+      if (!canOffer) return;
+      setOfferPanelOpen(true);
+      setOfferAmount('');
+      setOfferNote('');
+    } catch (error) {
+      console.error('Error checking offer availability:', error);
+      toast({ title: 'No se pudo comprobar la oferta', description: 'Inténtalo de nuevo.', variant: 'destructive' });
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConversation || !user) return;
@@ -202,46 +254,26 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     setLoading(false);
   };
 
-  const handleSendOffer = async () => {
+  const handleSubmitOffer = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!user || !selectedConversation) return;
-    if (user.id !== selectedConversation.buyer_id) {
-      toast({ title: 'Solo el comprador puede hacer una oferta', description: 'El vendedor podrá responder en el siguiente paso.' });
-      return;
-    }
 
     try {
-      const latestProduct = await refreshSelectedProduct();
-      if (!isActiveProduct(latestProduct)) {
-        toast({ title: 'Producto no disponible', description: 'Este producto ya no acepta nuevas ofertas.', variant: 'destructive' });
-        return;
-      }
-
-      const { data: pendingOffers, error: pendingError } = await (supabase as any)
-        .from('offers')
-        .select('id, created_by, buyer_id, status')
-        .eq('conversation_id', selectedConversation.id)
-        .eq('status', 'pending');
-
-      if (pendingError) throw pendingError;
-      const hasOwnPendingOffer = (pendingOffers || []).some((offer: any) => offer.created_by === user.id || (!offer.created_by && offer.buyer_id === user.id));
-      if (hasOwnPendingOffer) {
-        toast({ title: 'Ya tienes una oferta pendiente', description: 'Espera respuesta o envía una contraoferta cuando te respondan.' });
-        return;
-      }
+      const canOffer = await ensureCanOffer();
+      if (!canOffer) return;
     } catch (error) {
       console.error('Error checking offer availability:', error);
       toast({ title: 'No se pudo comprobar la oferta', description: 'Inténtalo de nuevo.', variant: 'destructive' });
       return;
     }
 
-    const amountText = window.prompt(`Introduce tu oferta en euros${selectedConversation.product?.price ? ` (precio: ${formatPrice(selectedConversation.product.price)})` : ''}:`);
-    if (!amountText) return;
-    const normalizedAmount = Number(amountText.replace(',', '.'));
+    const normalizedAmount = Number(offerAmount.replace(',', '.'));
     if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
       toast({ title: 'Oferta no válida', description: 'Introduce una cantidad mayor que 0.', variant: 'destructive' });
       return;
     }
-    const note = window.prompt('Mensaje opcional para el vendedor:') || '';
+
+    const note = offerNote.trim();
     setSendingOffer(true);
     try {
       const offerPayload: OfferInsert = {
@@ -259,6 +291,9 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
       const { error: messageError } = await supabase.from('messages').insert({ conversation_id: selectedConversation.id, sender_id: user.id, content });
       if (messageError) throw messageError;
       await updateConversationTimestamp(selectedConversation.id);
+      setOfferPanelOpen(false);
+      setOfferAmount('');
+      setOfferNote('');
       toast({ title: 'Oferta enviada', description: 'El vendedor la verá en el chat.' });
     } catch (error) {
       console.error('Error sending offer:', error);
@@ -325,6 +360,43 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
                 Este producto ya no está activo. Puedes seguir leyendo el historial, pero no se permiten nuevas ofertas.
               </div>
             )}
+            {offerPanelOpen && (
+              <form onSubmit={handleSubmitOffer} className="rounded-xl border border-primary/20 bg-white p-3 shadow-sm space-y-3">
+                <div>
+                  <p className="text-sm font-bold text-foreground">Enviar oferta</p>
+                  <p className="text-xs text-muted-foreground">Precio publicado: {formatPrice(selectedConversation.product?.price)}</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-[140px_1fr]">
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={offerAmount}
+                    onChange={(event) => setOfferAmount(event.target.value)}
+                    placeholder="Importe €"
+                    className="rounded-lg border px-3 py-2 text-sm"
+                    disabled={sendingOffer}
+                  />
+                  <input
+                    type="text"
+                    value={offerNote}
+                    onChange={(event) => setOfferNote(event.target.value)}
+                    placeholder="Mensaje opcional"
+                    className="rounded-lg border px-3 py-2 text-sm"
+                    disabled={sendingOffer}
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="submit" disabled={sendingOffer} className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50">
+                    {sendingOffer ? 'Enviando...' : 'Enviar oferta'}
+                  </button>
+                  <button type="button" disabled={sendingOffer} onClick={() => setOfferPanelOpen(false)} className="rounded-full border px-4 py-2 text-xs font-bold disabled:opacity-50">
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
             {user && <PendingOffers conversationId={selectedConversation.id} currentUserId={user.id} sellerId={selectedConversation.seller_id} productTitle={selectedConversation.product?.title} />}
             {messages.length === 0 ? <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center p-8"><MessageCircle className="h-12 w-12 mb-4 opacity-20" /><p className="font-medium">Inicia la conversación</p><p className="text-sm">Pregunta al vendedor sobre el producto</p></div> : messages.map((msg) => <MessageBubble key={msg.id} content={msg.content} isOwn={msg.sender_id === user?.id} isRead={!!msg.read} timestamp={new Date(msg.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} />)}
             {typingUsers.length > 0 && <TypingIndicator users={typingUsers} />}
@@ -333,7 +405,7 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
 
           <form onSubmit={handleSendMessage} className="border-t p-4 flex gap-2 bg-white">
             <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/jpeg,image/png,image/webp" className="hidden" />
-            <button type="button" onClick={handleSendOffer} disabled={sendingOffer || loading || !canSendOffer} className="p-2 rounded-lg text-muted-foreground hover:bg-slate-100 disabled:opacity-50 transition" aria-label="Hacer oferta" title={canSendOffer ? 'Hacer oferta' : 'Las ofertas no están disponibles'}><HandCoins size={22} /></button>
+            <button type="button" onClick={openOfferPanel} disabled={sendingOffer || loading || !canSendOffer} className="p-2 rounded-lg text-muted-foreground hover:bg-slate-100 disabled:opacity-50 transition" aria-label="Hacer oferta" title={canSendOffer ? 'Hacer oferta' : 'Las ofertas no están disponibles'}><HandCoins size={22} /></button>
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingImage} className="p-2 rounded-lg text-muted-foreground hover:bg-slate-100 disabled:opacity-50 transition" aria-label="Adjuntar imagen"><ImageIcon size={22} /></button>
             <input type="text" value={newMessage} onChange={(e) => { setNewMessage(e.target.value); if (otherUser?.full_name) startTyping(otherUser.full_name); }} onBlur={() => stopTyping()} placeholder="Escribe un mensaje..." className="flex-1 px-4 py-2 bg-slate-100 border-none rounded-full focus:outline-none focus:ring-2 focus:ring-primary/20" disabled={loading} />
             <button type="submit" disabled={loading || !newMessage.trim()} className="bg-primary text-primary-foreground p-2 rounded-full hover:opacity-90 disabled:opacity-50 transition flex items-center justify-center w-10 h-10"><Send size={20} /></button>
