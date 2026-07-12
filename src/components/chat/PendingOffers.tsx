@@ -23,6 +23,17 @@ interface PendingOffersProps {
   productTitle?: string | null;
 }
 
+const getProductStatus = async (productId: string) => {
+  const { data, error } = await supabase
+    .from('products')
+    .select('id, status')
+    .eq('id', productId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.status || null;
+};
+
 export const PendingOffers = ({ conversationId, currentUserId, sellerId, productTitle }: PendingOffersProps) => {
   const { toast } = useToast();
   const [offers, setOffers] = useState<Offer[]>([]);
@@ -62,7 +73,15 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
     await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
   };
 
+  const ensureProductAcceptsOffers = async (offer: Offer) => {
+    const status = await getProductStatus(offer.product_id);
+    if (status !== 'active') {
+      throw new Error('Este producto ya no está activo y no acepta más ofertas.');
+    }
+  };
+
   const acceptOfferAtomically = async (offer: Offer) => {
+    await ensureProductAcceptsOffers(offer);
     const { data: transactionId, error } = await (supabase as any).rpc('accept_offer', { p_offer_id: offer.id });
     if (error) throw error;
     return transactionId as string;
@@ -102,6 +121,7 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
     } catch (error: any) {
       console.error('Error updating offer:', error);
       toast({ title: 'No se pudo actualizar la oferta', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+      await fetchOffers();
     } finally {
       setUpdatingId(null);
     }
@@ -110,6 +130,14 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
   const sendCounterOffer = async (offer: Offer) => {
     if (!canRespondToOffer(offer)) {
       toast({ title: 'No puedes contraofertar tu propia oferta.' });
+      return;
+    }
+
+    try {
+      await ensureProductAcceptsOffers(offer);
+    } catch (error: any) {
+      toast({ title: 'No se puede contraofertar', description: error?.message || 'El producto no está disponible.', variant: 'destructive' });
+      await fetchOffers();
       return;
     }
 
@@ -129,7 +157,8 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
       const { error: oldOfferError } = await (supabase as any)
         .from('offers')
         .update({ status: 'countered', updated_at: new Date().toISOString() })
-        .eq('id', offer.id);
+        .eq('id', offer.id)
+        .eq('status', 'pending');
 
       if (oldOfferError) throw oldOfferError;
 
