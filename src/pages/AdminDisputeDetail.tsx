@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
-import type { Tables, TablesUpdate } from '@/integrations/supabase/types';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -10,21 +9,47 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { ArrowLeft, CheckCircle2, Loader2, MessageCircle, Package, ShieldAlert, User, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, MessageCircle, Package, ShieldAlert, User, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-type DisputeDetail = Tables<'disputes'>;
-type ProductInfo = Pick<Tables<'products'>, 'id' | 'title' | 'price' | 'status' | 'images'>;
-type TransactionInfo = Pick<
-  Tables<'transactions'>,
-  'id' | 'status' | 'amount' | 'created_at' | 'completed_at' | 'shipping_status' | 'sendcloud_parcel_id' | 'sendcloud_tracking_number' | 'sendcloud_tracking_url'
->;
+interface DisputeDetail {
+  id: string;
+  transaction_id: string | null;
+  product_id: string | null;
+  buyer_id: string;
+  seller_id: string;
+  opened_by: string;
+  reason: string;
+  details: string | null;
+  status: string;
+  resolution: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  closed_at: string | null;
+}
 
-type TransactionUpdate = TablesUpdate<'transactions'>;
+interface ProductInfo {
+  id: string;
+  title: string;
+  price: number;
+  status: string | null;
+  images: string[] | null;
+}
+
+interface TransactionInfo {
+  id: string;
+  status: string;
+  amount: number;
+  created_at: string;
+  completed_at: string | null;
+  shipping_status: string | null;
+  sendcloud_parcel_id: string | null;
+  sendcloud_tracking_number: string | null;
+  sendcloud_tracking_url: string | null;
+}
 
 interface ProfileInfo {
-  id?: string;
   full_name: string | null;
   username: string | null;
 }
@@ -36,6 +61,24 @@ interface MessageInfo {
   created_at: string;
   sender_name?: string | null;
 }
+
+const TERMINAL_DISPUTES = ['resolved_buyer', 'resolved_seller', 'closed'];
+const ALLOWED_DISPUTE_STATUSES = ['open', 'under_review', 'resolved_buyer', 'resolved_seller', 'closed'];
+
+const productPath = (id: string, title?: string | null) => {
+  const slug = (title || 'producto')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'producto';
+
+  return `/producto/${id}/${slug}`;
+};
+
+const formatMoney = (value?: number | null) => Number(value || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const shortId = (value?: string | null) => value ? `${value.slice(0, 8)}…${value.slice(-4)}` : '-';
 
 const getDisputeStatusBadge = (status: string) => {
   switch (status) {
@@ -54,8 +97,8 @@ const getDisputeStatusBadge = (status: string) => {
   }
 };
 
-const getTransactionStatusAfterResolution = (nextStatus: string, now: string): TransactionUpdate | null => {
-  if (nextStatus === 'under_review') return { status: 'under_review', updated_at: now };
+const transactionUpdateForResolution = (nextStatus: string, now: string) => {
+  if (nextStatus === 'under_review') return { status: 'under_review', completed_at: null, updated_at: now };
   if (nextStatus === 'resolved_seller') return { status: 'completed', completed_at: now, updated_at: now };
   if (nextStatus === 'resolved_buyer' || nextStatus === 'closed') return { status: 'disputed', completed_at: now, updated_at: now };
   return null;
@@ -94,12 +137,11 @@ const AdminDisputeDetail = () => {
 
   const fetchDetail = async () => {
     if (!id) return;
-
     setLoading(true);
 
-    const { data: disputeData, error: disputeError } = await supabase
+    const { data: disputeData, error: disputeError } = await (supabase as any)
       .from('disputes')
-      .select('*')
+      .select('id, transaction_id, product_id, buyer_id, seller_id, opened_by, reason, details, status, resolution, created_at, updated_at, closed_at')
       .eq('id', id)
       .maybeSingle();
 
@@ -107,21 +149,27 @@ const AdminDisputeDetail = () => {
       console.error('Error fetching dispute:', disputeError);
       toast.error('No se pudo cargar la incidencia');
       setLoading(false);
+      navigate('/admin');
       return;
     }
 
-    setDispute(disputeData);
+    setDispute(disputeData as DisputeDetail);
 
     const [productResult, buyerResult, sellerResult, transactionResult] = await Promise.all([
       disputeData.product_id
         ? supabase.from('products').select('id, title, price, status, images').eq('id', disputeData.product_id).maybeSingle()
-        : Promise.resolve({ data: null }),
+        : Promise.resolve({ data: null, error: null }),
       supabase.from('profiles').select('full_name, username').eq('id', disputeData.buyer_id).maybeSingle(),
       supabase.from('profiles').select('full_name, username').eq('id', disputeData.seller_id).maybeSingle(),
       disputeData.transaction_id
         ? supabase.from('transactions').select('id, status, amount, created_at, completed_at, shipping_status, sendcloud_parcel_id, sendcloud_tracking_number, sendcloud_tracking_url').eq('id', disputeData.transaction_id).maybeSingle()
-        : Promise.resolve({ data: null }),
+        : Promise.resolve({ data: null, error: null }),
     ]);
+
+    if (productResult.error) console.error('Error fetching dispute product:', productResult.error);
+    if (buyerResult.error) console.error('Error fetching dispute buyer:', buyerResult.error);
+    if (sellerResult.error) console.error('Error fetching dispute seller:', sellerResult.error);
+    if (transactionResult.error) console.error('Error fetching dispute transaction:', transactionResult.error);
 
     setProduct((productResult.data || null) as ProductInfo | null);
     setBuyer((buyerResult.data || null) as ProfileInfo | null);
@@ -138,7 +186,7 @@ const AdminDisputeDetail = () => {
       return;
     }
 
-    const { data: conversation } = await supabase
+    const { data: conversation, error: conversationError } = await supabase
       .from('conversations')
       .select('id')
       .eq('product_id', productId)
@@ -146,7 +194,8 @@ const AdminDisputeDetail = () => {
       .eq('seller_id', sellerId)
       .maybeSingle();
 
-    if (!conversation?.id) {
+    if (conversationError || !conversation?.id) {
+      if (conversationError) console.error('Error fetching dispute conversation:', conversationError);
       setMessages([]);
       return;
     }
@@ -182,7 +231,12 @@ const AdminDisputeDetail = () => {
   };
 
   const resolveDispute = async (nextStatus: string) => {
-    if (!dispute) return;
+    if (!dispute || !ALLOWED_DISPUTE_STATUSES.includes(nextStatus)) return;
+
+    if (TERMINAL_DISPUTES.includes(dispute.status) && dispute.status !== nextStatus) {
+      toast.error('Esta incidencia ya está cerrada. No se puede cambiar desde acción rápida.');
+      return;
+    }
 
     setUpdating(true);
     const now = new Date().toISOString();
@@ -194,13 +248,13 @@ const AdminDisputeDetail = () => {
       closed: 'Cerrada por Reveta',
     };
 
-    const { error: disputeError } = await supabase
+    const { error: disputeError } = await (supabase as any)
       .from('disputes')
       .update({
         status: nextStatus,
         resolution: resolutionMap[nextStatus] || null,
         updated_at: now,
-        closed_at: ['resolved_buyer', 'resolved_seller', 'closed'].includes(nextStatus) ? now : null,
+        closed_at: TERMINAL_DISPUTES.includes(nextStatus) ? now : null,
       })
       .eq('id', dispute.id);
 
@@ -211,11 +265,11 @@ const AdminDisputeDetail = () => {
       return;
     }
 
-    const transactionUpdate = getTransactionStatusAfterResolution(nextStatus, now);
+    const transactionUpdate = transactionUpdateForResolution(nextStatus, now);
     if (transactionUpdate && dispute.transaction_id) {
       const { error: transactionError } = await supabase
         .from('transactions')
-        .update(transactionUpdate)
+        .update(transactionUpdate as any)
         .eq('id', dispute.transaction_id);
 
       if (transactionError) {
@@ -236,11 +290,13 @@ const AdminDisputeDetail = () => {
   if (!isAdmin || !dispute) return null;
 
   const productImage = product?.images?.[0] || '/placeholder.svg';
+  const isTerminal = TERMINAL_DISPUTES.includes(dispute.status);
 
   return (
     <>
       <Helmet>
         <title>Detalle de incidencia | Reveta Admin</title>
+        <meta name="robots" content="noindex,nofollow,noarchive" />
       </Helmet>
 
       <div className="min-h-screen bg-background">
@@ -251,7 +307,7 @@ const AdminDisputeDetail = () => {
             </Button>
             <div>
               <h1 className="text-3xl font-bold">Detalle de incidencia</h1>
-              <p className="text-muted-foreground">Centro de Control Reveta</p>
+              <p className="text-muted-foreground">Centro de seguridad Reveta</p>
             </div>
           </div>
 
@@ -269,13 +325,19 @@ const AdminDisputeDetail = () => {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-3 text-sm">
+                <div className="rounded-lg border bg-muted/30 p-3"><span className="text-muted-foreground">Incidencia:</span> <span className="font-medium">{shortId(dispute.id)}</span></div>
+                <div className="rounded-lg border bg-muted/30 p-3"><span className="text-muted-foreground">Transacción:</span> <span className="font-medium">{shortId(dispute.transaction_id)}</span></div>
+                <div className="rounded-lg border bg-muted/30 p-3"><span className="text-muted-foreground">Estado:</span> <span className="font-medium">{dispute.status}</span></div>
+              </div>
+
               <div>
                 <p className="text-sm text-muted-foreground">Motivo</p>
                 <p className="font-medium">{dispute.reason}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Detalles del usuario</p>
-                <p>{dispute.details || 'Sin detalles adicionales'}</p>
+                <p className="whitespace-pre-wrap">{dispute.details || 'Sin detalles adicionales'}</p>
               </div>
               {dispute.resolution && (
                 <div>
@@ -283,15 +345,22 @@ const AdminDisputeDetail = () => {
                   <p className="font-medium">{dispute.resolution}</p>
                 </div>
               )}
+
+              {isTerminal && (
+                <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">
+                  Esta incidencia ya está cerrada. Para cambiar el criterio habría que revisar manualmente la operación y dejar trazabilidad.
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-2 pt-2">
-                <Button variant="outline" disabled={updating} onClick={() => resolveDispute('under_review')}>En revisión</Button>
-                <Button className="bg-green-600 hover:bg-green-700" disabled={updating} onClick={() => resolveDispute('resolved_buyer')}>
+                <Button variant="outline" disabled={updating || isTerminal} onClick={() => resolveDispute('under_review')}>En revisión</Button>
+                <Button className="bg-green-600 hover:bg-green-700" disabled={updating || isTerminal} onClick={() => resolveDispute('resolved_buyer')}>
                   <CheckCircle2 className="h-4 w-4 mr-2" /> Resolver comprador
                 </Button>
-                <Button className="bg-blue-600 hover:bg-blue-700" disabled={updating} onClick={() => resolveDispute('resolved_seller')}>
+                <Button className="bg-blue-600 hover:bg-blue-700" disabled={updating || isTerminal} onClick={() => resolveDispute('resolved_seller')}>
                   <CheckCircle2 className="h-4 w-4 mr-2" /> Resolver vendedor
                 </Button>
-                <Button variant="secondary" disabled={updating} onClick={() => resolveDispute('closed')}>
+                <Button variant="secondary" disabled={updating || isTerminal} onClick={() => resolveDispute('closed')}>
                   <XCircle className="h-4 w-4 mr-2" /> Cerrar
                 </Button>
               </div>
@@ -300,37 +369,31 @@ const AdminDisputeDetail = () => {
 
           <div className="grid gap-6 lg:grid-cols-3">
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Package className="h-5 w-5" /> Producto</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><Package className="h-5 w-5" /> Producto</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <img src={productImage} alt={product?.title || 'Producto'} className="h-40 w-full rounded-lg object-cover bg-muted" />
                 <div>
                   <p className="font-medium">{product?.title || 'Producto eliminado'}</p>
                   <p className="text-sm text-muted-foreground">Estado: {product?.status || '-'}</p>
-                  {product?.price !== undefined && <p className="font-bold">{product.price.toLocaleString('es-ES')} €</p>}
+                  {product?.price !== undefined && <p className="font-bold">{formatMoney(product.price)} €</p>}
                 </div>
-                {product?.id && <Button variant="outline" className="w-full" onClick={() => navigate(`/product/${product.id}`)}>Ver producto</Button>}
+                {product?.id && <Button variant="outline" className="w-full" onClick={() => navigate(productPath(product.id, product.title))}>Ver producto</Button>}
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><User className="h-5 w-5" /> Comprador</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><User className="h-5 w-5" /> Comprador</CardTitle></CardHeader>
               <CardContent>
                 <p className="font-medium">{buyer?.full_name || buyer?.username || 'Comprador'}</p>
-                <p className="text-xs text-muted-foreground break-all">{dispute.buyer_id}</p>
+                <p className="text-xs text-muted-foreground">ID: {shortId(dispute.buyer_id)}</p>
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><User className="h-5 w-5" /> Vendedor</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><User className="h-5 w-5" /> Vendedor</CardTitle></CardHeader>
               <CardContent>
                 <p className="font-medium">{seller?.full_name || seller?.username || 'Vendedor'}</p>
-                <p className="text-xs text-muted-foreground break-all">{dispute.seller_id}</p>
+                <p className="text-xs text-muted-foreground">ID: {shortId(dispute.seller_id)}</p>
               </CardContent>
             </Card>
           </div>
@@ -342,12 +405,12 @@ const AdminDisputeDetail = () => {
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2 text-sm">
               <div><span className="text-muted-foreground">Estado transacción:</span> <span className="font-medium">{transaction?.status || '-'}</span></div>
-              <div><span className="text-muted-foreground">Importe:</span> <span className="font-medium">{transaction?.amount?.toLocaleString('es-ES') || '0'} €</span></div>
+              <div><span className="text-muted-foreground">Importe:</span> <span className="font-medium">{formatMoney(transaction?.amount)} €</span></div>
               <div><span className="text-muted-foreground">Estado envío:</span> <span className="font-medium">{transaction?.shipping_status || '-'}</span></div>
               <div><span className="text-muted-foreground">ID Sendcloud:</span> <span className="font-medium">{transaction?.sendcloud_parcel_id || '-'}</span></div>
               <div><span className="text-muted-foreground">Tracking:</span> <span className="font-medium">{transaction?.sendcloud_tracking_number || '-'}</span></div>
               {transaction?.sendcloud_tracking_url && (
-                <div><a href={transaction.sendcloud_tracking_url} target="_blank" rel="noreferrer" className="text-primary font-medium">Ver seguimiento</a></div>
+                <div><a href={transaction.sendcloud_tracking_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary font-medium">Ver seguimiento<ExternalLink className="h-3 w-3" /></a></div>
               )}
             </CardContent>
           </Card>
@@ -355,7 +418,7 @@ const AdminDisputeDetail = () => {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><MessageCircle className="h-5 w-5" /> Conversación</CardTitle>
-              <CardDescription>Mensajes asociados a esta compraventa</CardDescription>
+              <CardDescription>Mensajes asociados a esta compraventa. Revisa el contexto antes de resolver.</CardDescription>
             </CardHeader>
             <CardContent>
               {messages.length === 0 ? (
@@ -369,7 +432,7 @@ const AdminDisputeDetail = () => {
                         <p className="text-xs text-muted-foreground">{format(new Date(message.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}</p>
                       </div>
                       <Separator className="mb-2" />
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                     </div>
                   ))}
                 </div>
