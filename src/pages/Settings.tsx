@@ -13,14 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import PushNotificationToggle from '@/components/PushNotificationToggle';
-import { 
-  Bell, 
-  Lock, 
-  Shield, 
-  UserX, 
-  Trash2,
-  Save
-} from 'lucide-react';
+import { Bell, Lock, UserX, Save, ShieldCheck } from 'lucide-react';
 
 interface UserSettings {
   email_notifications: boolean;
@@ -30,345 +23,200 @@ interface UserSettings {
   saved_search_notifications: boolean;
   show_online_status: boolean;
   show_last_seen: boolean;
-  allow_messages_from: string;
+  allow_messages_from: 'everyone' | 'verified' | 'none';
 }
+
+const DEFAULT_SETTINGS: UserSettings = {
+  email_notifications: true,
+  push_notifications: true,
+  message_notifications: true,
+  offer_notifications: true,
+  saved_search_notifications: true,
+  show_online_status: true,
+  show_last_seen: true,
+  allow_messages_from: 'everyone',
+};
+
+const allowedMessageScopes = new Set(['everyone', 'verified', 'none']);
+const normalizeSettings = (data: Partial<UserSettings> | null | undefined): UserSettings => ({
+  email_notifications: data?.email_notifications ?? DEFAULT_SETTINGS.email_notifications,
+  push_notifications: data?.push_notifications ?? DEFAULT_SETTINGS.push_notifications,
+  message_notifications: data?.message_notifications ?? DEFAULT_SETTINGS.message_notifications,
+  offer_notifications: data?.offer_notifications ?? DEFAULT_SETTINGS.offer_notifications,
+  saved_search_notifications: data?.saved_search_notifications ?? DEFAULT_SETTINGS.saved_search_notifications,
+  show_online_status: data?.show_online_status ?? DEFAULT_SETTINGS.show_online_status,
+  show_last_seen: data?.show_last_seen ?? DEFAULT_SETTINGS.show_last_seen,
+  allow_messages_from: allowedMessageScopes.has(String(data?.allow_messages_from)) ? data?.allow_messages_from as UserSettings['allow_messages_from'] : DEFAULT_SETTINGS.allow_messages_from,
+});
 
 const Settings = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { blockedUsers, unblockUser } = useBlockedUsers();
-  
-  const [settings, setSettings] = useState<UserSettings>({
-    email_notifications: true,
-    push_notifications: true,
-    message_notifications: true,
-    offer_notifications: true,
-    saved_search_notifications: true,
-    show_online_status: true,
-    show_last_seen: true,
-    allow_messages_from: 'everyone'
-  });
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [blockedProfiles, setBlockedProfiles] = useState<Record<string, any>>({});
+  const [unblockingId, setUnblockingId] = useState<string | null>(null);
+  const [blockedProfiles, setBlockedProfiles] = useState<Record<string, { full_name: string | null; avatar_url: string | null }>>({});
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/auth');
-    }
+    if (!authLoading && !user) navigate('/auth');
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (user) {
-      fetchSettings();
-    }
-  }, [user]);
+    if (user) fetchSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   useEffect(() => {
-    if (blockedUsers.length > 0) {
-      fetchBlockedProfiles();
-    }
-  }, [blockedUsers]);
+    if (blockedUsers.length > 0) fetchBlockedProfiles();
+    else setBlockedProfiles({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockedUsers.length]);
 
   const fetchSettings = async () => {
     if (!user) return;
+    setLoading(true);
 
     const { data, error } = await supabase
       .from('user_settings')
-      .select('*')
+      .select('email_notifications, push_notifications, message_notifications, offer_notifications, saved_search_notifications, show_online_status, show_last_seen, allow_messages_from')
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (data) {
-      setSettings({
-        email_notifications: data.email_notifications ?? true,
-        push_notifications: data.push_notifications ?? true,
-        message_notifications: data.message_notifications ?? true,
-        offer_notifications: data.offer_notifications ?? true,
-        saved_search_notifications: data.saved_search_notifications ?? true,
-        show_online_status: data.show_online_status ?? true,
-        show_last_seen: data.show_last_seen ?? true,
-        allow_messages_from: data.allow_messages_from ?? 'everyone'
-      });
+    if (error) {
+      console.error('Error fetching settings:', error);
+      toast({ title: 'No se pudieron cargar los ajustes', description: 'Usaremos los valores por defecto.', variant: 'destructive' });
     }
 
+    setSettings(normalizeSettings(data as Partial<UserSettings> | null));
     setLoading(false);
   };
 
   const fetchBlockedProfiles = async () => {
-    const profiles: Record<string, any> = {};
-    
-    for (const blocked of blockedUsers) {
+    const profiles: Record<string, { full_name: string | null; avatar_url: string | null }> = {};
+    await Promise.all(blockedUsers.map(async (blocked) => {
       const { data } = await supabase
         .from('profiles')
         .select('full_name, avatar_url')
         .eq('id', blocked.blocked_user_id)
         .maybeSingle();
-      
-      if (data) {
-        profiles[blocked.blocked_user_id] = data;
-      }
-    }
-    
+      if (data) profiles[blocked.blocked_user_id] = data;
+    }));
     setBlockedProfiles(profiles);
   };
 
-  const handleSaveSettings = async () => {
-    if (!user) return;
+  const updateSetting = <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
+    setSettings((current) => ({ ...current, [key]: value }));
+  };
 
+  const handleSaveSettings = async () => {
+    if (!user || saving) return;
+    const safeSettings = normalizeSettings(settings);
     setSaving(true);
 
-    const { error } = await supabase
-      .from('user_settings')
-      .upsert({
-        user_id: user.id,
-        ...settings
-      });
+    const { error } = await supabase.from('user_settings').upsert({ user_id: user.id, ...safeSettings });
 
     if (error) {
-      toast({
-        title: 'Error',
-        description: 'No se pudieron guardar los ajustes',
-        variant: 'destructive'
-      });
+      console.error('Error saving settings:', error);
+      toast({ title: 'Error', description: 'No se pudieron guardar los ajustes', variant: 'destructive' });
     } else {
-      toast({
-        title: 'Ajustes guardados',
-        description: 'Tus preferencias se han actualizado'
-      });
+      setSettings(safeSettings);
+      toast({ title: 'Ajustes guardados', description: 'Tus preferencias se han actualizado' });
     }
 
     setSaving(false);
   };
 
   const handleUnblock = async (userId: string) => {
+    setUnblockingId(userId);
     const success = await unblockUser(userId);
     if (success) {
-      toast({
-        title: 'Usuario desbloqueado',
-        description: 'Ahora puedes ver sus productos y mensajes'
+      toast({ title: 'Usuario desbloqueado', description: 'Ahora puedes ver sus productos y mensajes' });
+      setBlockedProfiles((current) => {
+        const next = { ...current };
+        delete next[userId];
+        return next;
       });
     }
+    setUnblockingId(null);
   };
 
   if (authLoading || loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
   }
+
+  if (!user) return null;
 
   return (
     <>
       <Helmet>
         <title>Ajustes | Reveta</title>
-        <meta name="description" content="Configura tus preferencias de notificaciones y privacidad" />
+        <meta name="description" content="Configura tus preferencias privadas de notificaciones y privacidad en Reveta" />
+        <meta name="robots" content="noindex,nofollow,noarchive" />
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
-
         <main className="flex-1 container py-8 max-w-2xl">
-          <h1 className="text-2xl font-bold mb-6">Ajustes</h1>
+          <h1 className="text-2xl font-bold mb-2">Ajustes</h1>
+          <p className="text-sm text-muted-foreground mb-6">Controla notificaciones, privacidad y usuarios bloqueados.</p>
 
           <div className="space-y-6">
-            {/* Notifications */}
             <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Bell className="h-5 w-5" />
-                  Notificaciones
-                </CardTitle>
-                <CardDescription>
-                  Configura cómo quieres recibir notificaciones
-                </CardDescription>
-              </CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" />Notificaciones</CardTitle><CardDescription>Configura cómo quieres recibir notificaciones</CardDescription></CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Notificaciones por email</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Recibe un resumen de actividad por email
-                    </p>
-                  </div>
-                  <Switch
-                    checked={settings.email_notifications}
-                    onCheckedChange={(checked) => 
-                      setSettings({ ...settings, email_notifications: checked })
-                    }
-                  />
-                </div>
-
+                <div className="flex items-center justify-between gap-4"><div><Label>Notificaciones por email</Label><p className="text-sm text-muted-foreground">Recibe un resumen de actividad por email</p></div><Switch checked={settings.email_notifications} onCheckedChange={(checked) => updateSetting('email_notifications', checked)} /></div>
                 <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Notificaciones push</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Recibe alertas en tiempo real
-                    </p>
-                  </div>
-                  <PushNotificationToggle />
-                </div>
-
+                <div className="flex items-center justify-between gap-4"><div><Label>Notificaciones push</Label><p className="text-sm text-muted-foreground">Recibe alertas en tiempo real</p></div><PushNotificationToggle /></div>
                 <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Mensajes nuevos</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Notificar cuando recibas mensajes
-                    </p>
-                  </div>
-                  <Switch
-                    checked={settings.message_notifications}
-                    onCheckedChange={(checked) => 
-                      setSettings({ ...settings, message_notifications: checked })
-                    }
-                  />
-                </div>
-
+                <div className="flex items-center justify-between gap-4"><div><Label>Mensajes nuevos</Label><p className="text-sm text-muted-foreground">Notificar cuando recibas mensajes</p></div><Switch checked={settings.message_notifications} onCheckedChange={(checked) => updateSetting('message_notifications', checked)} /></div>
                 <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Ofertas recibidas</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Notificar cuando recibas ofertas
-                    </p>
-                  </div>
-                  <Switch
-                    checked={settings.offer_notifications}
-                    onCheckedChange={(checked) => 
-                      setSettings({ ...settings, offer_notifications: checked })
-                    }
-                  />
-                </div>
-
+                <div className="flex items-center justify-between gap-4"><div><Label>Ofertas recibidas</Label><p className="text-sm text-muted-foreground">Notificar cuando recibas ofertas</p></div><Switch checked={settings.offer_notifications} onCheckedChange={(checked) => updateSetting('offer_notifications', checked)} /></div>
                 <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Búsquedas guardadas</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Notificar cuando haya nuevos productos
-                    </p>
-                  </div>
-                  <Switch
-                    checked={settings.saved_search_notifications}
-                    onCheckedChange={(checked) => 
-                      setSettings({ ...settings, saved_search_notifications: checked })
-                    }
-                  />
-                </div>
+                <div className="flex items-center justify-between gap-4"><div><Label>Búsquedas guardadas</Label><p className="text-sm text-muted-foreground">Notificar cuando haya nuevos productos</p></div><Switch checked={settings.saved_search_notifications} onCheckedChange={(checked) => updateSetting('saved_search_notifications', checked)} /></div>
               </CardContent>
             </Card>
 
-            {/* Privacy */}
             <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Lock className="h-5 w-5" />
-                  Privacidad
-                </CardTitle>
-                <CardDescription>
-                  Controla quién puede ver tu información
-                </CardDescription>
-              </CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><Lock className="h-5 w-5" />Privacidad</CardTitle><CardDescription>Controla quién puede ver tu información</CardDescription></CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Mostrar estado en línea</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Otros usuarios verán si estás conectado
-                    </p>
-                  </div>
-                  <Switch
-                    checked={settings.show_online_status}
-                    onCheckedChange={(checked) => 
-                      setSettings({ ...settings, show_online_status: checked })
-                    }
-                  />
-                </div>
-
+                <div className="flex items-center justify-between gap-4"><div><Label>Mostrar estado en línea</Label><p className="text-sm text-muted-foreground">Otros usuarios verán si estás conectado</p></div><Switch checked={settings.show_online_status} onCheckedChange={(checked) => updateSetting('show_online_status', checked)} /></div>
                 <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Mostrar última conexión</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Otros verán cuándo estuviste activo
-                    </p>
-                  </div>
-                  <Switch
-                    checked={settings.show_last_seen}
-                    onCheckedChange={(checked) => 
-                      setSettings({ ...settings, show_last_seen: checked })
-                    }
-                  />
-                </div>
+                <div className="flex items-center justify-between gap-4"><div><Label>Mostrar última conexión</Label><p className="text-sm text-muted-foreground">Otros verán cuándo estuviste activo</p></div><Switch checked={settings.show_last_seen} onCheckedChange={(checked) => updateSetting('show_last_seen', checked)} /></div>
+                <Separator />
+                <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground flex gap-2"><ShieldCheck className="h-4 w-4 text-primary mt-0.5" /><span>Tu teléfono privado no se muestra en perfiles públicos. Usa el chat de Reveta para negociar de forma segura.</span></div>
               </CardContent>
             </Card>
 
-            {/* Blocked Users */}
             <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <UserX className="h-5 w-5" />
-                  Usuarios bloqueados
-                </CardTitle>
-                <CardDescription>
-                  Gestiona los usuarios que has bloqueado
-                </CardDescription>
-              </CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><UserX className="h-5 w-5" />Usuarios bloqueados</CardTitle><CardDescription>Gestiona los usuarios que has bloqueado</CardDescription></CardHeader>
               <CardContent>
                 {blockedUsers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No has bloqueado a ningún usuario
-                  </p>
+                  <p className="text-sm text-muted-foreground text-center py-4">No has bloqueado a ningún usuario</p>
                 ) : (
                   <div className="space-y-3">
-                    {blockedUsers.map((blocked) => (
-                      <div 
-                        key={blocked.id} 
-                        className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
-                            {blockedProfiles[blocked.blocked_user_id]?.full_name?.[0]?.toUpperCase() || 'U'}
+                    {blockedUsers.map((blocked) => {
+                      const profile = blockedProfiles[blocked.blocked_user_id];
+                      return (
+                        <div key={blocked.id} className="flex items-center justify-between gap-3 p-3 bg-muted rounded-lg">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden shrink-0">{profile?.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : profile?.full_name?.[0]?.toUpperCase() || 'U'}</div>
+                            <span className="font-medium truncate">{profile?.full_name || 'Usuario'}</span>
                           </div>
-                          <span className="font-medium">
-                            {blockedProfiles[blocked.blocked_user_id]?.full_name || 'Usuario'}
-                          </span>
+                          <Button variant="outline" size="sm" disabled={unblockingId === blocked.blocked_user_id} onClick={() => handleUnblock(blocked.blocked_user_id)}>Desbloquear</Button>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleUnblock(blocked.blocked_user_id)}
-                        >
-                          Desbloquear
-                        </Button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            {/* Save Button */}
-            <Button 
-              onClick={handleSaveSettings} 
-              disabled={saving}
-              className="w-full"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {saving ? 'Guardando...' : 'Guardar ajustes'}
-            </Button>
+            <Button onClick={handleSaveSettings} disabled={saving} className="w-full"><Save className="h-4 w-4 mr-2" />{saving ? 'Guardando...' : 'Guardar ajustes'}</Button>
           </div>
         </main>
-
         <Footer />
       </div>
     </>
