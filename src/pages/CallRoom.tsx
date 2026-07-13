@@ -21,6 +21,8 @@ const rtcConfig: RTCConfiguration = {
   ],
 };
 
+const CLOSED_CALL_STATUSES = ['ended', 'declined', 'expired', 'cancelled'];
+
 const CallRoom = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -43,6 +45,7 @@ const CallRoom = () => {
 
   const isCaller = !!user && !!call && user.id === call.caller_id;
   const isParticipant = !!user && !!call && (user.id === call.caller_id || user.id === call.callee_id);
+  const isClosedCall = !!call?.status && CLOSED_CALL_STATUSES.includes(call.status);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/auth');
@@ -51,47 +54,42 @@ const CallRoom = () => {
   useEffect(() => {
     if (!id || !user) return;
     fetchCall();
-  }, [id, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, user?.id]);
 
   useEffect(() => {
-    if (!call || !user || !isParticipant) return;
+    if (!call || !user || !isParticipant || isClosedCall) return;
 
     const channel = supabase
       .channel(`call-room:${call.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'call_signals', filter: `call_id=eq.${call.id}` },
-        (payload) => handleIncomingSignal(payload.new as CallSignal),
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'call_sessions', filter: `id=eq.${call.id}` },
-        (payload) => {
-          const updated = payload.new as CallSession;
-          setCall(updated);
-          if (updated.status === 'ended' || updated.status === 'declined') {
-            cleanupCall();
-            setStatusText(updated.status === 'declined' ? 'Llamada rechazada' : 'Llamada finalizada');
-          }
-        },
-      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'call_signals', filter: `call_id=eq.${call.id}` }, (payload) => handleIncomingSignal(payload.new as CallSignal))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'call_sessions', filter: `id=eq.${call.id}` }, (payload) => {
+        const updated = payload.new as CallSession;
+        setCall(updated);
+        if (CLOSED_CALL_STATUSES.includes(updated.status)) {
+          cleanupCall();
+          setHasStarted(false);
+          startedRef.current = false;
+          setStatusText(updated.status === 'declined' ? 'Llamada rechazada' : 'Llamada finalizada');
+        }
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [call?.id, user?.id, isParticipant]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [call?.id, user?.id, isParticipant, isClosedCall]);
 
-  useEffect(() => {
-    return () => cleanupCall();
-  }, []);
+  useEffect(() => () => cleanupCall(), []);
 
   const fetchCall = async () => {
-    if (!id) return;
+    if (!id || !user) return;
+    setLoading(true);
 
     const { data, error } = await supabase
       .from('call_sessions')
-      .select('*')
+      .select('id, product_id, caller_id, callee_id, status, created_at, updated_at, ended_at')
       .eq('id', id)
       .maybeSingle();
 
@@ -101,12 +99,22 @@ const CallRoom = () => {
       return;
     }
 
-    setCall(data);
+    if (user.id !== data.caller_id && user.id !== data.callee_id) {
+      setCall(data as CallSession);
+      setLoading(false);
+      return;
+    }
+
+    if (CLOSED_CALL_STATUSES.includes(data.status)) {
+      setStatusText(data.status === 'declined' ? 'Llamada rechazada' : 'Llamada finalizada');
+    }
+
+    setCall(data as CallSession);
     setLoading(false);
   };
 
   const createPeerConnection = async () => {
-    if (!user || !call) return null;
+    if (!user || !call || !isParticipant || isClosedCall) return null;
 
     const peer = new RTCPeerConnection(rtcConfig);
 
@@ -116,9 +124,7 @@ const CallRoom = () => {
     };
 
     peer.ontrack = (event) => {
-      if (remoteAudioRef.current && event.streams[0]) {
-        remoteAudioRef.current.srcObject = event.streams[0];
-      }
+      if (remoteAudioRef.current && event.streams[0]) remoteAudioRef.current.srcObject = event.streams[0];
     };
 
     peer.onconnectionstatechange = () => {
@@ -126,7 +132,10 @@ const CallRoom = () => {
         setConnected(true);
         setStatusText('Llamada conectada');
       } else if (peer.connectionState === 'failed' || peer.connectionState === 'disconnected') {
+        setConnected(false);
         setStatusText('La conexión se ha interrumpido');
+      } else if (peer.connectionState === 'closed') {
+        setConnected(false);
       }
     };
 
@@ -139,20 +148,13 @@ const CallRoom = () => {
   };
 
   const sendSignal = async (type: CallSignal['type'], payload: Json) => {
-    if (!user || !call) return;
-
-    const { error } = await supabase.from('call_signals').insert({
-      call_id: call.id,
-      sender_id: user.id,
-      type,
-      payload,
-    });
-
+    if (!user || !call || !isParticipant || isClosedCall) return;
+    const { error } = await supabase.from('call_signals').insert({ call_id: call.id, sender_id: user.id, type, payload });
     if (error) console.error('Error sending call signal:', error);
   };
 
   const handleIncomingSignal = async (signal: CallSignal) => {
-    if (!user || !call) return;
+    if (!user || !call || !isParticipant || isClosedCall) return;
     if (signal.sender_id === user.id) return;
     if (handledSignalsRef.current.has(signal.id)) return;
     handledSignalsRef.current.add(signal.id);
@@ -177,9 +179,7 @@ const CallRoom = () => {
         await updateCallStatus('active');
       }
 
-      if (signal.type === 'ice') {
-        await peer.addIceCandidate(new RTCIceCandidate(signal.payload as unknown as RTCIceCandidateInit));
-      }
+      if (signal.type === 'ice') await peer.addIceCandidate(new RTCIceCandidate(signal.payload as unknown as RTCIceCandidateInit));
     } catch (error) {
       console.error('Error handling call signal:', error);
       setStatusText('No se pudo conectar la llamada');
@@ -187,31 +187,40 @@ const CallRoom = () => {
   };
 
   const loadExistingSignals = async () => {
-    if (!call || !user) return;
+    if (!call || !user || !isParticipant || isClosedCall) return;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('call_signals')
-      .select('*')
+      .select('id, call_id, sender_id, type, payload, created_at')
       .eq('call_id', call.id)
       .order('created_at', { ascending: true });
 
-    for (const signal of data || []) {
-      await handleIncomingSignal(signal);
+    if (error) {
+      console.error('Error loading existing call signals:', error);
+      return;
     }
+
+    for (const signal of data || []) await handleIncomingSignal(signal as CallSignal);
   };
 
   const startCall = async () => {
     if (!call || !user || startedRef.current) return;
+
+    if (!isParticipant) {
+      toast({ title: 'Acceso denegado', description: 'Solo los participantes pueden entrar a esta llamada.', variant: 'destructive' });
+      return;
+    }
+
+    if (isClosedCall) {
+      toast({ title: 'Llamada finalizada', description: 'Esta llamada ya no está disponible.', variant: 'destructive' });
+      return;
+    }
+
     startedRef.current = true;
     setHasStarted(true);
     setJoining(true);
 
     try {
-      if (!isParticipant) {
-        toast({ title: 'Acceso denegado', description: 'Solo los participantes pueden entrar a esta llamada.', variant: 'destructive' });
-        return;
-      }
-
       setStatusText('Solicitando permiso de micrófono...');
       const peer = await createPeerConnection();
       if (!peer) return;
@@ -230,6 +239,7 @@ const CallRoom = () => {
     } catch (error) {
       console.error('Error starting call:', error);
       toast({ title: 'No se pudo iniciar la llamada', description: 'Revisa los permisos del micrófono.', variant: 'destructive' });
+      cleanupCall();
       startedRef.current = false;
       setHasStarted(false);
     } finally {
@@ -238,11 +248,13 @@ const CallRoom = () => {
   };
 
   const updateCallStatus = async (status: CallSession['status']) => {
-    if (!call) return;
+    if (!call || !user || !isParticipant) return;
+    const now = new Date().toISOString();
     await supabase
       .from('call_sessions')
-      .update({ status, updated_at: new Date().toISOString(), ...(status === 'ended' ? { ended_at: new Date().toISOString() } : {}) })
-      .eq('id', call.id);
+      .update({ status, updated_at: now, ...(status === 'ended' ? { ended_at: now } : {}) })
+      .eq('id', call.id)
+      .or(`caller_id.eq.${user.id},callee_id.eq.${user.id}`);
   };
 
   const toggleMute = () => {
@@ -255,9 +267,11 @@ const CallRoom = () => {
   const cleanupCall = () => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     peerRef.current?.close();
     peerRef.current = null;
     setConnected(false);
+    setMuted(false);
   };
 
   const endCall = async () => {
@@ -266,70 +280,36 @@ const CallRoom = () => {
     navigate('/messages');
   };
 
-  if (authLoading || loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
-  }
+  if (authLoading || loading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
 
   if (!call || !isParticipant) {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
-        <Header />
-        <main className="flex-1 container py-8 max-w-xl">
-          <Card>
-            <CardHeader>
-              <CardTitle>Acceso no permitido</CardTitle>
-              <CardDescription>Esta llamada privada solo está disponible para los dos usuarios del producto.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button onClick={() => navigate('/messages')} className="w-full">Volver a mensajes</Button>
-            </CardContent>
-          </Card>
-        </main>
-        <Footer />
-      </div>
+      <>
+        <Helmet><title>Llamada privada | Reveta</title><meta name="robots" content="noindex,nofollow,noarchive" /></Helmet>
+        <div className="min-h-screen flex flex-col bg-background"><Header /><main className="flex-1 container py-8 max-w-xl"><Card><CardHeader><CardTitle>Acceso no permitido</CardTitle><CardDescription>Esta llamada privada solo está disponible para los dos usuarios del producto.</CardDescription></CardHeader><CardContent><Button onClick={() => navigate('/messages')} className="w-full">Volver a mensajes</Button></CardContent></Card></main><Footer /></div>
+      </>
     );
   }
 
   return (
     <>
-      <Helmet><title>Llamada privada | Reveta</title></Helmet>
+      <Helmet><title>Llamada privada | Reveta</title><meta name="description" content="Sala privada de llamada entre comprador y vendedor en Reveta" /><meta name="robots" content="noindex,nofollow,noarchive" /></Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <main className="flex-1 container py-8 max-w-xl">
           <Card className="border-border/50">
-            <CardHeader className="text-center">
-              <div className="mx-auto h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                <Phone className="h-10 w-10 text-primary" />
-              </div>
-              <CardTitle>Llamada privada de Reveta</CardTitle>
-              <CardDescription>{statusText}</CardDescription>
-            </CardHeader>
+            <CardHeader className="text-center"><div className="mx-auto h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mb-4"><Phone className="h-10 w-10 text-primary" /></div><CardTitle>Llamada privada de Reveta</CardTitle><CardDescription>{statusText}</CardDescription></CardHeader>
             <CardContent className="space-y-6">
               <audio ref={remoteAudioRef} autoPlay playsInline />
-
-              <div className="rounded-xl border border-primary/10 bg-primary/5 p-4 text-sm text-muted-foreground flex gap-3">
-                <Shield className="h-5 w-5 text-primary shrink-0" />
-                <p>Esta llamada usa audio del navegador. Reveta no muestra números de teléfono entre usuarios.</p>
-              </div>
-
+              <div className="rounded-xl border border-primary/10 bg-primary/5 p-4 text-sm text-muted-foreground flex gap-3"><Shield className="h-5 w-5 text-primary shrink-0" /><p>Esta llamada usa audio del navegador. Reveta no muestra números de teléfono entre usuarios.</p></div>
+              {isClosedCall && <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">Esta llamada ya terminó. Vuelve a mensajes para continuar por chat o solicitar una nueva llamada.</div>}
               <div className="flex items-center justify-center gap-3">
                 {!hasStarted ? (
-                  <Button onClick={startCall} disabled={joining} className="h-14 px-8 text-base font-bold">
-                    <Phone className="h-5 w-5 mr-2" />
-                    {joining ? 'Conectando...' : 'Entrar en llamada'}
-                  </Button>
+                  <Button onClick={startCall} disabled={joining || isClosedCall} className="h-14 px-8 text-base font-bold"><Phone className="h-5 w-5 mr-2" />{joining ? 'Conectando...' : 'Entrar en llamada'}</Button>
                 ) : (
-                  <>
-                    <Button variant="outline" size="icon" className="h-14 w-14 rounded-full" onClick={toggleMute}>
-                      {muted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
-                    </Button>
-                    <Button variant="destructive" size="icon" className="h-14 w-14 rounded-full" onClick={endCall}>
-                      <PhoneOff className="h-6 w-6" />
-                    </Button>
-                  </>
+                  <><Button variant="outline" size="icon" className="h-14 w-14 rounded-full" onClick={toggleMute}>{muted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}</Button><Button variant="destructive" size="icon" className="h-14 w-14 rounded-full" onClick={endCall}><PhoneOff className="h-6 w-6" /></Button></>
                 )}
               </div>
-
               {connected && <p className="text-center text-sm text-green-600 font-medium">Conectado</p>}
             </CardContent>
           </Card>
