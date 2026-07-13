@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import {
   ArrowLeft,
   BarChart3,
@@ -96,6 +94,10 @@ const productPath = (id: string, title?: string | null) => {
   return `/producto/${id}/${slug}`;
 };
 
+const formatDate = (value: string) => new Date(value).toLocaleDateString('es-ES');
+const formatMoney = (value?: number | null) => Number(value || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const TERMINAL_DISPUTES = ['resolved_buyer', 'resolved_seller', 'closed'];
+
 const Admin = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
@@ -107,6 +109,8 @@ const Admin = () => {
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('disputes');
+  const [updatingKey, setUpdatingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/auth');
@@ -121,6 +125,7 @@ const Admin = () => {
 
   useEffect(() => {
     if (isAdmin) fetchAllData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
 
   const fetchAllData = async () => {
@@ -130,21 +135,33 @@ const Admin = () => {
   };
 
   const fetchProfiles = async () => {
-    const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, username, full_name, verified, created_at')
+      .order('created_at', { ascending: false });
+
     if (error) {
       console.error('Error fetching profiles:', error);
+      toast.error('No se pudieron cargar los usuarios');
       return;
     }
 
-    const { data: rolesData } = await supabase.from('user_roles').select('user_id, role').eq('role', 'admin');
+    const { data: rolesData, error: rolesError } = await supabase.from('user_roles').select('user_id, role').eq('role', 'admin');
+    if (rolesError) console.error('Error fetching roles:', rolesError);
+
     const adminUserIds = new Set((rolesData || []).map((role: any) => role.user_id));
     setProfiles((data || []).map((profile: any) => ({ ...profile, hasAdminRole: adminUserIds.has(profile.id) })));
   };
 
   const fetchProducts = async () => {
-    const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('products')
+      .select('id, title, price, status, created_at, user_id')
+      .order('created_at', { ascending: false });
+
     if (error) {
       console.error('Error fetching products:', error);
+      toast.error('No se pudieron cargar los productos');
       return;
     }
 
@@ -163,18 +180,20 @@ const Admin = () => {
   };
 
   const fetchReports = async () => {
-    const { data, error } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('reports').select('id, reason, description, status, created_at').order('created_at', { ascending: false });
     if (error) {
       console.error('Error fetching reports:', error);
+      toast.error('No se pudieron cargar los reportes');
       return;
     }
     setReports(data || []);
   };
 
   const fetchCategories = async () => {
-    const { data, error } = await supabase.from('categories').select('*').order('name', { ascending: true });
+    const { data, error } = await supabase.from('categories').select('id, name, icon, created_at').order('name', { ascending: true });
     if (error) {
       console.error('Error fetching categories:', error);
+      toast.error('No se pudieron cargar las categorías');
       return;
     }
     setCategories(data || []);
@@ -184,6 +203,7 @@ const Admin = () => {
     const { data, error } = await (supabase as any).from('disputes').select('*').order('created_at', { ascending: false });
     if (error) {
       console.error('Error fetching disputes:', error);
+      toast.error('No se pudieron cargar las incidencias');
       return;
     }
 
@@ -210,55 +230,94 @@ const Admin = () => {
     setDisputes(enrichedDisputes);
   };
 
-  const handleVerifyUser = async (userId: string, verified: boolean) => {
+  const handleVerifyUser = async (profile: Profile, verified: boolean) => {
+    if (profile.hasAdminRole && !verified) {
+      toast.error('No se puede quitar la verificación a un administrador desde esta acción.');
+      return;
+    }
+
+    setUpdatingKey(`verify-${profile.id}`);
     const { error } = await supabase
       .from('profiles')
       .update({ verified, verified_at: verified ? new Date().toISOString() : null } as any)
-      .eq('id', userId);
+      .eq('id', profile.id);
 
     if (error) {
       toast.error('Error al actualizar verificación');
+      setUpdatingKey(null);
       return;
     }
 
     toast.success(verified ? 'Usuario verificado' : 'Verificación removida');
-    fetchProfiles();
+    await fetchProfiles();
+    setUpdatingKey(null);
   };
 
-  const handleMakeAdmin = async (userId: string) => {
-    const { error } = await supabase.from('user_roles').insert({ user_id: userId, role: 'admin' });
+  const handleMakeAdmin = async (profile: Profile) => {
+    if (profile.hasAdminRole) {
+      toast.info('Este usuario ya es administrador');
+      return;
+    }
+
+    setUpdatingKey(`admin-${profile.id}`);
+    const { error } = await supabase.from('user_roles').upsert({ user_id: profile.id, role: 'admin' } as any, { onConflict: 'user_id,role' });
     if (error) {
+      console.error('Error making admin:', error);
       toast.error('Error al actualizar permisos');
+      setUpdatingKey(null);
       return;
     }
 
     toast.success('Usuario ahora es admin');
-    fetchProfiles();
+    await fetchProfiles();
+    setUpdatingKey(null);
   };
 
-  const handleUpdateProductStatus = async (productId: string, status: string) => {
-    const { error } = await supabase.from('products').update({ status }).eq('id', productId);
-    if (error) {
-      toast.error('Error al actualizar estado');
+  const handleUpdateProductStatus = async (product: Product, status: string) => {
+    if (!['active', 'inactive'].includes(status)) {
+      toast.error('Desde admin solo se permite activar o inactivar. Vendido/reservado lo gestiona la compra.');
       return;
     }
 
-    toast.success('Estado actualizado');
-    fetchProducts();
+    if (['sold', 'reserved'].includes(product.status || '')) {
+      toast.error('No se puede cambiar manualmente un producto vendido o reservado. Revisa transacciones.');
+      return;
+    }
+
+    setUpdatingKey(`product-${product.id}`);
+    const { error } = await supabase.from('products').update({ status }).eq('id', product.id);
+    if (error) {
+      toast.error('Error al actualizar estado');
+      setUpdatingKey(null);
+      return;
+    }
+
+    toast.success(status === 'active' ? 'Producto activado' : 'Producto inactivado');
+    await fetchProducts();
+    setUpdatingKey(null);
   };
 
   const handleUpdateReportStatus = async (reportId: string, status: string) => {
+    setUpdatingKey(`report-${reportId}`);
     const { error } = await supabase.from('reports').update({ status }).eq('id', reportId);
     if (error) {
       toast.error('Error al actualizar reporte');
+      setUpdatingKey(null);
       return;
     }
 
     toast.success('Reporte actualizado');
-    fetchReports();
+    await fetchReports();
+    setUpdatingKey(null);
   };
 
   const handleResolveDispute = async (dispute: Dispute, nextStatus: string) => {
+    if (TERMINAL_DISPUTES.includes(dispute.status) && dispute.status !== nextStatus) {
+      toast.error('Esta incidencia ya está cerrada. Usa el detalle si necesitas revisarla.');
+      return;
+    }
+
+    setUpdatingKey(`dispute-${dispute.id}`);
     const now = new Date().toISOString();
     const resolutionMap: Record<string, string | null> = {
       open: null,
@@ -274,27 +333,23 @@ const Admin = () => {
         status: nextStatus,
         resolution: resolutionMap[nextStatus] || null,
         updated_at: now,
-        closed_at: ['resolved_buyer', 'resolved_seller', 'closed'].includes(nextStatus) ? now : null,
+        closed_at: TERMINAL_DISPUTES.includes(nextStatus) ? now : null,
       })
       .eq('id', dispute.id);
 
     if (error) {
       toast.error('No se pudo actualizar la incidencia');
+      setUpdatingKey(null);
       return;
     }
 
-    if (nextStatus === 'under_review') {
-      await supabase.from('transactions').update({ status: 'under_review' } as any).eq('id', dispute.transaction_id);
-    }
-    if (nextStatus === 'resolved_seller') {
-      await supabase.from('transactions').update({ status: 'completed', completed_at: now } as any).eq('id', dispute.transaction_id);
-    }
-    if (nextStatus === 'resolved_buyer' || nextStatus === 'closed') {
-      await supabase.from('transactions').update({ status: 'disputed', completed_at: now } as any).eq('id', dispute.transaction_id);
-    }
+    if (nextStatus === 'under_review') await supabase.from('transactions').update({ status: 'under_review' } as any).eq('id', dispute.transaction_id);
+    if (nextStatus === 'resolved_seller') await supabase.from('transactions').update({ status: 'completed', completed_at: now } as any).eq('id', dispute.transaction_id);
+    if (nextStatus === 'resolved_buyer' || nextStatus === 'closed') await supabase.from('transactions').update({ status: 'disputed', completed_at: now } as any).eq('id', dispute.transaction_id);
 
     toast.success('Incidencia actualizada');
-    fetchDisputes();
+    await fetchDisputes();
+    setUpdatingKey(null);
   };
 
   const getStatusBadge = (status: string | null) => {
@@ -323,107 +378,78 @@ const Admin = () => {
   };
 
   const filteredProfiles = useMemo(
-    () => profiles.filter((profile) =>
-      profile.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      profile.full_name?.toLowerCase().includes(searchTerm.toLowerCase()),
-    ),
+    () => profiles.filter((profile) => `${profile.username || ''} ${profile.full_name || ''}`.toLowerCase().includes(searchTerm.toLowerCase())),
     [profiles, searchTerm],
   );
 
   const filteredProducts = useMemo(
-    () => products.filter((product) => product.title.toLowerCase().includes(searchTerm.toLowerCase())),
+    () => products.filter((product) => `${product.title} ${product.profiles?.username || ''} ${product.profiles?.full_name || ''}`.toLowerCase().includes(searchTerm.toLowerCase())),
     [products, searchTerm],
   );
 
+  const filteredReports = useMemo(
+    () => reports.filter((report) => `${report.reason} ${report.description || ''} ${report.status}`.toLowerCase().includes(searchTerm.toLowerCase())),
+    [reports, searchTerm],
+  );
+
   const filteredDisputes = useMemo(
-    () => disputes.filter((dispute) =>
-      dispute.reason.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      dispute.product_title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      dispute.buyer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      dispute.seller_name?.toLowerCase().includes(searchTerm.toLowerCase()),
-    ),
+    () => disputes.filter((dispute) => `${dispute.reason} ${dispute.product_title || ''} ${dispute.buyer_name || ''} ${dispute.seller_name || ''}`.toLowerCase().includes(searchTerm.toLowerCase())),
     [disputes, searchTerm],
   );
 
   if (authLoading || adminLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
   if (!isAdmin) return null;
 
   const pendingReports = reports.filter((report) => report.status === 'pending').length;
   const activeDisputes = disputes.filter((dispute) => ['open', 'under_review'].includes(dispute.status)).length;
+  const activeProducts = products.filter((product) => product.status === 'active').length;
 
   return (
     <>
-      <Helmet><title>Centro de Control Reveta</title></Helmet>
+      <Helmet>
+        <title>Centro de Control Reveta</title>
+        <meta name="robots" content="noindex,nofollow,noarchive" />
+      </Helmet>
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col gap-4 mb-8 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
+              <Button variant="ghost" size="icon" onClick={() => navigate('/')}><ArrowLeft className="h-5 w-5" /></Button>
               <div>
                 <h1 className="text-3xl font-bold">Centro de Control Reveta</h1>
                 <p className="text-muted-foreground">Gestiona usuarios, productos, crecimiento, reportes e incidencias.</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => navigate('/admin/growth')}>
-                <BarChart3 className="h-4 w-4 mr-2" /> Crecimiento
-              </Button>
-              <Button variant="outline" onClick={fetchAllData}>
-                <Loader2 className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Actualizar
-              </Button>
+              <Button variant="outline" onClick={() => navigate('/admin/growth')}><BarChart3 className="h-4 w-4 mr-2" /> Crecimiento</Button>
+              <Button variant="outline" onClick={fetchAllData}><Loader2 className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Actualizar</Button>
             </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
             <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{profiles.length}</CardTitle><CardDescription className="flex items-center gap-2"><Users className="h-4 w-4" /> Usuarios</CardDescription></CardHeader></Card>
-            <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{products.length}</CardTitle><CardDescription className="flex items-center gap-2"><Package className="h-4 w-4" /> Productos</CardDescription></CardHeader></Card>
+            <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{activeProducts}</CardTitle><CardDescription className="flex items-center gap-2"><Package className="h-4 w-4" /> Activos</CardDescription></CardHeader></Card>
             <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{pendingReports}</CardTitle><CardDescription className="flex items-center gap-2"><Flag className="h-4 w-4" /> Reportes</CardDescription></CardHeader></Card>
             <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{activeDisputes}</CardTitle><CardDescription className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> Incidencias</CardDescription></CardHeader></Card>
             <Card><CardHeader className="pb-2"><CardTitle className="text-2xl">{categories.length}</CardTitle><CardDescription className="flex items-center gap-2"><Grid3X3 className="h-4 w-4" /> Categorías</CardDescription></CardHeader></Card>
           </div>
 
           <div className="grid gap-4 mb-8 md:grid-cols-4">
-            <Card className="cursor-pointer transition hover:shadow-md" onClick={() => navigate('/admin/growth')}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Crecimiento</CardTitle>
-                <CardDescription>Búsquedas, ciudades y productos clicados.</CardDescription>
-              </CardHeader>
-            </Card>
-            <Card className="cursor-pointer transition hover:shadow-md" onClick={() => navigate('/admin/disputes')}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><ShieldAlert className="h-5 w-5" /> Incidencias</CardTitle>
-                <CardDescription>Revisa conflictos de compras.</CardDescription>
-              </CardHeader>
-            </Card>
-            <Card className="cursor-pointer transition hover:shadow-md" onClick={() => document.getElementById('admin-search')?.focus()}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Search className="h-5 w-5" /> Buscar</CardTitle>
-                <CardDescription>Filtra usuarios, productos e incidencias.</CardDescription>
-              </CardHeader>
-            </Card>
-            <Card className="cursor-pointer transition hover:shadow-md" onClick={fetchAllData}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Loader2 className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} /> Actualizar</CardTitle>
-                <CardDescription>Recarga todos los datos del panel.</CardDescription>
-              </CardHeader>
-            </Card>
+            <Card className="cursor-pointer transition hover:shadow-md" onClick={() => navigate('/admin/growth')}><CardHeader><CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Crecimiento</CardTitle><CardDescription>Búsquedas, ciudades y productos clicados.</CardDescription></CardHeader></Card>
+            <Card className="cursor-pointer transition hover:shadow-md" onClick={() => setActiveTab('disputes')}><CardHeader><CardTitle className="flex items-center gap-2"><ShieldAlert className="h-5 w-5" /> Incidencias</CardTitle><CardDescription>Revisa conflictos de compras.</CardDescription></CardHeader></Card>
+            <Card className="cursor-pointer transition hover:shadow-md" onClick={() => document.getElementById('admin-search')?.focus()}><CardHeader><CardTitle className="flex items-center gap-2"><Search className="h-5 w-5" /> Buscar</CardTitle><CardDescription>Filtra usuarios, productos e incidencias.</CardDescription></CardHeader></Card>
+            <Card className="cursor-pointer transition hover:shadow-md" onClick={fetchAllData}><CardHeader><CardTitle className="flex items-center gap-2"><Loader2 className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} /> Actualizar</CardTitle><CardDescription>Recarga todos los datos del panel.</CardDescription></CardHeader></Card>
           </div>
 
           <div className="relative mb-6">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input id="admin-search" placeholder="Buscar..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="pl-10" />
+            <Input id="admin-search" placeholder="Buscar usuarios, productos, reportes o incidencias..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="pl-10" />
           </div>
 
-          <Tabs defaultValue="disputes" className="space-y-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
             <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="disputes" className="flex items-center gap-2"><ShieldAlert className="h-4 w-4" /><span className="hidden sm:inline">Protección</span></TabsTrigger>
               <TabsTrigger value="users" className="flex items-center gap-2"><Users className="h-4 w-4" /><span className="hidden sm:inline">Usuarios</span></TabsTrigger>
@@ -434,181 +460,32 @@ const Admin = () => {
 
             <TabsContent value="disputes">
               <Card>
-                <CardHeader>
-                  <CardTitle>Protección Reveta / Incidencias</CardTitle>
-                  <CardDescription>Revisa incidencias entre comprador y vendedor.</CardDescription>
-                </CardHeader>
+                <CardHeader><CardTitle>Centro de seguridad / Incidencias</CardTitle><CardDescription>Revisa incidencias entre comprador y vendedor. Usa “Ver detalle” para revisar mensajes antes de resolver.</CardDescription></CardHeader>
                 <CardContent>
-                  {loading ? (
-                    <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
-                  ) : filteredDisputes.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">No hay incidencias.</div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Producto</TableHead>
-                            <TableHead>Comprador</TableHead>
-                            <TableHead>Vendedor</TableHead>
-                            <TableHead>Motivo</TableHead>
-                            <TableHead>Estado</TableHead>
-                            <TableHead>Fecha</TableHead>
-                            <TableHead>Acciones</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {filteredDisputes.map((dispute) => (
-                            <TableRow key={dispute.id}>
-                              <TableCell>
-                                <div className="font-medium max-w-[180px] truncate">{dispute.product_title}</div>
-                                {dispute.amount !== null && dispute.amount !== undefined && <div className="text-xs text-muted-foreground">{dispute.amount.toLocaleString('es-ES')} €</div>}
-                              </TableCell>
-                              <TableCell>{dispute.buyer_name}</TableCell>
-                              <TableCell>{dispute.seller_name}</TableCell>
-                              <TableCell>
-                                <div className="font-medium max-w-[220px] truncate">{dispute.reason}</div>
-                                {dispute.details && <div className="text-xs text-muted-foreground max-w-[260px] truncate">{dispute.details}</div>}
-                              </TableCell>
-                              <TableCell>{getDisputeStatusBadge(dispute.status)}</TableCell>
-                              <TableCell>{format(new Date(dispute.created_at), 'dd/MM/yyyy', { locale: es })}</TableCell>
-                              <TableCell>
-                                <div className="flex flex-wrap gap-2 min-w-[330px]">
-                                  <Button size="sm" variant="outline" onClick={() => navigate(`/admin/disputes/${dispute.id}`)}><Eye className="h-4 w-4 mr-1" /> Ver detalle</Button>
-                                  <Button size="sm" variant="outline" onClick={() => handleResolveDispute(dispute, 'under_review')}>En revisión</Button>
-                                  <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleResolveDispute(dispute, 'resolved_buyer')}><CheckCircle2 className="h-4 w-4 mr-1" /> Comprador</Button>
-                                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => handleResolveDispute(dispute, 'resolved_seller')}><CheckCircle2 className="h-4 w-4 mr-1" /> Vendedor</Button>
-                                  <Button size="sm" variant="secondary" onClick={() => handleResolveDispute(dispute, 'closed')}><XCircle className="h-4 w-4 mr-1" /> Cerrar</Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
+                  {loading ? <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div> : filteredDisputes.length === 0 ? <div className="text-center py-8 text-muted-foreground">No hay incidencias.</div> : (
+                    <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Producto</TableHead><TableHead>Comprador</TableHead><TableHead>Vendedor</TableHead><TableHead>Motivo</TableHead><TableHead>Estado</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{filteredDisputes.map((dispute) => {
+                      const isTerminal = TERMINAL_DISPUTES.includes(dispute.status);
+                      return <TableRow key={dispute.id}><TableCell><div className="font-medium max-w-[180px] truncate">{dispute.product_title}</div>{dispute.amount !== null && dispute.amount !== undefined && <div className="text-xs text-muted-foreground">{formatMoney(dispute.amount)} €</div>}</TableCell><TableCell>{dispute.buyer_name}</TableCell><TableCell>{dispute.seller_name}</TableCell><TableCell><div className="font-medium max-w-[220px] truncate">{dispute.reason}</div>{dispute.details && <div className="text-xs text-muted-foreground max-w-[260px] truncate">{dispute.details}</div>}</TableCell><TableCell>{getDisputeStatusBadge(dispute.status)}</TableCell><TableCell>{formatDate(dispute.created_at)}</TableCell><TableCell><div className="flex flex-wrap gap-2 min-w-[330px]"><Button size="sm" variant="outline" onClick={() => navigate(`/admin/disputes/${dispute.id}`)}><Eye className="h-4 w-4 mr-1" /> Ver detalle</Button><Button size="sm" variant="outline" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'under_review')}>En revisión</Button><Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'resolved_buyer')}><CheckCircle2 className="h-4 w-4 mr-1" /> Comprador</Button><Button size="sm" className="bg-blue-600 hover:bg-blue-700" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'resolved_seller')}><CheckCircle2 className="h-4 w-4 mr-1" /> Vendedor</Button><Button size="sm" variant="secondary" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'closed')}><XCircle className="h-4 w-4 mr-1" /> Cerrar</Button></div></TableCell></TableRow>;
+                    })}</TableBody></Table></div>
                   )}
                 </CardContent>
               </Card>
             </TabsContent>
 
             <TabsContent value="users">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Gestión de Usuarios</CardTitle>
-                  <CardDescription>Administra verificaciones y permisos.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader><TableRow><TableHead>Usuario</TableHead><TableHead>Nombre</TableHead><TableHead>Fecha registro</TableHead><TableHead>Estado</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
-                      <TableBody>
-                        {filteredProfiles.map((profile) => (
-                          <TableRow key={profile.id}>
-                            <TableCell className="font-medium">{profile.username || 'Sin username'}</TableCell>
-                            <TableCell>{profile.full_name || '-'}</TableCell>
-                            <TableCell>{format(new Date(profile.created_at), 'dd/MM/yyyy', { locale: es })}</TableCell>
-                            <TableCell><div className="flex gap-1">{profile.verified && <Badge className="bg-blue-500">Verificado</Badge>}{profile.hasAdminRole && <Badge className="bg-purple-500">Admin</Badge>}</div></TableCell>
-                            <TableCell><div className="flex gap-2"><Button size="sm" variant={profile.verified ? 'outline' : 'default'} onClick={() => handleVerifyUser(profile.id, !profile.verified)}><ShieldCheck className="h-4 w-4" /></Button>{!profile.hasAdminRole && <Button size="sm" variant="secondary" onClick={() => handleMakeAdmin(profile.id)}>Hacer Admin</Button>}</div></TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
+              <Card><CardHeader><CardTitle>Gestión de Usuarios</CardTitle><CardDescription>Administra verificaciones y permisos sin exponer teléfono ni datos privados.</CardDescription></CardHeader><CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Usuario</TableHead><TableHead>Nombre</TableHead><TableHead>Fecha registro</TableHead><TableHead>Estado</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{filteredProfiles.map((profile) => <TableRow key={profile.id}><TableCell className="font-medium">{profile.username || 'Sin username'}</TableCell><TableCell>{profile.full_name || '-'}</TableCell><TableCell>{formatDate(profile.created_at)}</TableCell><TableCell><div className="flex gap-1">{profile.verified && <Badge className="bg-blue-500">Verificado</Badge>}{profile.hasAdminRole && <Badge className="bg-purple-500">Admin</Badge>}</div></TableCell><TableCell><div className="flex gap-2"><Button size="sm" variant={profile.verified ? 'outline' : 'default'} disabled={updatingKey === `verify-${profile.id}`} onClick={() => handleVerifyUser(profile, !profile.verified)}><ShieldCheck className="h-4 w-4" /></Button>{!profile.hasAdminRole && <Button size="sm" variant="secondary" disabled={updatingKey === `admin-${profile.id}`} onClick={() => handleMakeAdmin(profile)}>Hacer Admin</Button>}</div></TableCell></TableRow>)}</TableBody></Table></div></CardContent></Card>
             </TabsContent>
 
             <TabsContent value="products">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Gestión de Productos</CardTitle>
-                  <CardDescription>Modera y administra productos.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader><TableRow><TableHead>Título</TableHead><TableHead>Precio</TableHead><TableHead>Vendedor</TableHead><TableHead>Estado</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
-                      <TableBody>
-                        {filteredProducts.map((product) => (
-                          <TableRow key={product.id}>
-                            <TableCell className="font-medium max-w-[220px] truncate">{product.title}</TableCell>
-                            <TableCell>{product.price.toFixed(2)} €</TableCell>
-                            <TableCell>{product.profiles?.username || product.profiles?.full_name || 'Desconocido'}</TableCell>
-                            <TableCell>{getStatusBadge(product.status)}</TableCell>
-                            <TableCell>{format(new Date(product.created_at), 'dd/MM/yyyy', { locale: es })}</TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button size="sm" variant="outline" onClick={() => navigate(productPath(product.id, product.title))}><Eye className="h-4 w-4" /></Button>
-                                <Select value={product.status || 'active'} onValueChange={(value) => handleUpdateProductStatus(product.id, value)}>
-                                  <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-                                  <SelectContent><SelectItem value="active">Activo</SelectItem><SelectItem value="sold">Vendido</SelectItem><SelectItem value="reserved">Reservado</SelectItem><SelectItem value="inactive">Inactivo</SelectItem></SelectContent>
-                                </Select>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
+              <Card><CardHeader><CardTitle>Gestión de Productos</CardTitle><CardDescription>Modera productos. Estados de venta/reserva se gestionan por transacciones, no manualmente.</CardDescription></CardHeader><CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Título</TableHead><TableHead>Precio</TableHead><TableHead>Vendedor</TableHead><TableHead>Estado</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{filteredProducts.map((product) => <TableRow key={product.id}><TableCell className="font-medium max-w-[220px] truncate">{product.title}</TableCell><TableCell>{formatMoney(product.price)} €</TableCell><TableCell>{product.profiles?.username || product.profiles?.full_name || 'Desconocido'}</TableCell><TableCell>{getStatusBadge(product.status)}</TableCell><TableCell>{formatDate(product.created_at)}</TableCell><TableCell><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => navigate(productPath(product.id, product.title))}><Eye className="h-4 w-4" /></Button><Select value={['active', 'inactive'].includes(product.status || '') ? product.status || 'active' : product.status || 'active'} onValueChange={(value) => handleUpdateProductStatus(product, value)} disabled={updatingKey === `product-${product.id}` || ['sold', 'reserved'].includes(product.status || '')}><SelectTrigger className="w-[125px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Activo</SelectItem><SelectItem value="inactive">Inactivo</SelectItem>{product.status === 'sold' && <SelectItem value="sold" disabled>Vendido</SelectItem>}{product.status === 'reserved' && <SelectItem value="reserved" disabled>Reservado</SelectItem>}</SelectContent></Select></div></TableCell></TableRow>)}</TableBody></Table></div></CardContent></Card>
             </TabsContent>
 
             <TabsContent value="reports">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Gestión de Reportes</CardTitle>
-                  <CardDescription>Revisa y resuelve reportes de usuarios.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader><TableRow><TableHead>Razón</TableHead><TableHead>Descripción</TableHead><TableHead>Estado</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
-                      <TableBody>
-                        {reports.map((report) => (
-                          <TableRow key={report.id}>
-                            <TableCell className="font-medium">{report.reason}</TableCell>
-                            <TableCell className="max-w-[300px] truncate">{report.description || '-'}</TableCell>
-                            <TableCell>{getReportStatusBadge(report.status)}</TableCell>
-                            <TableCell>{format(new Date(report.created_at), 'dd/MM/yyyy', { locale: es })}</TableCell>
-                            <TableCell>
-                              <Select value={report.status} onValueChange={(value) => handleUpdateReportStatus(report.id, value)}>
-                                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-                                <SelectContent><SelectItem value="pending">Pendiente</SelectItem><SelectItem value="reviewing">En revisión</SelectItem><SelectItem value="resolved">Resuelto</SelectItem><SelectItem value="dismissed">Descartado</SelectItem></SelectContent>
-                              </Select>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
+              <Card><CardHeader><CardTitle>Gestión de Reportes</CardTitle><CardDescription>Revisa y resuelve reportes de usuarios.</CardDescription></CardHeader><CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Razón</TableHead><TableHead>Descripción</TableHead><TableHead>Estado</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{filteredReports.map((report) => <TableRow key={report.id}><TableCell className="font-medium">{report.reason}</TableCell><TableCell className="max-w-[300px] truncate">{report.description || '-'}</TableCell><TableCell>{getReportStatusBadge(report.status)}</TableCell><TableCell>{formatDate(report.created_at)}</TableCell><TableCell><Select value={report.status} onValueChange={(value) => handleUpdateReportStatus(report.id, value)} disabled={updatingKey === `report-${report.id}`}><SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">Pendiente</SelectItem><SelectItem value="reviewing">En revisión</SelectItem><SelectItem value="resolved">Resuelto</SelectItem><SelectItem value="dismissed">Descartado</SelectItem></SelectContent></Select></TableCell></TableRow>)}</TableBody></Table></div></CardContent></Card>
             </TabsContent>
 
             <TabsContent value="categories">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Gestión de Categorías</CardTitle>
-                  <CardDescription>Administra las categorías de productos.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader><TableRow><TableHead>Icono</TableHead><TableHead>Nombre</TableHead><TableHead>Fecha creación</TableHead></TableRow></TableHeader>
-                      <TableBody>
-                        {categories.map((category) => (
-                          <TableRow key={category.id}>
-                            <TableCell className="text-2xl">{category.icon || '📦'}</TableCell>
-                            <TableCell className="font-medium">{category.name}</TableCell>
-                            <TableCell>{format(new Date(category.created_at), 'dd/MM/yyyy', { locale: es })}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
+              <Card><CardHeader><CardTitle>Gestión de Categorías</CardTitle><CardDescription>Consulta las categorías de productos.</CardDescription></CardHeader><CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Icono</TableHead><TableHead>Nombre</TableHead><TableHead>Fecha creación</TableHead></TableRow></TableHeader><TableBody>{categories.map((category) => <TableRow key={category.id}><TableCell className="text-2xl">{category.icon || '📦'}</TableCell><TableCell className="font-medium">{category.name}</TableCell><TableCell>{formatDate(category.created_at)}</TableCell></TableRow>)}</TableBody></Table></div></CardContent></Card>
             </TabsContent>
           </Tabs>
         </div>
