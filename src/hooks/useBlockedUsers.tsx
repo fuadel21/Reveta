@@ -13,6 +13,11 @@ interface BlockedUser {
   };
 }
 
+const normalizeReason = (value?: string) => {
+  const reason = value?.trim().replace(/\s+/g, ' ') || '';
+  return reason ? reason.slice(0, 300) : null;
+};
+
 export const useBlockedUsers = () => {
   const { user } = useAuth();
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
@@ -27,35 +32,43 @@ export const useBlockedUsers = () => {
       return;
     }
 
+    setLoading(true);
     const { data, error } = await supabase
       .from('blocked_users')
-      .select('*')
-      .eq('user_id', user.id);
+      .select('id, blocked_user_id, reason, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching blocked users:', error);
+      setBlockedUsers([]);
+      setBlockedUserIds(new Set());
     } else {
       setBlockedUsers(data || []);
-      setBlockedUserIds(new Set(data?.map(b => b.blocked_user_id) || []));
+      setBlockedUserIds(new Set((data || []).map((blocked) => blocked.blocked_user_id)));
     }
 
     setLoading(false);
-  }, [user]);
+  }, [user?.id]);
 
-  const isBlocked = useCallback((userId: string) => {
-    return blockedUserIds.has(userId);
-  }, [blockedUserIds]);
+  const isBlocked = useCallback((userId: string) => blockedUserIds.has(userId), [blockedUserIds]);
 
   const blockUser = useCallback(async (blockedUserId: string, reason?: string) => {
-    if (!user) return false;
+    if (!user || !blockedUserId) return false;
+    if (blockedUserId === user.id) {
+      console.warn('Cannot block yourself');
+      return false;
+    }
+
+    if (blockedUserIds.has(blockedUserId)) return true;
 
     const { error } = await supabase
       .from('blocked_users')
-      .insert({
+      .upsert({
         user_id: user.id,
         blocked_user_id: blockedUserId,
-        reason: reason || null
-      });
+        reason: normalizeReason(reason),
+      } as any, { onConflict: 'user_id,blocked_user_id' });
 
     if (error) {
       console.error('Error blocking user:', error);
@@ -64,10 +77,10 @@ export const useBlockedUsers = () => {
 
     await fetchBlockedUsers();
     return true;
-  }, [user, fetchBlockedUsers]);
+  }, [user?.id, blockedUserIds, fetchBlockedUsers]);
 
   const unblockUser = useCallback(async (blockedUserId: string) => {
-    if (!user) return false;
+    if (!user || !blockedUserId) return false;
 
     const { error } = await supabase
       .from('blocked_users')
@@ -82,19 +95,11 @@ export const useBlockedUsers = () => {
 
     await fetchBlockedUsers();
     return true;
-  }, [user, fetchBlockedUsers]);
+  }, [user?.id, fetchBlockedUsers]);
 
   useEffect(() => {
     fetchBlockedUsers();
   }, [fetchBlockedUsers]);
 
-  return {
-    blockedUsers,
-    blockedUserIds,
-    loading,
-    isBlocked,
-    blockUser,
-    unblockUser,
-    refetch: fetchBlockedUsers
-  };
+  return { blockedUsers, blockedUserIds, loading, isBlocked, blockUser, unblockUser, refetch: fetchBlockedUsers };
 };
