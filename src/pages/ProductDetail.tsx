@@ -24,7 +24,7 @@ interface Product {
   title: string;
   description: string | null;
   price: number;
-  images: string[];
+  images: string[] | null;
   location: string | null;
   condition: string | null;
   status: string | null;
@@ -78,6 +78,9 @@ const schemaCondition = (condition?: string | null) => {
   return 'https://schema.org/UsedCondition';
 };
 
+const conversationSelect = 'id, product_id, buyer_id, seller_id, updated_at';
+const productSelect = 'id, title, description, price, images, location, condition, status, views, created_at, user_id, category_id';
+
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -97,25 +100,26 @@ const ProductDetail = () => {
 
   useEffect(() => {
     if (id) fetchProduct();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {
     if (product && user) checkFavorite();
-  }, [product, user]);
+    else setIsFavorite(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product?.id, user?.id]);
 
   useEffect(() => {
     if (!product) return;
-
     const canonicalPath = `/producto/${product.id}/${createProductSlug(product.title)}`;
-    if (location.pathname !== canonicalPath) {
-      navigate(canonicalPath, { replace: true });
-    }
+    if (location.pathname !== canonicalPath) navigate(canonicalPath, { replace: true });
   }, [product, location.pathname, navigate]);
 
   const fetchProduct = async () => {
     if (!id) return;
+    setLoading(true);
 
-    const { data, error } = await supabase.from('products').select('*').eq('id', id).maybeSingle();
+    const { data, error } = await supabase.from('products').select(productSelect).eq('id', id).maybeSingle();
 
     if (error || !data) {
       console.error('Error fetching product:', error);
@@ -124,6 +128,8 @@ const ProductDetail = () => {
     }
 
     setProduct(data as Product);
+    setCurrentImageIndex(0);
+
     await supabase.from('products').update({ views: (data.views || 0) + 1 }).eq('id', id);
 
     const { data: sellerData } = await supabase
@@ -141,8 +147,10 @@ const ProductDetail = () => {
     setSellerActiveProductsCount(activeCount || 0);
 
     if (data.category_id) {
-      const { data: categoryData } = await supabase.from('categories').select('*').eq('id', data.category_id).maybeSingle();
+      const { data: categoryData } = await supabase.from('categories').select('id, name').eq('id', data.category_id).maybeSingle();
       if (categoryData) setCategory(categoryData);
+    } else {
+      setCategory(null);
     }
 
     setLoading(false);
@@ -162,12 +170,25 @@ const ProductDetail = () => {
 
     if (!product) return;
 
+    if (product.user_id === user.id) {
+      toast({ title: 'Es tu producto', description: 'No necesitas guardar tu propio anuncio en favoritos.' });
+      return;
+    }
+
     if (isFavorite) {
-      await supabase.from('favorites').delete().eq('user_id', user.id).eq('product_id', product.id);
+      const { error } = await supabase.from('favorites').delete().eq('user_id', user.id).eq('product_id', product.id);
+      if (error) {
+        toast({ title: 'Error', description: 'No se pudo eliminar de favoritos', variant: 'destructive' });
+        return;
+      }
       setIsFavorite(false);
       toast({ title: 'Eliminado de favoritos', description: 'El producto se ha eliminado de tus favoritos' });
     } else {
-      await supabase.from('favorites').insert({ user_id: user.id, product_id: product.id });
+      const { error } = await supabase.from('favorites').upsert({ user_id: user.id, product_id: product.id } as any, { onConflict: 'user_id,product_id' });
+      if (error) {
+        toast({ title: 'Error', description: 'No se pudo añadir a favoritos', variant: 'destructive' });
+        return;
+      }
       setIsFavorite(true);
       toast({ title: 'Añadido a favoritos', description: 'El producto se ha añadido a tus favoritos' });
     }
@@ -182,6 +203,10 @@ const ProductDetail = () => {
       toast({ title: 'Producto no disponible', description: 'Este producto ya no acepta nuevas conversaciones ni ofertas.', variant: 'destructive' });
       return;
     }
+    if (product.user_id === user.id) {
+      toast({ title: 'Es tu producto', description: 'No puedes abrir chat como comprador de tu propio anuncio.' });
+      return;
+    }
     setShowChat(true);
   };
 
@@ -190,7 +215,7 @@ const ProductDetail = () => {
 
     const { data: existing, error: existingError } = await supabase
       .from('conversations')
-      .select('*')
+      .select(conversationSelect)
       .eq('product_id', product.id)
       .eq('buyer_id', user.id)
       .eq('seller_id', seller.id)
@@ -202,7 +227,7 @@ const ProductDetail = () => {
     const { data: created, error: createError } = await supabase
       .from('conversations')
       .insert({ product_id: product.id, buyer_id: user.id, seller_id: seller.id })
-      .select('*')
+      .select(conversationSelect)
       .single();
 
     if (createError) throw createError;
@@ -220,6 +245,11 @@ const ProductDetail = () => {
       toast({ title: 'Producto no disponible', description: 'No se pueden crear llamadas nuevas para productos no activos.', variant: 'destructive' });
       return;
     }
+    if (product.user_id === user.id) {
+      toast({ title: 'Es tu producto', description: 'No puedes solicitar una llamada privada sobre tu propio anuncio.' });
+      return;
+    }
+
     setRequestingCall(true);
 
     try {
@@ -229,7 +259,7 @@ const ProductDetail = () => {
       const { data: callSession, error: callError } = await supabase
         .from('call_sessions')
         .insert({ conversation_id: conversation.id, product_id: product.id, caller_id: user.id, callee_id: seller.id, status: 'requested' })
-        .select('*')
+        .select('id')
         .single();
 
       if (callError || !callSession?.id) throw callError || new Error('No se pudo crear la sala de llamada');
@@ -255,9 +285,11 @@ const ProductDetail = () => {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
   if (!product) return null;
 
-  const productImage = product.images?.[currentImageIndex];
+  const images = Array.isArray(product.images) ? product.images : [];
+  const productImage = images[currentImageIndex];
   const canonicalUrl = `https://reveta.es/producto/${product.id}/${createProductSlug(product.title)}`;
   const isProductAvailable = product.status === 'active';
+  const isOwner = product.user_id === user?.id;
   const shouldIndexProduct = isProductAvailable;
   const productJsonLd = {
     '@context': 'https://schema.org',
@@ -265,14 +297,11 @@ const ProductDetail = () => {
     '@id': `${canonicalUrl}#product`,
     name: product.title,
     description: product.description || `${product.title} en venta en Reveta`,
-    image: product.images?.length ? product.images.map((image) => absoluteUrl(image)) : [absoluteUrl(productImage)],
+    image: images.length ? images.map((image) => absoluteUrl(image)) : [absoluteUrl(productImage)],
     category: category?.name,
     itemCondition: schemaCondition(product.condition),
     url: canonicalUrl,
-    brand: {
-      '@type': 'Brand',
-      name: 'Reveta',
-    },
+    brand: { '@type': 'Brand', name: 'Reveta' },
     offers: {
       '@type': 'Offer',
       url: canonicalUrl,
@@ -280,10 +309,7 @@ const ProductDetail = () => {
       price: product.price.toFixed(2),
       availability: schemaAvailability(product.status),
       itemCondition: schemaCondition(product.condition),
-      seller: {
-        '@type': 'Person',
-        name: seller?.full_name || 'Vendedor Reveta',
-      },
+      seller: { '@type': 'Person', name: seller?.full_name || 'Vendedor Reveta' },
       areaServed: product.location || 'España',
     },
   };
@@ -292,24 +318,9 @@ const ProductDetail = () => {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: [
-      {
-        '@type': 'ListItem',
-        position: 1,
-        name: 'Reveta',
-        item: 'https://reveta.es/',
-      },
-      {
-        '@type': 'ListItem',
-        position: 2,
-        name: 'Segunda mano',
-        item: 'https://reveta.es/segunda-mano',
-      },
-      {
-        '@type': 'ListItem',
-        position: 3,
-        name: product.title,
-        item: canonicalUrl,
-      },
+      { '@type': 'ListItem', position: 1, name: 'Reveta', item: 'https://reveta.es/' },
+      { '@type': 'ListItem', position: 2, name: 'Segunda mano', item: 'https://reveta.es/segunda-mano' },
+      { '@type': 'ListItem', position: 3, name: product.title, item: canonicalUrl },
     ],
   };
 
@@ -332,18 +343,14 @@ const ProductDetail = () => {
         <Header />
         <main className="flex-1 container py-8">
           <Button variant="ghost" onClick={() => navigate(-1)} className="mb-4"><ChevronLeft className="h-4 w-4 mr-2" />Volver</Button>
-          {!isProductAvailable && (
-            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-              Este producto ya no está activo. Puedes consultar la información, pero no acepta nuevas conversaciones, llamadas ni ofertas.
-            </div>
-          )}
+          {!isProductAvailable && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">Este producto ya no está activo. Puedes consultar la información, pero no acepta nuevas conversaciones, llamadas ni ofertas.</div>}
           <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
             <div className="space-y-4">
               <div className="relative aspect-square rounded-xl overflow-hidden bg-muted">
                 {productImage ? <img src={productImage} alt={product.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-muted-foreground">Sin imagen</div>}
-                {product.images?.length > 1 && <><Button size="icon" variant="secondary" className="absolute left-2 top-1/2 -translate-y-1/2" onClick={() => setCurrentImageIndex((i) => Math.max(0, i - 1))}><ChevronLeft /></Button><Button size="icon" variant="secondary" className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setCurrentImageIndex((i) => Math.min(product.images.length - 1, i + 1))}><ChevronRight /></Button></>}
+                {images.length > 1 && <><Button size="icon" variant="secondary" className="absolute left-2 top-1/2 -translate-y-1/2" onClick={() => setCurrentImageIndex((i) => Math.max(0, i - 1))}><ChevronLeft /></Button><Button size="icon" variant="secondary" className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setCurrentImageIndex((i) => Math.min(images.length - 1, i + 1))}><ChevronRight /></Button></>}
               </div>
-              <div className="flex gap-2 overflow-x-auto">{product.images?.map((image, index) => <button key={image} onClick={() => setCurrentImageIndex(index)} className={`h-20 w-20 rounded-lg overflow-hidden border-2 ${index === currentImageIndex ? 'border-primary' : 'border-transparent'}`}><img src={image} alt="" className="w-full h-full object-cover" /></button>)}</div>
+              <div className="flex gap-2 overflow-x-auto">{images.map((image, index) => <button key={`${image}-${index}`} onClick={() => setCurrentImageIndex(index)} className={`h-20 w-20 rounded-lg overflow-hidden border-2 ${index === currentImageIndex ? 'border-primary' : 'border-transparent'}`}><img src={image} alt="" className="w-full h-full object-cover" /></button>)}</div>
             </div>
 
             <aside className="space-y-5">
@@ -351,14 +358,14 @@ const ProductDetail = () => {
                 <div className="flex items-start justify-between gap-3"><h1 className="text-2xl font-bold">{product.title}</h1><ProductStatusBadge status={product.status || 'active'} /></div>
                 <p className="text-3xl font-bold text-primary mt-3">{product.price.toLocaleString('es-ES')} €</p>
                 <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mt-3">{product.location && <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{product.location}</span>}<span className="flex items-center gap-1"><Eye className="h-4 w-4" />{product.views || 0} vistas</span><span className="flex items-center gap-1"><Clock className="h-4 w-4" />{new Date(product.created_at).toLocaleDateString('es-ES')}</span></div>
-                <div className="mt-5 flex gap-2"><Button className="flex-1" onClick={handleContactSeller} disabled={!isProductAvailable || product.user_id === user?.id}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button><Button variant="outline" onClick={toggleFavorite}><Heart className={`h-4 w-4 ${isFavorite ? 'fill-current text-red-500' : ''}`} /></Button></div>
-                <Button variant="secondary" className="w-full mt-2" onClick={handleRequestPrivateCall} disabled={requestingCall || !user || product.user_id === user?.id || !isProductAvailable}><Phone className="h-4 w-4 mr-2" />Llamada privada</Button>
+                <div className="mt-5 flex gap-2"><Button className="flex-1" onClick={handleContactSeller} disabled={!isProductAvailable || isOwner}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button><Button variant="outline" onClick={toggleFavorite} disabled={isOwner}><Heart className={`h-4 w-4 ${isFavorite ? 'fill-current text-red-500' : ''}`} /></Button></div>
+                <Button variant="secondary" className="w-full mt-2" onClick={handleRequestPrivateCall} disabled={requestingCall || !user || isOwner || !isProductAvailable}><Phone className="h-4 w-4 mr-2" />Llamada privada</Button>
               </div>
 
               <SellerTrustCard seller={seller} activeProductsCount={sellerActiveProductsCount} />
               <ProductBuyerConfidence />
               <PurchaseDecisionGuide />
-              <ReportProductButton productId={product.id} sellerId={product.user_id} />
+              <ReportProductButton productId={product.id} sellerId={product.user_id} productTitle={product.title} isOwner={isOwner} />
               <SocialShareButtons title={product.title} url={canonicalUrl} />
             </aside>
           </div>
