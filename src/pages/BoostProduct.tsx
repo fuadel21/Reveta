@@ -47,6 +47,9 @@ const getFunctionErrorMessage = async (error: any) => {
   return error?.message || 'No se pudo conectar con el servidor.';
 };
 
+const isBoostActive = (value?: string | null) => !!value && new Date(value).getTime() > Date.now();
+const formatBoostUntil = (value?: string | null) => value ? new Date(value).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+
 const BoostPaymentForm = ({ product }: { product: Product }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -61,6 +64,7 @@ const BoostPaymentForm = ({ product }: { product: Product }) => {
 
   const plan = useMemo(() => BOOST_PLANS.find((item) => item.id === selectedPlan) || BOOST_PLANS[0], [selectedPlan]);
   const productImage = Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null;
+  const boostActive = isBoostActive(product.boosted_until);
 
   const handlePayment = async () => {
     if (submitLockRef.current) return;
@@ -68,9 +72,11 @@ const BoostPaymentForm = ({ product }: { product: Product }) => {
     setProcessing(true);
 
     try {
+      if (boostActive) throw new Error('Este producto ya tiene un destacado activo.');
       if (!STRIPE_PAYMENTS_ENABLED) throw new Error('Los pagos con tarjeta no están activos todavía.');
       if (!stripe || !elements) throw new Error('Stripe no está cargado. Recarga la página.');
       if (!user) throw new Error('Debes iniciar sesión para destacar un producto.');
+      if (cardError) throw new Error(cardError);
 
       const card = elements.getElement(CardElement);
       if (!card) throw new Error('No se pudo leer la tarjeta.');
@@ -87,25 +93,16 @@ const BoostPaymentForm = ({ product }: { product: Product }) => {
       const clientSecret = data?.clientSecret;
       if (!clientSecret) throw new Error('No se pudo preparar el pago del destacado.');
 
-      const result = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: { card },
-      });
+      const result = await stripe.confirmCardPayment(clientSecret, { payment_method: { card } });
 
       if (result.error) throw new Error(result.error.message || 'El pago no se pudo completar.');
       if (result.paymentIntent?.status !== 'succeeded') throw new Error('El pago no se ha confirmado todavía.');
 
-      toast({
-        title: 'Pago recibido',
-        description: 'El destacado se activará automáticamente cuando Stripe confirme el webhook.',
-      });
+      toast({ title: 'Pago recibido', description: 'El destacado se activará automáticamente cuando Stripe confirme el webhook.' });
       navigate('/profile', { replace: true });
     } catch (error: any) {
       console.error('Boost payment error:', error);
-      toast({
-        title: 'No se pudo destacar el producto',
-        description: error?.message || 'Inténtalo de nuevo.',
-        variant: 'destructive',
-      });
+      toast({ title: 'No se pudo destacar el producto', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
       submitLockRef.current = false;
     } finally {
       setProcessing(false);
@@ -115,85 +112,45 @@ const BoostPaymentForm = ({ product }: { product: Product }) => {
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="lg:col-span-2 space-y-6">
+        {boostActive && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="pt-6 text-sm text-amber-950">
+              Este producto ya está destacado hasta {formatBoostUntil(product.boosted_until)}. Para evitar cobros duplicados, espera a que termine el destacado actual.
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              Elige cuánto tiempo quieres destacar tu producto
-            </CardTitle>
-            <CardDescription>Los productos destacados aparecen por encima de los productos normales en búsquedas y listados.</CardDescription>
-          </CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Elige cuánto tiempo quieres destacar tu producto</CardTitle><CardDescription>Los productos destacados aparecen por encima de los productos normales en búsquedas y listados.</CardDescription></CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-3">
             {BOOST_PLANS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setSelectedPlan(item.id)}
-                className={`rounded-xl border p-4 text-left transition hover:border-primary ${selectedPlan === item.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border'}`}
-              >
-                <p className="font-bold">{item.label}</p>
-                <p className="text-2xl font-bold text-primary mt-2">{item.price.toFixed(2)} €</p>
-                <p className="text-xs text-muted-foreground mt-1">{item.description}</p>
-                {selectedPlan === item.id && <Badge className="mt-3">Seleccionado</Badge>}
+              <button key={item.id} type="button" disabled={boostActive || processing} onClick={() => setSelectedPlan(item.id)} className={`rounded-xl border p-4 text-left transition hover:border-primary disabled:opacity-60 ${selectedPlan === item.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-border'}`}>
+                <p className="font-bold">{item.label}</p><p className="text-2xl font-bold text-primary mt-2">{item.price.toFixed(2)} €</p><p className="text-xs text-muted-foreground mt-1">{item.description}</p>{selectedPlan === item.id && <Badge className="mt-3">Seleccionado</Badge>}
               </button>
             ))}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
-              Pago con tarjeta
-            </CardTitle>
-            <CardDescription>Pago con Stripe. Reveta no guarda los datos de tu tarjeta.</CardDescription>
-          </CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><CreditCard className="h-5 w-5" />Pago con tarjeta</CardTitle><CardDescription>Pago con Stripe. Reveta no guarda los datos de tu tarjeta.</CardDescription></CardHeader>
           <CardContent className="space-y-4">
             {!STRIPE_PAYMENTS_ENABLED ? (
-              <div className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">
-                Los pagos con tarjeta no están activos. Revisa VITE_STRIPE_PUBLISHABLE_KEY y VITE_ENABLE_STRIPE_PAYMENTS.
-              </div>
+              <div className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive">Los pagos con tarjeta no están activos. Revisa VITE_STRIPE_PUBLISHABLE_KEY y VITE_ENABLE_STRIPE_PAYMENTS.</div>
+            ) : boostActive ? (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-950">Pago bloqueado porque el destacado actual sigue activo.</div>
             ) : (
-              <div className="rounded-lg border bg-background p-4">
-                <CardElement onChange={(event) => setCardError(event.error?.message || null)} options={{ hidePostalCode: true }} />
-              </div>
+              <div className="rounded-lg border bg-background p-4"><CardElement onChange={(event) => setCardError(event.error?.message || null)} options={{ hidePostalCode: true }} /></div>
             )}
             {cardError && <p className="text-sm text-destructive">{cardError}</p>}
-            <Button className="w-full h-12 text-base font-bold" onClick={handlePayment} disabled={processing || !STRIPE_PAYMENTS_ENABLED}>
-              {processing ? 'Procesando...' : `Pagar ${plan.price.toFixed(2)} € y destacar`}
-            </Button>
+            <Button className="w-full h-12 text-base font-bold" onClick={handlePayment} disabled={processing || !STRIPE_PAYMENTS_ENABLED || !!cardError || boostActive}>{processing ? 'Procesando...' : `Pagar ${plan.price.toFixed(2)} € y destacar`}</Button>
             <p className="text-xs text-muted-foreground">La activación final se hace desde el webhook de Stripe para evitar activaciones sin pago confirmado.</p>
           </CardContent>
         </Card>
       </div>
 
       <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Resumen</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="overflow-hidden rounded-xl bg-muted aspect-video">
-              {productImage ? <img src={productImage} alt={product.title} className="h-full w-full object-cover" /> : <div className="h-full w-full flex items-center justify-center text-muted-foreground">Sin imagen</div>}
-            </div>
-            <div>
-              <p className="font-semibold">{product.title}</p>
-              <p className="text-sm text-muted-foreground">Precio del producto: {product.price.toLocaleString('es-ES')} €</p>
-            </div>
-            <div className="rounded-lg bg-primary/5 border border-primary/10 p-3 text-sm">
-              <p className="font-bold">Plan: {plan.label}</p>
-              <p>Importe: {plan.price.toFixed(2)} €</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-primary/5 border-primary/10">
-          <CardContent className="pt-6 space-y-3 text-sm">
-            <div className="flex gap-2"><Check className="h-4 w-4 text-primary shrink-0" /><span>Aparece antes en búsquedas.</span></div>
-            <div className="flex gap-2"><Check className="h-4 w-4 text-primary shrink-0" /><span>Etiqueta visual de destacado.</span></div>
-            <div className="flex gap-2"><Shield className="h-4 w-4 text-primary shrink-0" /><span>Se activa solo cuando Stripe confirma el pago.</span></div>
-          </CardContent>
-        </Card>
+        <Card><CardHeader><CardTitle>Resumen</CardTitle></CardHeader><CardContent className="space-y-4"><div className="overflow-hidden rounded-xl bg-muted aspect-video">{productImage ? <img src={productImage} alt={product.title} className="h-full w-full object-cover" /> : <div className="h-full w-full flex items-center justify-center text-muted-foreground">Sin imagen</div>}</div><div><p className="font-semibold">{product.title}</p><p className="text-sm text-muted-foreground">Precio del producto: {product.price.toLocaleString('es-ES')} €</p>{boostActive && <p className="text-xs text-amber-700 mt-1">Destacado activo hasta {formatBoostUntil(product.boosted_until)}</p>}</div><div className="rounded-lg bg-primary/5 border border-primary/10 p-3 text-sm"><p className="font-bold">Plan: {plan.label}</p><p>Importe: {plan.price.toFixed(2)} €</p></div></CardContent></Card>
+        <Card className="bg-primary/5 border-primary/10"><CardContent className="pt-6 space-y-3 text-sm"><div className="flex gap-2"><Check className="h-4 w-4 text-primary shrink-0" /><span>Aparece antes en búsquedas.</span></div><div className="flex gap-2"><Check className="h-4 w-4 text-primary shrink-0" /><span>Etiqueta visual de destacado.</span></div><div className="flex gap-2"><Shield className="h-4 w-4 text-primary shrink-0" /><span>Se activa solo cuando Stripe confirma el pago.</span></div></CardContent></Card>
       </div>
     </div>
   );
@@ -213,10 +170,12 @@ const BoostProduct = () => {
 
   useEffect(() => {
     if (user && productId) fetchProduct();
-  }, [user, productId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, productId]);
 
   const fetchProduct = async () => {
     if (!productId || !user) return;
+    setLoading(true);
 
     const { data, error } = await supabase
       .from('products')
@@ -246,32 +205,18 @@ const BoostProduct = () => {
     setLoading(false);
   };
 
-  if (authLoading || loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
-  }
-
+  if (authLoading || loading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
   if (!product) return null;
 
   return (
     <>
-      <Helmet>
-        <title>Destacar producto | Reveta</title>
-        <meta name="description" content="Destaca tu producto en Reveta para conseguir más visibilidad" />
-      </Helmet>
+      <Helmet><title>Destacar producto | Reveta</title><meta name="description" content="Destaca tu producto privado en Reveta" /><meta name="robots" content="noindex,nofollow,noarchive" /></Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <main className="flex-1 container py-8">
-          <Button variant="ghost" className="mb-6" onClick={() => navigate('/profile')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Volver al perfil
-          </Button>
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold flex items-center gap-2"><Megaphone className="h-7 w-7 text-primary" />Destacar producto</h1>
-            <p className="text-muted-foreground mt-2">Paga una vez y aumenta la visibilidad de tu anuncio.</p>
-          </div>
-          <Elements stripe={stripePromise}>
-            <BoostPaymentForm product={product} />
-          </Elements>
+          <Button variant="ghost" className="mb-6" onClick={() => navigate('/profile')}><ArrowLeft className="h-4 w-4 mr-2" />Volver al perfil</Button>
+          <div className="mb-6"><h1 className="text-3xl font-bold flex items-center gap-2"><Megaphone className="h-7 w-7 text-primary" />Destacar producto</h1><p className="text-muted-foreground mt-2">Paga una vez y aumenta la visibilidad de tu anuncio.</p></div>
+          <Elements stripe={stripePromise}><BoostPaymentForm product={product} /></Elements>
         </main>
         <Footer />
       </div>
