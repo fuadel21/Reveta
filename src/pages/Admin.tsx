@@ -49,10 +49,15 @@ interface Product {
 
 interface Report {
   id: string;
+  source: 'legacy' | 'product';
   reason: string;
   description: string | null;
   status: string;
   created_at: string;
+  product_id?: string | null;
+  product_title?: string | null;
+  reporter_id?: string | null;
+  seller_id?: string | null;
 }
 
 interface Category {
@@ -97,6 +102,7 @@ const productPath = (id: string, title?: string | null) => {
 const formatDate = (value: string) => new Date(value).toLocaleDateString('es-ES');
 const formatMoney = (value?: number | null) => Number(value || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const TERMINAL_DISPUTES = ['resolved_buyer', 'resolved_seller', 'closed'];
+const REPORT_STATUSES = ['pending', 'reviewing', 'resolved', 'dismissed'];
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -135,11 +141,7 @@ const Admin = () => {
   };
 
   const fetchProfiles = async () => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, username, full_name, verified, created_at')
-      .order('created_at', { ascending: false });
-
+    const { data, error } = await supabase.from('profiles').select('id, username, full_name, verified, created_at').order('created_at', { ascending: false });
     if (error) {
       console.error('Error fetching profiles:', error);
       toast.error('No se pudieron cargar los usuarios');
@@ -154,39 +156,67 @@ const Admin = () => {
   };
 
   const fetchProducts = async () => {
-    const { data, error } = await supabase
-      .from('products')
-      .select('id, title, price, status, created_at, user_id')
-      .order('created_at', { ascending: false });
-
+    const { data, error } = await supabase.from('products').select('id, title, price, status, created_at, user_id').order('created_at', { ascending: false });
     if (error) {
       console.error('Error fetching products:', error);
       toast.error('No se pudieron cargar los productos');
       return;
     }
 
-    const productsWithProfiles = await Promise.all(
-      (data || []).map(async (product: any) => {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('username, full_name')
-          .eq('id', product.user_id)
-          .maybeSingle();
-        return { ...product, profiles: profileData || null };
-      }),
-    );
+    const productsWithProfiles = await Promise.all((data || []).map(async (product: any) => {
+      const { data: profileData } = await supabase.from('profiles').select('username, full_name').eq('id', product.user_id).maybeSingle();
+      return { ...product, profiles: profileData || null };
+    }));
 
     setProducts(productsWithProfiles);
   };
 
   const fetchReports = async () => {
-    const { data, error } = await supabase.from('reports').select('id, reason, description, status, created_at').order('created_at', { ascending: false });
-    if (error) {
-      console.error('Error fetching reports:', error);
+    const [legacyResult, productReportsResult] = await Promise.all([
+      supabase.from('reports').select('id, reason, description, status, created_at').order('created_at', { ascending: false }),
+      (supabase as any).from('product_reports').select('id, product_id, seller_id, reporter_id, reason, details, status, created_at').order('created_at', { ascending: false }),
+    ]);
+
+    if (legacyResult.error) console.error('Error fetching legacy reports:', legacyResult.error);
+    if (productReportsResult.error) console.error('Error fetching product reports:', productReportsResult.error);
+
+    if (legacyResult.error && productReportsResult.error) {
       toast.error('No se pudieron cargar los reportes');
+      setReports([]);
       return;
     }
-    setReports(data || []);
+
+    const legacyReports: Report[] = (legacyResult.data || []).map((report: any) => ({
+      id: report.id,
+      source: 'legacy',
+      reason: report.reason,
+      description: report.description || null,
+      status: report.status || 'pending',
+      created_at: report.created_at,
+    }));
+
+    const productReports: Report[] = await Promise.all((productReportsResult.data || []).map(async (report: any) => {
+      let productTitle: string | null = null;
+      if (report.product_id) {
+        const { data: product } = await supabase.from('products').select('title').eq('id', report.product_id).maybeSingle();
+        productTitle = product?.title || null;
+      }
+
+      return {
+        id: report.id,
+        source: 'product',
+        reason: report.reason,
+        description: report.details || null,
+        status: report.status || 'pending',
+        created_at: report.created_at,
+        product_id: report.product_id || null,
+        product_title: productTitle,
+        reporter_id: report.reporter_id || null,
+        seller_id: report.seller_id || null,
+      };
+    }));
+
+    setReports([...productReports, ...legacyReports].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
   };
 
   const fetchCategories = async () => {
@@ -207,25 +237,23 @@ const Admin = () => {
       return;
     }
 
-    const enrichedDisputes = await Promise.all(
-      (data || []).map(async (dispute: any) => {
-        const [{ data: product }, { data: buyer }, { data: seller }, { data: transaction }] = await Promise.all([
-          supabase.from('products').select('title').eq('id', dispute.product_id).maybeSingle(),
-          supabase.from('profiles').select('full_name, username').eq('id', dispute.buyer_id).maybeSingle(),
-          supabase.from('profiles').select('full_name, username').eq('id', dispute.seller_id).maybeSingle(),
-          supabase.from('transactions').select('status, amount').eq('id', dispute.transaction_id).maybeSingle(),
-        ]);
+    const enrichedDisputes = await Promise.all((data || []).map(async (dispute: any) => {
+      const [{ data: product }, { data: buyer }, { data: seller }, { data: transaction }] = await Promise.all([
+        supabase.from('products').select('title').eq('id', dispute.product_id).maybeSingle(),
+        supabase.from('profiles').select('full_name, username').eq('id', dispute.buyer_id).maybeSingle(),
+        supabase.from('profiles').select('full_name, username').eq('id', dispute.seller_id).maybeSingle(),
+        supabase.from('transactions').select('status, amount').eq('id', dispute.transaction_id).maybeSingle(),
+      ]);
 
-        return {
-          ...dispute,
-          product_title: product?.title || 'Producto eliminado',
-          buyer_name: buyer?.full_name || buyer?.username || 'Comprador',
-          seller_name: seller?.full_name || seller?.username || 'Vendedor',
-          transaction_status: transaction?.status || null,
-          amount: transaction?.amount || null,
-        } as Dispute;
-      }),
-    );
+      return {
+        ...dispute,
+        product_title: product?.title || 'Producto eliminado',
+        buyer_name: buyer?.full_name || buyer?.username || 'Comprador',
+        seller_name: seller?.full_name || seller?.username || 'Vendedor',
+        transaction_status: transaction?.status || null,
+        amount: transaction?.amount || null,
+      } as Dispute;
+    }));
 
     setDisputes(enrichedDisputes);
   };
@@ -237,11 +265,7 @@ const Admin = () => {
     }
 
     setUpdatingKey(`verify-${profile.id}`);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ verified, verified_at: verified ? new Date().toISOString() : null } as any)
-      .eq('id', profile.id);
-
+    const { error } = await supabase.from('profiles').update({ verified, verified_at: verified ? new Date().toISOString() : null } as any).eq('id', profile.id);
     if (error) {
       toast.error('Error al actualizar verificación');
       setUpdatingKey(null);
@@ -297,10 +321,17 @@ const Admin = () => {
     setUpdatingKey(null);
   };
 
-  const handleUpdateReportStatus = async (reportId: string, status: string) => {
-    setUpdatingKey(`report-${reportId}`);
-    const { error } = await supabase.from('reports').update({ status }).eq('id', reportId);
+  const handleUpdateReportStatus = async (report: Report, status: string) => {
+    if (!REPORT_STATUSES.includes(status)) {
+      toast.error('Estado de reporte no válido');
+      return;
+    }
+
+    setUpdatingKey(`report-${report.source}-${report.id}`);
+    const table = report.source === 'product' ? 'product_reports' : 'reports';
+    const { error } = await (supabase as any).from(table).update({ status }).eq('id', report.id);
     if (error) {
+      console.error('Error updating report:', error);
       toast.error('Error al actualizar reporte');
       setUpdatingKey(null);
       return;
@@ -327,15 +358,12 @@ const Admin = () => {
       closed: 'Cerrada por Reveta',
     };
 
-    const { error } = await (supabase as any)
-      .from('disputes')
-      .update({
-        status: nextStatus,
-        resolution: resolutionMap[nextStatus] || null,
-        updated_at: now,
-        closed_at: TERMINAL_DISPUTES.includes(nextStatus) ? now : null,
-      })
-      .eq('id', dispute.id);
+    const { error } = await (supabase as any).from('disputes').update({
+      status: nextStatus,
+      resolution: resolutionMap[nextStatus] || null,
+      updated_at: now,
+      closed_at: TERMINAL_DISPUTES.includes(nextStatus) ? now : null,
+    }).eq('id', dispute.id);
 
     if (error) {
       toast.error('No se pudo actualizar la incidencia');
@@ -377,30 +405,12 @@ const Admin = () => {
     return <Badge variant="outline">{status}</Badge>;
   };
 
-  const filteredProfiles = useMemo(
-    () => profiles.filter((profile) => `${profile.username || ''} ${profile.full_name || ''}`.toLowerCase().includes(searchTerm.toLowerCase())),
-    [profiles, searchTerm],
-  );
+  const filteredProfiles = useMemo(() => profiles.filter((profile) => `${profile.username || ''} ${profile.full_name || ''}`.toLowerCase().includes(searchTerm.toLowerCase())), [profiles, searchTerm]);
+  const filteredProducts = useMemo(() => products.filter((product) => `${product.title} ${product.profiles?.username || ''} ${product.profiles?.full_name || ''}`.toLowerCase().includes(searchTerm.toLowerCase())), [products, searchTerm]);
+  const filteredReports = useMemo(() => reports.filter((report) => `${report.reason} ${report.description || ''} ${report.status} ${report.product_title || ''} ${report.source}`.toLowerCase().includes(searchTerm.toLowerCase())), [reports, searchTerm]);
+  const filteredDisputes = useMemo(() => disputes.filter((dispute) => `${dispute.reason} ${dispute.product_title || ''} ${dispute.buyer_name || ''} ${dispute.seller_name || ''}`.toLowerCase().includes(searchTerm.toLowerCase())), [disputes, searchTerm]);
 
-  const filteredProducts = useMemo(
-    () => products.filter((product) => `${product.title} ${product.profiles?.username || ''} ${product.profiles?.full_name || ''}`.toLowerCase().includes(searchTerm.toLowerCase())),
-    [products, searchTerm],
-  );
-
-  const filteredReports = useMemo(
-    () => reports.filter((report) => `${report.reason} ${report.description || ''} ${report.status}`.toLowerCase().includes(searchTerm.toLowerCase())),
-    [reports, searchTerm],
-  );
-
-  const filteredDisputes = useMemo(
-    () => disputes.filter((dispute) => `${dispute.reason} ${dispute.product_title || ''} ${dispute.buyer_name || ''} ${dispute.seller_name || ''}`.toLowerCase().includes(searchTerm.toLowerCase())),
-    [disputes, searchTerm],
-  );
-
-  if (authLoading || adminLoading) {
-    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
-  }
-
+  if (authLoading || adminLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   if (!isAdmin) return null;
 
   const pendingReports = reports.filter((report) => report.status === 'pending').length;
@@ -409,24 +419,12 @@ const Admin = () => {
 
   return (
     <>
-      <Helmet>
-        <title>Centro de Control Reveta</title>
-        <meta name="robots" content="noindex,nofollow,noarchive" />
-      </Helmet>
+      <Helmet><title>Centro de Control Reveta</title><meta name="robots" content="noindex,nofollow,noarchive" /></Helmet>
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col gap-4 mb-8 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" onClick={() => navigate('/')}><ArrowLeft className="h-5 w-5" /></Button>
-              <div>
-                <h1 className="text-3xl font-bold">Centro de Control Reveta</h1>
-                <p className="text-muted-foreground">Gestiona usuarios, productos, crecimiento, reportes e incidencias.</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => navigate('/admin/growth')}><BarChart3 className="h-4 w-4 mr-2" /> Crecimiento</Button>
-              <Button variant="outline" onClick={fetchAllData}><Loader2 className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Actualizar</Button>
-            </div>
+            <div className="flex items-center gap-4"><Button variant="ghost" size="icon" onClick={() => navigate('/')}><ArrowLeft className="h-5 w-5" /></Button><div><h1 className="text-3xl font-bold">Centro de Control Reveta</h1><p className="text-muted-foreground">Gestiona usuarios, productos, crecimiento, reportes e incidencias.</p></div></div>
+            <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => navigate('/admin/growth')}><BarChart3 className="h-4 w-4 mr-2" /> Crecimiento</Button><Button variant="outline" onClick={fetchAllData}><Loader2 className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Actualizar</Button></div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
@@ -440,14 +438,11 @@ const Admin = () => {
           <div className="grid gap-4 mb-8 md:grid-cols-4">
             <Card className="cursor-pointer transition hover:shadow-md" onClick={() => navigate('/admin/growth')}><CardHeader><CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Crecimiento</CardTitle><CardDescription>Búsquedas, ciudades y productos clicados.</CardDescription></CardHeader></Card>
             <Card className="cursor-pointer transition hover:shadow-md" onClick={() => setActiveTab('disputes')}><CardHeader><CardTitle className="flex items-center gap-2"><ShieldAlert className="h-5 w-5" /> Incidencias</CardTitle><CardDescription>Revisa conflictos de compras.</CardDescription></CardHeader></Card>
-            <Card className="cursor-pointer transition hover:shadow-md" onClick={() => document.getElementById('admin-search')?.focus()}><CardHeader><CardTitle className="flex items-center gap-2"><Search className="h-5 w-5" /> Buscar</CardTitle><CardDescription>Filtra usuarios, productos e incidencias.</CardDescription></CardHeader></Card>
+            <Card className="cursor-pointer transition hover:shadow-md" onClick={() => setActiveTab('reports')}><CardHeader><CardTitle className="flex items-center gap-2"><Flag className="h-5 w-5" /> Reportes</CardTitle><CardDescription>Denuncias de productos y reportes antiguos.</CardDescription></CardHeader></Card>
             <Card className="cursor-pointer transition hover:shadow-md" onClick={fetchAllData}><CardHeader><CardTitle className="flex items-center gap-2"><Loader2 className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} /> Actualizar</CardTitle><CardDescription>Recarga todos los datos del panel.</CardDescription></CardHeader></Card>
           </div>
 
-          <div className="relative mb-6">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input id="admin-search" placeholder="Buscar usuarios, productos, reportes o incidencias..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="pl-10" />
-          </div>
+          <div className="relative mb-6"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" /><Input id="admin-search" placeholder="Buscar usuarios, productos, reportes o incidencias..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="pl-10" /></div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
             <TabsList className="grid w-full grid-cols-5">
@@ -459,17 +454,7 @@ const Admin = () => {
             </TabsList>
 
             <TabsContent value="disputes">
-              <Card>
-                <CardHeader><CardTitle>Centro de seguridad / Incidencias</CardTitle><CardDescription>Revisa incidencias entre comprador y vendedor. Usa “Ver detalle” para revisar mensajes antes de resolver.</CardDescription></CardHeader>
-                <CardContent>
-                  {loading ? <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div> : filteredDisputes.length === 0 ? <div className="text-center py-8 text-muted-foreground">No hay incidencias.</div> : (
-                    <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Producto</TableHead><TableHead>Comprador</TableHead><TableHead>Vendedor</TableHead><TableHead>Motivo</TableHead><TableHead>Estado</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{filteredDisputes.map((dispute) => {
-                      const isTerminal = TERMINAL_DISPUTES.includes(dispute.status);
-                      return <TableRow key={dispute.id}><TableCell><div className="font-medium max-w-[180px] truncate">{dispute.product_title}</div>{dispute.amount !== null && dispute.amount !== undefined && <div className="text-xs text-muted-foreground">{formatMoney(dispute.amount)} €</div>}</TableCell><TableCell>{dispute.buyer_name}</TableCell><TableCell>{dispute.seller_name}</TableCell><TableCell><div className="font-medium max-w-[220px] truncate">{dispute.reason}</div>{dispute.details && <div className="text-xs text-muted-foreground max-w-[260px] truncate">{dispute.details}</div>}</TableCell><TableCell>{getDisputeStatusBadge(dispute.status)}</TableCell><TableCell>{formatDate(dispute.created_at)}</TableCell><TableCell><div className="flex flex-wrap gap-2 min-w-[330px]"><Button size="sm" variant="outline" onClick={() => navigate(`/admin/disputes/${dispute.id}`)}><Eye className="h-4 w-4 mr-1" /> Ver detalle</Button><Button size="sm" variant="outline" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'under_review')}>En revisión</Button><Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'resolved_buyer')}><CheckCircle2 className="h-4 w-4 mr-1" /> Comprador</Button><Button size="sm" className="bg-blue-600 hover:bg-blue-700" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'resolved_seller')}><CheckCircle2 className="h-4 w-4 mr-1" /> Vendedor</Button><Button size="sm" variant="secondary" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'closed')}><XCircle className="h-4 w-4 mr-1" /> Cerrar</Button></div></TableCell></TableRow>;
-                    })}</TableBody></Table></div>
-                  )}
-                </CardContent>
-              </Card>
+              <Card><CardHeader><CardTitle>Centro de seguridad / Incidencias</CardTitle><CardDescription>Revisa incidencias entre comprador y vendedor. Usa “Ver detalle” para revisar mensajes antes de resolver.</CardDescription></CardHeader><CardContent>{loading ? <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div> : filteredDisputes.length === 0 ? <div className="text-center py-8 text-muted-foreground">No hay incidencias.</div> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Producto</TableHead><TableHead>Comprador</TableHead><TableHead>Vendedor</TableHead><TableHead>Motivo</TableHead><TableHead>Estado</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{filteredDisputes.map((dispute) => { const isTerminal = TERMINAL_DISPUTES.includes(dispute.status); return <TableRow key={dispute.id}><TableCell><div className="font-medium max-w-[180px] truncate">{dispute.product_title}</div>{dispute.amount !== null && dispute.amount !== undefined && <div className="text-xs text-muted-foreground">{formatMoney(dispute.amount)} €</div>}</TableCell><TableCell>{dispute.buyer_name}</TableCell><TableCell>{dispute.seller_name}</TableCell><TableCell><div className="font-medium max-w-[220px] truncate">{dispute.reason}</div>{dispute.details && <div className="text-xs text-muted-foreground max-w-[260px] truncate">{dispute.details}</div>}</TableCell><TableCell>{getDisputeStatusBadge(dispute.status)}</TableCell><TableCell>{formatDate(dispute.created_at)}</TableCell><TableCell><div className="flex flex-wrap gap-2 min-w-[330px]"><Button size="sm" variant="outline" onClick={() => navigate(`/admin/disputes/${dispute.id}`)}><Eye className="h-4 w-4 mr-1" /> Ver detalle</Button><Button size="sm" variant="outline" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'under_review')}>En revisión</Button><Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'resolved_buyer')}><CheckCircle2 className="h-4 w-4 mr-1" /> Comprador</Button><Button size="sm" className="bg-blue-600 hover:bg-blue-700" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'resolved_seller')}><CheckCircle2 className="h-4 w-4 mr-1" /> Vendedor</Button><Button size="sm" variant="secondary" disabled={updatingKey === `dispute-${dispute.id}` || isTerminal} onClick={() => handleResolveDispute(dispute, 'closed')}><XCircle className="h-4 w-4 mr-1" /> Cerrar</Button></div></TableCell></TableRow>; })}</TableBody></Table></div>}</CardContent></Card>
             </TabsContent>
 
             <TabsContent value="users">
@@ -481,7 +466,7 @@ const Admin = () => {
             </TabsContent>
 
             <TabsContent value="reports">
-              <Card><CardHeader><CardTitle>Gestión de Reportes</CardTitle><CardDescription>Revisa y resuelve reportes de usuarios.</CardDescription></CardHeader><CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Razón</TableHead><TableHead>Descripción</TableHead><TableHead>Estado</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{filteredReports.map((report) => <TableRow key={report.id}><TableCell className="font-medium">{report.reason}</TableCell><TableCell className="max-w-[300px] truncate">{report.description || '-'}</TableCell><TableCell>{getReportStatusBadge(report.status)}</TableCell><TableCell>{formatDate(report.created_at)}</TableCell><TableCell><Select value={report.status} onValueChange={(value) => handleUpdateReportStatus(report.id, value)} disabled={updatingKey === `report-${report.id}`}><SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">Pendiente</SelectItem><SelectItem value="reviewing">En revisión</SelectItem><SelectItem value="resolved">Resuelto</SelectItem><SelectItem value="dismissed">Descartado</SelectItem></SelectContent></Select></TableCell></TableRow>)}</TableBody></Table></div></CardContent></Card>
+              <Card><CardHeader><CardTitle>Gestión de Reportes</CardTitle><CardDescription>Incluye denuncias de productos y reportes antiguos.</CardDescription></CardHeader><CardContent>{filteredReports.length === 0 ? <div className="py-8 text-center text-muted-foreground">No hay reportes.</div> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Tipo</TableHead><TableHead>Producto</TableHead><TableHead>Razón</TableHead><TableHead>Descripción</TableHead><TableHead>Estado</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{filteredReports.map((report) => <TableRow key={`${report.source}-${report.id}`}><TableCell><Badge variant={report.source === 'product' ? 'default' : 'secondary'}>{report.source === 'product' ? 'Producto' : 'General'}</Badge></TableCell><TableCell>{report.product_id ? <Button size="sm" variant="link" className="h-auto p-0" onClick={() => navigate(productPath(report.product_id!, report.product_title || 'producto'))}>{report.product_title || 'Ver producto'}</Button> : '-'}</TableCell><TableCell className="font-medium max-w-[180px] truncate">{report.reason}</TableCell><TableCell className="max-w-[300px] truncate">{report.description || '-'}</TableCell><TableCell>{getReportStatusBadge(report.status)}</TableCell><TableCell>{formatDate(report.created_at)}</TableCell><TableCell><Select value={report.status} onValueChange={(value) => handleUpdateReportStatus(report, value)} disabled={updatingKey === `report-${report.source}-${report.id}`}><SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">Pendiente</SelectItem><SelectItem value="reviewing">En revisión</SelectItem><SelectItem value="resolved">Resuelto</SelectItem><SelectItem value="dismissed">Descartado</SelectItem></SelectContent></Select></TableCell></TableRow>)}</TableBody></Table></div>}</CardContent></Card>
             </TabsContent>
 
             <TabsContent value="categories">
