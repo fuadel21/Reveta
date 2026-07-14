@@ -1,21 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import {
-  ArrowLeft,
-  BarChart3,
-  CheckCircle2,
-  Eye,
-  Flag,
-  Grid3X3,
-  Loader2,
-  Package,
-  Search,
-  ShieldAlert,
-  ShieldCheck,
-  Users,
-  XCircle,
-} from 'lucide-react';
+import { ArrowLeft, BarChart3, CheckCircle2, Eye, Flag, Grid3X3, Loader2, Package, Search, ShieldAlert, ShieldCheck, Users, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
@@ -28,74 +14,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
-interface Profile {
-  id: string;
-  username: string | null;
-  full_name: string | null;
-  verified: boolean | null;
-  created_at: string;
-  hasAdminRole?: boolean;
-}
-
-interface Product {
-  id: string;
-  title: string;
-  price: number;
-  status: string | null;
-  created_at: string;
-  user_id: string;
-  profiles?: { username: string | null; full_name: string | null } | null;
-}
-
-interface Report {
-  id: string;
-  source: 'legacy' | 'product';
-  reason: string;
-  description: string | null;
-  status: string;
-  created_at: string;
-  product_id?: string | null;
-  product_title?: string | null;
-  reporter_id?: string | null;
-  seller_id?: string | null;
-}
-
-interface Category {
-  id: string;
-  name: string;
-  icon: string | null;
-  created_at: string;
-}
-
-interface Dispute {
-  id: string;
-  transaction_id: string;
-  product_id: string;
-  buyer_id: string;
-  seller_id: string;
-  opened_by: string;
-  reason: string;
-  details: string | null;
-  status: string;
-  resolution: string | null;
-  created_at: string;
-  closed_at: string | null;
-  product_title?: string;
-  buyer_name?: string | null;
-  seller_name?: string | null;
-  transaction_status?: string | null;
-  amount?: number | null;
-}
+interface Profile { id: string; username: string | null; full_name: string | null; verified: boolean | null; created_at: string; hasAdminRole?: boolean; }
+interface Product { id: string; title: string; price: number; status: string | null; created_at: string; user_id: string; profiles?: { username: string | null; full_name: string | null } | null; }
+interface Report { id: string; source: 'legacy' | 'product'; reason: string; description: string | null; status: string; created_at: string; product_id?: string | null; product_title?: string | null; reporter_id?: string | null; seller_id?: string | null; }
+interface Category { id: string; name: string; icon: string | null; created_at: string; }
+interface Dispute { id: string; transaction_id: string; product_id: string; buyer_id: string; seller_id: string; opened_by: string; reason: string; details: string | null; status: string; resolution: string | null; created_at: string; closed_at: string | null; product_title?: string; buyer_name?: string | null; seller_name?: string | null; transaction_status?: string | null; amount?: number | null; }
 
 const productPath = (id: string, title?: string | null) => {
-  const slug = (title || 'producto')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'producto';
-
+  const slug = (title || 'producto').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'producto';
   return `/producto/${id}/${slug}`;
 };
 
@@ -119,21 +45,9 @@ const Admin = () => {
   const [activeTab, setActiveTab] = useState('disputes');
   const [updatingKey, setUpdatingKey] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!authLoading && !user) navigate('/auth');
-  }, [user, authLoading, navigate]);
-
-  useEffect(() => {
-    if (!adminLoading && !isAdmin && user) {
-      toast.error('No tienes permisos de administrador');
-      navigate('/');
-    }
-  }, [isAdmin, adminLoading, user, navigate]);
-
-  useEffect(() => {
-    if (isAdmin) fetchAllData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
+  useEffect(() => { if (!authLoading && !user) navigate('/auth'); }, [user, authLoading, navigate]);
+  useEffect(() => { if (!adminLoading && !isAdmin && user) { toast.error('No tienes permisos de administrador'); navigate('/'); } }, [isAdmin, adminLoading, user, navigate]);
+  useEffect(() => { if (isAdmin) fetchAllData(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [isAdmin]);
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -143,32 +57,20 @@ const Admin = () => {
 
   const fetchProfiles = async () => {
     const { data, error } = await supabase.from('profiles').select('id, username, full_name, verified, created_at').order('created_at', { ascending: false });
-    if (error) {
-      console.error('Error fetching profiles:', error);
-      toast.error('No se pudieron cargar los usuarios');
-      return;
-    }
-
+    if (error) { console.error('Error fetching profiles:', error); toast.error('No se pudieron cargar los usuarios'); return; }
     const { data: rolesData, error: rolesError } = await supabase.from('user_roles').select('user_id, role').eq('role', 'admin');
     if (rolesError) console.error('Error fetching roles:', rolesError);
-
     const adminUserIds = new Set((rolesData || []).map((role: any) => role.user_id));
     setProfiles((data || []).map((profile: any) => ({ ...profile, hasAdminRole: adminUserIds.has(profile.id) })));
   };
 
   const fetchProducts = async () => {
     const { data, error } = await supabase.from('products').select('id, title, price, status, created_at, user_id').order('created_at', { ascending: false });
-    if (error) {
-      console.error('Error fetching products:', error);
-      toast.error('No se pudieron cargar los productos');
-      return;
-    }
-
+    if (error) { console.error('Error fetching products:', error); toast.error('No se pudieron cargar los productos'); return; }
     const productsWithProfiles = await Promise.all((data || []).map(async (product: any) => {
       const { data: profileData } = await supabase.from('profiles').select('username, full_name').eq('id', product.user_id).maybeSingle();
       return { ...product, profiles: profileData || null };
     }));
-
     setProducts(productsWithProfiles);
   };
 
@@ -177,67 +79,31 @@ const Admin = () => {
       supabase.from('reports').select('id, reason, description, status, created_at').order('created_at', { ascending: false }),
       (supabase as any).from('product_reports').select('id, product_id, seller_id, reporter_id, reason, details, status, created_at').order('created_at', { ascending: false }),
     ]);
-
     if (legacyResult.error) console.error('Error fetching legacy reports:', legacyResult.error);
     if (productReportsResult.error) console.error('Error fetching product reports:', productReportsResult.error);
+    if (legacyResult.error && productReportsResult.error) { toast.error('No se pudieron cargar los reportes'); setReports([]); return; }
 
-    if (legacyResult.error && productReportsResult.error) {
-      toast.error('No se pudieron cargar los reportes');
-      setReports([]);
-      return;
-    }
-
-    const legacyReports: Report[] = (legacyResult.data || []).map((report: any) => ({
-      id: report.id,
-      source: 'legacy',
-      reason: report.reason,
-      description: report.description || null,
-      status: report.status || 'pending',
-      created_at: report.created_at,
-    }));
-
+    const legacyReports: Report[] = (legacyResult.data || []).map((report: any) => ({ id: report.id, source: 'legacy', reason: report.reason, description: report.description || null, status: report.status || 'pending', created_at: report.created_at }));
     const productReports: Report[] = await Promise.all((productReportsResult.data || []).map(async (report: any) => {
       let productTitle: string | null = null;
       if (report.product_id) {
         const { data: product } = await supabase.from('products').select('title').eq('id', report.product_id).maybeSingle();
         productTitle = product?.title || null;
       }
-
-      return {
-        id: report.id,
-        source: 'product',
-        reason: report.reason,
-        description: report.details || null,
-        status: report.status || 'pending',
-        created_at: report.created_at,
-        product_id: report.product_id || null,
-        product_title: productTitle,
-        reporter_id: report.reporter_id || null,
-        seller_id: report.seller_id || null,
-      };
+      return { id: report.id, source: 'product', reason: report.reason, description: report.details || null, status: report.status || 'pending', created_at: report.created_at, product_id: report.product_id || null, product_title: productTitle, reporter_id: report.reporter_id || null, seller_id: report.seller_id || null };
     }));
-
     setReports([...productReports, ...legacyReports].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
   };
 
   const fetchCategories = async () => {
     const { data, error } = await supabase.from('categories').select('id, name, icon, created_at').order('name', { ascending: true });
-    if (error) {
-      console.error('Error fetching categories:', error);
-      toast.error('No se pudieron cargar las categorías');
-      return;
-    }
+    if (error) { console.error('Error fetching categories:', error); toast.error('No se pudieron cargar las categorías'); return; }
     setCategories(data || []);
   };
 
   const fetchDisputes = async () => {
     const { data, error } = await (supabase as any).from('disputes').select(disputeSelect).order('created_at', { ascending: false });
-    if (error) {
-      console.error('Error fetching disputes:', error);
-      toast.error('No se pudieron cargar las incidencias');
-      return;
-    }
-
+    if (error) { console.error('Error fetching disputes:', error); toast.error('No se pudieron cargar las incidencias'); return; }
     const enrichedDisputes = await Promise.all((data || []).map(async (dispute: any) => {
       const [{ data: product }, { data: buyer }, { data: seller }, { data: transaction }] = await Promise.all([
         supabase.from('products').select('title').eq('id', dispute.product_id).maybeSingle(),
@@ -245,52 +111,47 @@ const Admin = () => {
         supabase.from('profiles').select('full_name, username').eq('id', dispute.seller_id).maybeSingle(),
         supabase.from('transactions').select('status, amount').eq('id', dispute.transaction_id).maybeSingle(),
       ]);
-
-      return {
-        ...dispute,
-        product_title: product?.title || 'Producto eliminado',
-        buyer_name: buyer?.full_name || buyer?.username || 'Comprador',
-        seller_name: seller?.full_name || seller?.username || 'Vendedor',
-        transaction_status: transaction?.status || null,
-        amount: transaction?.amount || null,
-      } as Dispute;
+      return { ...dispute, product_title: product?.title || 'Producto eliminado', buyer_name: buyer?.full_name || buyer?.username || 'Comprador', seller_name: seller?.full_name || seller?.username || 'Vendedor', transaction_status: transaction?.status || null, amount: transaction?.amount || null } as Dispute;
     }));
-
     setDisputes(enrichedDisputes);
   };
 
   const handleVerifyUser = async (profile: Profile, verified: boolean) => {
-    if (profile.hasAdminRole && !verified) {
-      toast.error('No se puede quitar la verificación a un administrador desde esta acción.');
-      return;
-    }
-
+    if (profile.hasAdminRole && !verified) { toast.error('No se puede quitar la verificación a un administrador desde esta acción.'); return; }
     setUpdatingKey(`verify-${profile.id}`);
     const { error } = await supabase.from('profiles').update({ verified, verified_at: verified ? new Date().toISOString() : null } as any).eq('id', profile.id);
-    if (error) {
-      toast.error('Error al actualizar verificación');
-      setUpdatingKey(null);
-      return;
-    }
-
+    if (error) { toast.error('Error al actualizar verificación'); setUpdatingKey(null); return; }
     toast.success(verified ? 'Usuario verificado' : 'Verificación removida');
     await fetchProfiles();
     setUpdatingKey(null);
   };
 
   const handleMakeAdmin = async (profile: Profile) => {
-    if (profile.hasAdminRole) {
-      toast.info('Este usuario ya es administrador');
+    if (profile.hasAdminRole) { toast.info('Este usuario ya es administrador'); return; }
+    setUpdatingKey(`admin-${profile.id}`);
+
+    const { data: existingRole, error: checkError } = await (supabase as any)
+      .from('user_roles')
+      .select('user_id')
+      .eq('user_id', profile.id)
+      .eq('role', 'admin')
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking admin role:', checkError);
+      toast.error('No se pudo comprobar el permiso admin');
+      setUpdatingKey(null);
       return;
     }
 
-    setUpdatingKey(`admin-${profile.id}`);
-    const { error } = await supabase.from('user_roles').upsert({ user_id: profile.id, role: 'admin' } as any, { onConflict: 'user_id,role' });
-    if (error) {
-      console.error('Error making admin:', error);
-      toast.error('Error al actualizar permisos');
-      setUpdatingKey(null);
-      return;
+    if (!existingRole) {
+      const { error } = await (supabase as any).from('user_roles').insert({ user_id: profile.id, role: 'admin' });
+      if (error) {
+        console.error('Error making admin:', error);
+        toast.error('Error al actualizar permisos');
+        setUpdatingKey(null);
+        return;
+      }
     }
 
     toast.success('Usuario ahora es admin');
@@ -299,83 +160,37 @@ const Admin = () => {
   };
 
   const handleUpdateProductStatus = async (product: Product, status: string) => {
-    if (!['active', 'inactive'].includes(status)) {
-      toast.error('Desde admin solo se permite activar o inactivar. Vendido/reservado lo gestiona la compra.');
-      return;
-    }
-
-    if (['sold', 'reserved'].includes(product.status || '')) {
-      toast.error('No se puede cambiar manualmente un producto vendido o reservado. Revisa transacciones.');
-      return;
-    }
-
+    if (!['active', 'inactive'].includes(status)) { toast.error('Desde admin solo se permite activar o inactivar. Vendido/reservado lo gestiona la compra.'); return; }
+    if (['sold', 'reserved'].includes(product.status || '')) { toast.error('No se puede cambiar manualmente un producto vendido o reservado. Revisa transacciones.'); return; }
     setUpdatingKey(`product-${product.id}`);
     const { error } = await supabase.from('products').update({ status }).eq('id', product.id);
-    if (error) {
-      toast.error('Error al actualizar estado');
-      setUpdatingKey(null);
-      return;
-    }
-
+    if (error) { toast.error('Error al actualizar estado'); setUpdatingKey(null); return; }
     toast.success(status === 'active' ? 'Producto activado' : 'Producto inactivado');
     await fetchProducts();
     setUpdatingKey(null);
   };
 
   const handleUpdateReportStatus = async (report: Report, status: string) => {
-    if (!REPORT_STATUSES.includes(status)) {
-      toast.error('Estado de reporte no válido');
-      return;
-    }
-
+    if (!REPORT_STATUSES.includes(status)) { toast.error('Estado de reporte no válido'); return; }
     setUpdatingKey(`report-${report.source}-${report.id}`);
     const table = report.source === 'product' ? 'product_reports' : 'reports';
     const { error } = await (supabase as any).from(table).update({ status }).eq('id', report.id);
-    if (error) {
-      console.error('Error updating report:', error);
-      toast.error('Error al actualizar reporte');
-      setUpdatingKey(null);
-      return;
-    }
-
+    if (error) { console.error('Error updating report:', error); toast.error('Error al actualizar reporte'); setUpdatingKey(null); return; }
     toast.success('Reporte actualizado');
     await fetchReports();
     setUpdatingKey(null);
   };
 
   const handleResolveDispute = async (dispute: Dispute, nextStatus: string) => {
-    if (TERMINAL_DISPUTES.includes(dispute.status) && dispute.status !== nextStatus) {
-      toast.error('Esta incidencia ya está cerrada. Usa el detalle si necesitas revisarla.');
-      return;
-    }
-
+    if (TERMINAL_DISPUTES.includes(dispute.status) && dispute.status !== nextStatus) { toast.error('Esta incidencia ya está cerrada. Usa el detalle si necesitas revisarla.'); return; }
     setUpdatingKey(`dispute-${dispute.id}`);
     const now = new Date().toISOString();
-    const resolutionMap: Record<string, string | null> = {
-      open: null,
-      under_review: 'En revisión por Reveta',
-      resolved_buyer: 'Resuelta a favor del comprador',
-      resolved_seller: 'Resuelta a favor del vendedor',
-      closed: 'Cerrada por Reveta',
-    };
-
-    const { error } = await (supabase as any).from('disputes').update({
-      status: nextStatus,
-      resolution: resolutionMap[nextStatus] || null,
-      updated_at: now,
-      closed_at: TERMINAL_DISPUTES.includes(nextStatus) ? now : null,
-    }).eq('id', dispute.id);
-
-    if (error) {
-      toast.error('No se pudo actualizar la incidencia');
-      setUpdatingKey(null);
-      return;
-    }
-
+    const resolutionMap: Record<string, string | null> = { open: null, under_review: 'En revisión por Reveta', resolved_buyer: 'Resuelta a favor del comprador', resolved_seller: 'Resuelta a favor del vendedor', closed: 'Cerrada por Reveta' };
+    const { error } = await (supabase as any).from('disputes').update({ status: nextStatus, resolution: resolutionMap[nextStatus] || null, updated_at: now, closed_at: TERMINAL_DISPUTES.includes(nextStatus) ? now : null }).eq('id', dispute.id);
+    if (error) { toast.error('No se pudo actualizar la incidencia'); setUpdatingKey(null); return; }
     if (nextStatus === 'under_review') await supabase.from('transactions').update({ status: 'under_review' } as any).eq('id', dispute.transaction_id);
     if (nextStatus === 'resolved_seller') await supabase.from('transactions').update({ status: 'completed', completed_at: now } as any).eq('id', dispute.transaction_id);
     if (nextStatus === 'resolved_buyer' || nextStatus === 'closed') await supabase.from('transactions').update({ status: 'disputed', completed_at: now } as any).eq('id', dispute.transaction_id);
-
     toast.success('Incidencia actualizada');
     await fetchDisputes();
     setUpdatingKey(null);
@@ -463,7 +278,7 @@ const Admin = () => {
             </TabsContent>
 
             <TabsContent value="products">
-              <Card><CardHeader><CardTitle>Gestión de Productos</CardTitle><CardDescription>Modera productos. Estados de venta/reserva se gestionan por transacciones, no manualmente.</CardDescription></CardHeader><CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Título</TableHead><TableHead>Precio</TableHead><TableHead>Vendedor</TableHead><TableHead>Estado</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{filteredProducts.map((product) => <TableRow key={product.id}><TableCell className="font-medium max-w-[220px] truncate">{product.title}</TableCell><TableCell>{formatMoney(product.price)} €</TableCell><TableCell>{product.profiles?.username || product.profiles?.full_name || 'Desconocido'}</TableCell><TableCell>{getStatusBadge(product.status)}</TableCell><TableCell>{formatDate(product.created_at)}</TableCell><TableCell><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => navigate(productPath(product.id, product.title))}><Eye className="h-4 w-4" /></Button><Select value={['active', 'inactive'].includes(product.status || '') ? product.status || 'active' : product.status || 'active'} onValueChange={(value) => handleUpdateProductStatus(product, value)} disabled={updatingKey === `product-${product.id}` || ['sold', 'reserved'].includes(product.status || '')}><SelectTrigger className="w-[125px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Activo</SelectItem><SelectItem value="inactive">Inactivo</SelectItem>{product.status === 'sold' && <SelectItem value="sold" disabled>Vendido</SelectItem>}{product.status === 'reserved' && <SelectItem value="reserved" disabled>Reservado</SelectItem>}</SelectContent></Select></div></TableCell></TableRow>)}</TableBody></Table></div></CardContent></Card>
+              <Card><CardHeader><CardTitle>Gestión de Productos</CardTitle><CardDescription>Modera productos. Estados de venta/reserva se gestionan por transacciones, no manualmente.</CardDescription></CardHeader><CardContent><div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Título</TableHead><TableHead>Precio</TableHead><TableHead>Vendedor</TableHead><TableHead>Estado</TableHead><TableHead>Fecha</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{filteredProducts.map((product) => { const lockedByTransaction = ['sold', 'reserved'].includes(product.status || ''); const safeSelectValue = product.status === 'inactive' ? 'inactive' : 'active'; return <TableRow key={product.id}><TableCell className="font-medium max-w-[220px] truncate">{product.title}</TableCell><TableCell>{formatMoney(product.price)} €</TableCell><TableCell>{product.profiles?.username || product.profiles?.full_name || 'Desconocido'}</TableCell><TableCell>{getStatusBadge(product.status)}</TableCell><TableCell>{formatDate(product.created_at)}</TableCell><TableCell><div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => navigate(productPath(product.id, product.title))}><Eye className="h-4 w-4" /></Button>{lockedByTransaction ? <Button size="sm" variant="secondary" disabled>Gestionado</Button> : <Select value={safeSelectValue} onValueChange={(value) => handleUpdateProductStatus(product, value)} disabled={updatingKey === `product-${product.id}`}><SelectTrigger className="w-[125px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="active">Activo</SelectItem><SelectItem value="inactive">Inactivo</SelectItem></SelectContent></Select>}</div></TableCell></TableRow>; })}</TableBody></Table></div></CardContent></Card>
             </TabsContent>
 
             <TabsContent value="reports">
