@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '@/hooks/useAuth';
@@ -47,6 +47,7 @@ const Upload = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const geolocation = useGeolocation();
+  const imageUrlsRef = useRef<string[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [images, setImages] = useState<File[]>([]);
@@ -69,10 +70,11 @@ const Upload = () => {
   useEffect(() => { fetchCategories(); }, []);
   useEffect(() => { if (formData.category_id) fetchSubcategories(formData.category_id); else setSubcategories([]); }, [formData.category_id]);
   useEffect(() => { if (useCurrentLocation && geolocation.latitude && geolocation.longitude) reverseGeocode(geolocation.latitude, geolocation.longitude); }, [useCurrentLocation, geolocation.latitude, geolocation.longitude]);
-  useEffect(() => () => { imageUrls.forEach((url) => URL.revokeObjectURL(url)); }, [imageUrls]);
+  useEffect(() => { imageUrlsRef.current = imageUrls; }, [imageUrls]);
+  useEffect(() => () => { imageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
 
   const fetchCategories = async () => {
-    const { data, error } = await supabase.from('categories').select('*').order('name');
+    const { data, error } = await supabase.from('categories').select('id, name, icon').order('name');
     if (error) {
       console.error('Error fetching categories:', error);
       toast({ title: 'No se pudieron cargar las categorías', description: 'Puedes intentarlo de nuevo en unos segundos.', variant: 'destructive' });
@@ -82,8 +84,13 @@ const Upload = () => {
   };
 
   const fetchSubcategories = async (categoryId: string) => {
-    const { data, error } = await supabase.from('subcategories').select('*').eq('category_id', categoryId).order('name');
-    setSubcategories(error ? [] : data || []);
+    const { data, error } = await supabase.from('subcategories').select('id, category_id, name, icon').eq('category_id', categoryId).order('name');
+    if (error) {
+      console.error('Error fetching subcategories:', error);
+      setSubcategories([]);
+      return;
+    }
+    setSubcategories(data || []);
   };
 
   const reverseGeocode = async (lat: number, lon: number) => {
@@ -136,7 +143,8 @@ const Upload = () => {
   };
 
   const removeImage = (index: number) => {
-    URL.revokeObjectURL(imageUrls[index]);
+    const urlToRemove = imageUrls[index];
+    if (urlToRemove) URL.revokeObjectURL(urlToRemove);
     setImages(prev => prev.filter((_, i) => i !== index));
     setImageUrls(prev => prev.filter((_, i) => i !== index));
   };
@@ -230,7 +238,7 @@ const Upload = () => {
       <Helmet>
         <title>Publicar producto | Reveta</title>
         <meta name="description" content="Publica gratis un producto de segunda mano en Reveta. Añade fotos, precio, ciudad y empieza a recibir mensajes de compradores." />
-        <meta name="robots" content="noindex,nofollow" />
+        <meta name="robots" content="noindex,nofollow,noarchive" />
       </Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
