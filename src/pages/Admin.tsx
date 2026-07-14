@@ -103,6 +103,7 @@ const formatDate = (value: string) => new Date(value).toLocaleDateString('es-ES'
 const formatMoney = (value?: number | null) => Number(value || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const TERMINAL_DISPUTES = ['resolved_buyer', 'resolved_seller', 'closed'];
 const REPORT_STATUSES = ['pending', 'reviewing', 'resolved', 'dismissed'];
+const disputeSelect = 'id, transaction_id, product_id, buyer_id, seller_id, opened_by, reason, details, status, resolution, created_at, closed_at';
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -230,7 +231,7 @@ const Admin = () => {
   };
 
   const fetchDisputes = async () => {
-    const { data, error } = await (supabase as any).from('disputes').select('*').order('created_at', { ascending: false });
+    const { data, error } = await (supabase as any).from('disputes').select(disputeSelect).order('created_at', { ascending: false });
     if (error) {
       console.error('Error fetching disputes:', error);
       toast.error('No se pudieron cargar las incidencias');
