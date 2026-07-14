@@ -10,10 +10,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import PushNotificationToggle from '@/components/PushNotificationToggle';
-import { Bell, Lock, UserX, Save, ShieldCheck } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { AlertTriangle, Bell, Lock, UserX, Save, ShieldCheck, Trash2 } from 'lucide-react';
 
 interface UserSettings {
   email_notifications: boolean;
@@ -38,6 +49,7 @@ const DEFAULT_SETTINGS: UserSettings = {
 };
 
 const allowedMessageScopes = new Set(['everyone', 'verified', 'none']);
+const DELETE_CONFIRMATION = 'ELIMINAR';
 const normalizeSettings = (data: Partial<UserSettings> | null | undefined): UserSettings => ({
   email_notifications: data?.email_notifications ?? DEFAULT_SETTINGS.email_notifications,
   push_notifications: data?.push_notifications ?? DEFAULT_SETTINGS.push_notifications,
@@ -49,8 +61,20 @@ const normalizeSettings = (data: Partial<UserSettings> | null | undefined): User
   allow_messages_from: allowedMessageScopes.has(String(data?.allow_messages_from)) ? data?.allow_messages_from as UserSettings['allow_messages_from'] : DEFAULT_SETTINGS.allow_messages_from,
 });
 
+const getFunctionErrorMessage = async (error: any) => {
+  try {
+    if (error?.context && typeof error.context.json === 'function') {
+      const payload = await error.context.json();
+      return payload?.error || payload?.message || error.message;
+    }
+  } catch {
+    // Ignore parser errors.
+  }
+  return error?.message || 'No se pudo completar la operación.';
+};
+
 const Settings = () => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { blockedUsers, unblockUser } = useBlockedUsers();
@@ -59,6 +83,9 @@ const Settings = () => {
   const [saving, setSaving] = useState(false);
   const [unblockingId, setUnblockingId] = useState<string | null>(null);
   const [blockedProfiles, setBlockedProfiles] = useState<Record<string, { full_name: string | null; avatar_url: string | null }>>({});
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/auth');
@@ -143,6 +170,30 @@ const Settings = () => {
     setUnblockingId(null);
   };
 
+  const handleDeleteAccount = async () => {
+    if (!user || deletingAccount || deleteConfirmation !== DELETE_CONFIRMATION) return;
+    setDeletingAccount(true);
+
+    try {
+      const { error } = await supabase.functions.invoke('delete-account', { body: { confirmation: DELETE_CONFIRMATION } });
+      if (error) {
+        const message = await getFunctionErrorMessage(error);
+        throw new Error(message);
+      }
+
+      toast({ title: 'Cuenta eliminada', description: 'Hemos cerrado tu sesión y eliminado tu cuenta.' });
+      await signOut();
+      navigate('/', { replace: true });
+    } catch (error: any) {
+      console.error('Error deleting account:', error);
+      toast({ title: 'No se pudo eliminar la cuenta', description: error?.message || 'Inténtalo de nuevo más tarde.', variant: 'destructive' });
+    } finally {
+      setDeletingAccount(false);
+      setDeleteConfirmation('');
+      setDeleteDialogOpen(false);
+    }
+  };
+
   if (authLoading || loading) {
     return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
   }
@@ -161,7 +212,7 @@ const Settings = () => {
         <Header />
         <main className="flex-1 container py-8 max-w-2xl">
           <h1 className="text-2xl font-bold mb-2">Ajustes</h1>
-          <p className="text-sm text-muted-foreground mb-6">Controla notificaciones, privacidad y usuarios bloqueados.</p>
+          <p className="text-sm text-muted-foreground mb-6">Controla notificaciones, privacidad, usuarios bloqueados y seguridad de tu cuenta.</p>
 
           <div className="space-y-6">
             <Card className="border-border/50">
@@ -214,11 +265,44 @@ const Settings = () => {
               </CardContent>
             </Card>
 
+            <Card className="border-destructive/30 bg-destructive/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-destructive"><Trash2 className="h-5 w-5" />Eliminar cuenta</CardTitle>
+                <CardDescription>Esta acción es permanente y puede eliminar o anonimizar tus datos según la política de Reveta.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="destructive" className="w-full" onClick={() => setDeleteDialogOpen(true)}>
+                  <Trash2 className="h-4 w-4 mr-2" /> Solicitar eliminación de cuenta
+                </Button>
+              </CardContent>
+            </Card>
+
             <Button onClick={handleSaveSettings} disabled={saving} className="w-full"><Save className="h-4 w-4 mr-2" />{saving ? 'Guardando...' : 'Guardar ajustes'}</Button>
           </div>
         </main>
         <Footer />
       </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => { setDeleteDialogOpen(open); if (!open) setDeleteConfirmation(''); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive"><AlertTriangle className="h-5 w-5" />Eliminar cuenta permanentemente</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se cerrará tu sesión y se procesará la eliminación de tu cuenta. Para confirmar, escribe <strong>ELIMINAR</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="delete-confirmation">Confirmación</Label>
+            <Input id="delete-confirmation" value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value.trim().toUpperCase())} placeholder="ELIMINAR" autoComplete="off" />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAccount}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={deletingAccount || deleteConfirmation !== DELETE_CONFIRMATION} onClick={handleDeleteAccount} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deletingAccount ? 'Eliminando...' : 'Eliminar cuenta'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
