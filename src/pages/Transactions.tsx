@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,11 +10,30 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ShoppingBag, Package, ArrowUpRight, ArrowDownLeft, MessageCircle, XCircle, CheckCircle2, Truck, ExternalLink, ShieldAlert, Star, HandCoins, CreditCard, Landmark } from 'lucide-react';
+import { ShoppingBag, Package, ArrowUpRight, ArrowDownLeft, MessageCircle, XCircle, CheckCircle2, Truck, ExternalLink, ShieldAlert, Star, HandCoins, CreditCard, Landmark, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 type Dispute = Pick<Tables<'disputes'>, 'id' | 'transaction_id' | 'reason' | 'details' | 'status' | 'opened_by' | 'created_at'>;
-type BaseTransaction = Tables<'transactions'> & { offer_id?: string | null };
+type BaseTransaction = Pick<Tables<'transactions'>,
+  'id' |
+  'product_id' |
+  'buyer_id' |
+  'seller_id' |
+  'amount' |
+  'status' |
+  'created_at' |
+  'completed_at' |
+  'payment_provider' |
+  'payment_status' |
+  'paid_at' |
+  'shipping_provider' |
+  'shipping_status' |
+  'shipping_address' |
+  'sendcloud_parcel_id' |
+  'sendcloud_tracking_number' |
+  'sendcloud_tracking_url' |
+  'stripe_payment_intent_id'
+> & { offer_id?: string | null };
 
 interface ShippingAddressView {
   fullName?: string;
@@ -36,6 +55,9 @@ interface Transaction extends BaseTransaction {
 const DISPUTE_REASONS = ['No he recibido el producto', 'Producto diferente al anunciado', 'Producto dañado', 'El vendedor no responde', 'El comprador no confirma recepción', 'Otro motivo'];
 const REVIEWABLE_STATUSES = ['completed', 'paid', 'shipped'];
 const OPEN_TRANSACTION_STATUSES = ['pending', 'pending_payment', 'paid', 'shipped', 'completed', 'disputed', 'under_review'];
+const TRANSACTION_SELECT = 'id, product_id, buyer_id, seller_id, amount, status, created_at, completed_at, payment_provider, payment_status, paid_at, shipping_provider, shipping_status, shipping_address, sendcloud_parcel_id, sendcloud_tracking_number, sendcloud_tracking_url, stripe_payment_intent_id, offer_id';
+const MAX_REVIEW_COMMENT = 500;
+const MAX_DISPUTE_DETAILS = 1000;
 
 const getStatusLabel = (status: string) => ({
   pending: 'Reservado / pendiente',
@@ -63,6 +85,8 @@ const getDisputeStatusLabel = (status: string) => ({
   closed: 'Cerrada',
 } as Record<string, string>)[status] || status;
 
+const normalizeText = (value: string, maxLength: number) => value.trim().replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').slice(0, maxLength);
+
 const isShippingAddressView = (value: Json | null): value is ShippingAddressView => {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 };
@@ -81,6 +105,12 @@ const Transactions = () => {
   const [sales, setSales] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<{ transaction: Transaction; type: 'purchase' | 'sale' } | null>(null);
+  const [reviewRating, setReviewRating] = useState('5');
+  const [reviewComment, setReviewComment] = useState('');
+  const [disputeTarget, setDisputeTarget] = useState<Transaction | null>(null);
+  const [disputeReason, setDisputeReason] = useState(DISPUTE_REASONS[0]);
+  const [disputeDetails, setDisputeDetails] = useState('');
 
   useEffect(() => {
     if (!authLoading && !user) navigate('/auth');
@@ -116,8 +146,8 @@ const Transactions = () => {
     setLoading(true);
 
     const [{ data: purchasesData, error: purchasesError }, { data: salesData, error: salesError }] = await Promise.all([
-      supabase.from('transactions').select('*').eq('buyer_id', user.id).order('created_at', { ascending: false }),
-      supabase.from('transactions').select('*').eq('seller_id', user.id).order('created_at', { ascending: false }),
+      (supabase as any).from('transactions').select(TRANSACTION_SELECT).eq('buyer_id', user.id).order('created_at', { ascending: false }),
+      (supabase as any).from('transactions').select(TRANSACTION_SELECT).eq('seller_id', user.id).order('created_at', { ascending: false }),
     ]);
 
     if (purchasesError) {
@@ -222,11 +252,11 @@ const Transactions = () => {
       updatePayload.completed_at = null;
     }
     if (nextStatus === 'shipped') {
-      updatePayload.shipping_status = transaction.shipping_status || 'shipped';
+      updatePayload.shipping_status = 'shipped';
       updatePayload.completed_at = null;
     }
     if (nextStatus === 'completed') {
-      updatePayload.shipping_status = transaction.shipping_status || 'delivered';
+      updatePayload.shipping_status = 'delivered';
       updatePayload.completed_at = now;
     }
 
@@ -254,21 +284,24 @@ const Transactions = () => {
     setUpdatingId(null);
   };
 
-  const submitReview = async (transaction: Transaction, type: 'purchase' | 'sale') => {
-    if (!user) return;
+  const openReviewPanel = (transaction: Transaction, type: 'purchase' | 'sale') => {
+    setReviewTarget({ transaction, type });
+    setReviewRating('5');
+    setReviewComment('');
+  };
 
-    const reviewedId = type === 'purchase' ? transaction.seller_id : transaction.buyer_id;
-    const reviewedName = type === 'purchase' ? transaction.seller_profile?.full_name || 'el vendedor' : transaction.buyer_profile?.full_name || 'el comprador';
-    const ratingText = window.prompt(`Valora a ${reviewedName} del 1 al 5:`);
-    if (!ratingText) return;
+  const submitReview = async () => {
+    if (!user || !reviewTarget) return;
+    const { transaction, type } = reviewTarget;
+    const rating = Number(reviewRating);
 
-    const rating = Number(ratingText.trim());
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       toast.error('La valoración debe ser un número del 1 al 5.');
       return;
     }
 
-    const comment = window.prompt('Comentario opcional sobre la operación:') || '';
+    const reviewedId = type === 'purchase' ? transaction.seller_id : transaction.buyer_id;
+    const comment = normalizeText(reviewComment, MAX_REVIEW_COMMENT);
     setUpdatingId(transaction.id);
 
     const { error } = await supabase.from('reviews').insert({
@@ -288,37 +321,43 @@ const Transactions = () => {
     }
 
     toast.success('Valoración publicada');
+    setReviewTarget(null);
+    setReviewComment('');
     setUpdatingId(null);
   };
 
-  const openDispute = async (transaction: Transaction) => {
-    if (!user) return;
+  const openDisputePanel = (transaction: Transaction) => {
     if (transaction.dispute || transaction.status === 'disputed') {
       toast.info('Esta transacción ya tiene una incidencia abierta.');
       return;
     }
+    setDisputeTarget(transaction);
+    setDisputeReason(DISPUTE_REASONS[0]);
+    setDisputeDetails('');
+  };
 
-    const reasonList = DISPUTE_REASONS.map((reason, index) => `${index + 1}. ${reason}`).join('\n');
-    const selection = window.prompt(`Selecciona el motivo de la incidencia:\n\n${reasonList}\n\nEscribe un número del 1 al ${DISPUTE_REASONS.length}:`);
-    if (!selection) return;
-
-    const reason = DISPUTE_REASONS[Number(selection.trim()) - 1];
-    if (!reason) {
+  const submitDispute = async () => {
+    if (!user || !disputeTarget) return;
+    if (!DISPUTE_REASONS.includes(disputeReason)) {
       toast.error('Motivo no válido.');
       return;
     }
 
-    const details = window.prompt('Describe brevemente qué ha pasado. Este texto ayudará a revisar la incidencia:') || '';
-    setUpdatingId(transaction.id);
+    const details = normalizeText(disputeDetails, MAX_DISPUTE_DETAILS);
+    if (disputeReason === 'Otro motivo' && details.length < 10) {
+      toast.error('Añade una explicación breve para “Otro motivo”.');
+      return;
+    }
 
+    setUpdatingId(disputeTarget.id);
     const { error: disputeError } = await supabase.from('disputes').insert({
-      transaction_id: transaction.id,
-      product_id: transaction.product_id,
-      buyer_id: transaction.buyer_id,
-      seller_id: transaction.seller_id,
+      transaction_id: disputeTarget.id,
+      product_id: disputeTarget.product_id,
+      buyer_id: disputeTarget.buyer_id,
+      seller_id: disputeTarget.seller_id,
       opened_by: user.id,
-      reason,
-      details,
+      reason: disputeReason,
+      details: details || null,
       status: 'open',
     });
 
@@ -329,10 +368,12 @@ const Transactions = () => {
       return;
     }
 
-    await supabase.from('transactions').update({ status: 'disputed', completed_at: null }).eq('id', transaction.id);
-    await sendTransactionMessage(transaction, `He abierto una incidencia Reveta. Motivo: ${reason}. ${details ? `Detalles: ${details}` : ''}`);
+    await supabase.from('transactions').update({ status: 'disputed', completed_at: null }).eq('id', disputeTarget.id);
+    await sendTransactionMessage(disputeTarget, `He abierto una incidencia Reveta. Motivo: ${disputeReason}. ${details ? `Detalles: ${details}` : ''}`);
 
     toast.success('Incidencia abierta');
+    setDisputeTarget(null);
+    setDisputeDetails('');
     await fetchTransactions();
     setUpdatingId(null);
   };
@@ -341,6 +382,9 @@ const Transactions = () => {
     await getConversationId(transaction);
     navigate('/messages');
   };
+
+  const totalPurchases = useMemo(() => purchases.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0), [purchases]);
+  const totalSales = useMemo(() => sales.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0), [sales]);
 
   if (authLoading || loading) {
     return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
@@ -378,12 +422,7 @@ const Transactions = () => {
                     {type === 'purchase' ? `Vendedor: ${transaction.seller_profile?.full_name || 'Usuario'}` : `Comprador: ${transaction.buyer_profile?.full_name || 'Usuario'}`}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">{formatDate(transaction.completed_at || transaction.created_at)}</p>
-                  {cameFromAcceptedOffer && (
-                    <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                      <HandCoins className="h-3 w-3" />
-                      Oferta aceptada · Precio pactado
-                    </div>
-                  )}
+                  {cameFromAcceptedOffer && <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary"><HandCoins className="h-3 w-3" />Oferta aceptada · Precio pactado</div>}
                 </div>
 
                 <div className="text-right shrink-0">
@@ -394,10 +433,7 @@ const Transactions = () => {
 
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-                  <div className="mb-1 flex items-center gap-2 font-medium text-foreground">
-                    {transaction.payment_provider === 'stripe' ? <CreditCard className="h-4 w-4" /> : <Landmark className="h-4 w-4" />}
-                    <span>Pago</span>
-                  </div>
+                  <div className="mb-1 flex items-center gap-2 font-medium text-foreground">{transaction.payment_provider === 'stripe' ? <CreditCard className="h-4 w-4" /> : <Landmark className="h-4 w-4" />}<span>Pago</span></div>
                   <p>{paymentLabel}</p>
                   {transaction.payment_status && <p>Estado: {transaction.payment_status}</p>}
                 </div>
@@ -414,25 +450,14 @@ const Transactions = () => {
                 )}
               </div>
 
-              {cameFromAcceptedOffer && (
-                <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
-                  <p className="font-medium text-foreground">Esta operación viene de una oferta aceptada.</p>
-                  <p>Precio pactado: <span className="font-semibold text-foreground">{displayAmount} €</span></p>
-                </div>
-              )}
+              {cameFromAcceptedOffer && <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground"><p className="font-medium text-foreground">Esta operación viene de una oferta aceptada.</p><p>Precio pactado: <span className="font-semibold text-foreground">{displayAmount} €</span></p></div>}
 
-              {transaction.dispute && (
-                <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs space-y-1">
-                  <div className="flex items-center gap-2 font-medium text-destructive"><ShieldAlert className="h-4 w-4" /><span>Incidencia Reveta: {getDisputeStatusLabel(transaction.dispute.status)}</span></div>
-                  <p>Motivo: {transaction.dispute.reason}</p>
-                  {transaction.dispute.details && <p>Detalles: {transaction.dispute.details}</p>}
-                </div>
-              )}
+              {transaction.dispute && <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs space-y-1"><div className="flex items-center gap-2 font-medium text-destructive"><ShieldAlert className="h-4 w-4" /><span>Incidencia Reveta: {getDisputeStatusLabel(transaction.dispute.status)}</span></div><p>Motivo: {transaction.dispute.reason}</p>{transaction.dispute.details && <p>Detalles: {transaction.dispute.details}</p>}</div>}
 
               <div className="flex flex-wrap gap-2 mt-4">
                 <Button size="sm" variant="outline" onClick={() => contactOtherUser(transaction)}><MessageCircle className="h-4 w-4 mr-2" />Contactar</Button>
-                {canReview && <Button size="sm" variant="outline" disabled={updatingId === transaction.id} onClick={() => submitReview(transaction, type)}><Star className="h-4 w-4 mr-2" />Valorar</Button>}
-                {canOpenDispute && <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" disabled={updatingId === transaction.id} onClick={() => openDispute(transaction)}><ShieldAlert className="h-4 w-4 mr-2" />Abrir incidencia</Button>}
+                {canReview && <Button size="sm" variant="outline" disabled={updatingId === transaction.id} onClick={() => openReviewPanel(transaction, type)}><Star className="h-4 w-4 mr-2" />Valorar</Button>}
+                {canOpenDispute && <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" disabled={updatingId === transaction.id} onClick={() => openDisputePanel(transaction)}><ShieldAlert className="h-4 w-4 mr-2" />Abrir incidencia</Button>}
                 {type === 'purchase' && isPending && <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={updatingId === transaction.id} onClick={() => updateTransactionStatus(transaction, 'cancelled')}><XCircle className="h-4 w-4 mr-2" />Cancelar</Button>}
                 {type === 'sale' && isPending && <Button size="sm" disabled={updatingId === transaction.id} onClick={() => updateTransactionStatus(transaction, 'paid')}><CheckCircle2 className="h-4 w-4 mr-2" />Confirmar pago recibido</Button>}
                 {type === 'sale' && transaction.status === 'paid' && <Button size="sm" variant="outline" disabled={updatingId === transaction.id} onClick={() => updateTransactionStatus(transaction, 'shipped')}><Truck className="h-4 w-4 mr-2" />Marcar como enviado</Button>}
@@ -450,7 +475,7 @@ const Transactions = () => {
       <Helmet>
         <title>Mis Transacciones | Reveta</title>
         <meta name="description" content="Historial privado de compras y ventas en Reveta" />
-        <meta name="robots" content="noindex,nofollow" />
+        <meta name="robots" content="noindex,nofollow,noarchive" />
       </Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
@@ -463,29 +488,48 @@ const Transactions = () => {
             </TabsList>
 
             <TabsContent value="purchases">
-              {purchases.length === 0 ? (
-                <Card className="border-border/50"><CardContent className="py-12 text-center"><ShoppingBag className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="text-lg font-medium mb-2">No tienes compras</h3><p className="text-muted-foreground">Aquí aparecerán los productos que compres</p></CardContent></Card>
-              ) : (
-                <div className="space-y-4">{purchases.map((transaction) => <TransactionCard key={transaction.id} transaction={transaction} type="purchase" />)}</div>
-              )}
+              {purchases.length === 0 ? <Card className="border-border/50"><CardContent className="py-12 text-center"><ShoppingBag className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="text-lg font-medium mb-2">No tienes compras</h3><p className="text-muted-foreground">Aquí aparecerán los productos que compres</p></CardContent></Card> : <div className="space-y-4">{purchases.map((transaction) => <TransactionCard key={transaction.id} transaction={transaction} type="purchase" />)}</div>}
             </TabsContent>
 
             <TabsContent value="sales">
-              {sales.length === 0 ? (
-                <Card className="border-border/50"><CardContent className="py-12 text-center"><Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="text-lg font-medium mb-2">No tienes ventas</h3><p className="text-muted-foreground">Aquí aparecerán los productos que vendas</p></CardContent></Card>
-              ) : (
-                <div className="space-y-4">{sales.map((transaction) => <TransactionCard key={transaction.id} transaction={transaction} type="sale" />)}</div>
-              )}
+              {sales.length === 0 ? <Card className="border-border/50"><CardContent className="py-12 text-center"><Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="text-lg font-medium mb-2">No tienes ventas</h3><p className="text-muted-foreground">Aquí aparecerán los productos que vendas</p></CardContent></Card> : <div className="space-y-4">{sales.map((transaction) => <TransactionCard key={transaction.id} transaction={transaction} type="sale" />)}</div>}
             </TabsContent>
           </Tabs>
 
           <div className="grid gap-4 sm:grid-cols-2 mt-8">
-            <Card className="border-border/50"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Compras</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatAmount(purchases.reduce((sum, transaction) => sum + transaction.amount, 0))} €</p><p className="text-sm text-muted-foreground">{purchases.length} transacciones</p></CardContent></Card>
-            <Card className="border-border/50"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Ventas</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-green-600">{formatAmount(sales.reduce((sum, transaction) => sum + transaction.amount, 0))} €</p><p className="text-sm text-muted-foreground">{sales.length} transacciones</p></CardContent></Card>
+            <Card className="border-border/50"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Compras</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold">{formatAmount(totalPurchases)} €</p><p className="text-sm text-muted-foreground">{purchases.length} transacciones</p></CardContent></Card>
+            <Card className="border-border/50"><CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Ventas</CardTitle></CardHeader><CardContent><p className="text-2xl font-bold text-green-600">{formatAmount(totalSales)} €</p><p className="text-sm text-muted-foreground">{sales.length} transacciones</p></CardContent></Card>
           </div>
         </main>
         <Footer />
       </div>
+
+      {reviewTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border bg-card p-5 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3"><div><h2 className="text-lg font-bold">Valorar operación</h2><p className="text-sm text-muted-foreground">Comparte una valoración del 1 al 5.</p></div><Button variant="ghost" size="icon" onClick={() => setReviewTarget(null)} disabled={!!updatingId}><X className="h-4 w-4" /></Button></div>
+            <div className="space-y-4">
+              <div><label className="mb-2 block text-sm font-medium">Puntuación</label><select value={reviewRating} onChange={(event) => setReviewRating(event.target.value)} className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="5">5 · Excelente</option><option value="4">4 · Buena</option><option value="3">3 · Correcta</option><option value="2">2 · Mejorable</option><option value="1">1 · Mala</option></select></div>
+              <div><label className="mb-2 block text-sm font-medium">Comentario opcional</label><textarea value={reviewComment} onChange={(event) => setReviewComment(event.target.value.slice(0, MAX_REVIEW_COMMENT))} className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Cómo fue la operación..." /><p className="mt-1 text-xs text-muted-foreground">{reviewComment.length}/{MAX_REVIEW_COMMENT}</p></div>
+              <div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={() => setReviewTarget(null)} disabled={!!updatingId}>Cancelar</Button><Button className="flex-1" onClick={submitReview} disabled={!!updatingId}>{updatingId ? 'Guardando...' : 'Publicar valoración'}</Button></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {disputeTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border bg-card p-5 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3"><div><h2 className="text-lg font-bold">Abrir incidencia Reveta</h2><p className="text-sm text-muted-foreground">Describe el problema para que el equipo pueda revisarlo.</p></div><Button variant="ghost" size="icon" onClick={() => setDisputeTarget(null)} disabled={!!updatingId}><X className="h-4 w-4" /></Button></div>
+            <div className="space-y-4">
+              <div><label className="mb-2 block text-sm font-medium">Motivo</label><select value={disputeReason} onChange={(event) => setDisputeReason(event.target.value)} className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm">{DISPUTE_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}</select></div>
+              <div><label className="mb-2 block text-sm font-medium">Detalles</label><textarea value={disputeDetails} onChange={(event) => setDisputeDetails(event.target.value.slice(0, MAX_DISPUTE_DETAILS))} className="min-h-32 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Explica brevemente qué ha pasado..." /><p className="mt-1 text-xs text-muted-foreground">{disputeDetails.length}/{MAX_DISPUTE_DETAILS}</p></div>
+              <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs text-muted-foreground">Al abrir una incidencia, la operación queda marcada como disputada hasta que se revise.</div>
+              <div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={() => setDisputeTarget(null)} disabled={!!updatingId}>Cancelar</Button><Button className="flex-1" variant="destructive" onClick={submitDispute} disabled={!!updatingId}>{updatingId ? 'Abriendo...' : 'Abrir incidencia'}</Button></div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
