@@ -93,8 +93,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
   const productImage = Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null;
   const totalAmount = useMemo(() => product.price + (selectedShipping?.price || 0), [product.price, selectedShipping]);
   const handleCardChange = (event: any) => setCardError(event.error?.message || null);
-  const updateAddressField = (field: keyof ShippingAddress, value: string) =>
-    setShippingAddress((current) => ({ ...current, [field]: value }));
+  const updateAddressField = (field: keyof ShippingAddress, value: string) => setShippingAddress((current) => ({ ...current, [field]: value }));
 
   const normalizedShippingAddress = () => ({
     fullName: normalizeText(shippingAddress.fullName),
@@ -197,29 +196,22 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     return data;
   };
 
-  const recordTransaction = async (status: 'completed' | 'pending', paymentIntentId?: string): Promise<RecordTransactionResult> => {
+  const recordInPersonTransaction = async (): Promise<RecordTransactionResult> => {
     if (!user) throw new Error('Debes iniciar sesión para comprar.');
 
     const existingTransaction = await findExistingOpenTransaction();
     if (existingTransaction?.id) return { created: false, transactionId: existingTransaction.id };
 
     await ensureProductStillAvailable();
-    const now = new Date().toISOString();
     const insertPayload: any = {
       product_id: product.id,
       buyer_id: user.id,
       seller_id: product.user_id,
       amount: totalAmount,
-      status,
+      status: 'pending',
+      payment_provider: 'in_person',
+      payment_status: 'pending',
     };
-
-    if (paymentIntentId) {
-      insertPayload.payment_provider = 'stripe';
-      insertPayload.payment_status = 'succeeded';
-      insertPayload.stripe_payment_intent_id = paymentIntentId;
-      insertPayload.paid_at = now;
-      insertPayload.completed_at = now;
-    }
 
     const { data: insertedTransaction, error: transactionError } = await supabase
       .from('transactions')
@@ -235,7 +227,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
     const { data: updatedProduct, error: productError } = await supabase
       .from('products')
-      .update({ status: status === 'completed' ? 'sold' : 'reserved' })
+      .update({ status: 'reserved' })
       .eq('id', product.id)
       .eq('status', 'active')
       .select('id')
@@ -247,6 +239,17 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     }
 
     return { created: true, transactionId: insertedTransaction?.id || null };
+  };
+
+  const cancelPendingCardTransaction = async (transactionId: string | null) => {
+    if (!transactionId || !user) return;
+    const { error } = await supabase
+      .from('transactions')
+      .update({ status: 'cancelled', payment_status: 'client_failed', completed_at: new Date().toISOString() } as any)
+      .eq('id', transactionId)
+      .eq('buyer_id', user.id)
+      .eq('status', 'pending_payment');
+    if (error) console.error('Error cancelling pending card transaction:', error);
   };
 
   const createSendcloudParcel = async (transactionId: string | null) => {
@@ -294,6 +297,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
   const createParcelAfterPaidTransaction = async (transactionId: string | null, conversationId: string | null) => {
     try {
+      await saveShippingDetails(transactionId, null);
       const parcel = await createSendcloudParcel(transactionId);
       await saveShippingDetails(transactionId, parcel);
 
@@ -319,8 +323,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     }
   };
 
-  const completeCardPayment = async (paymentIntentId: string) => {
-    const transactionResult = await recordTransaction('completed', paymentIntentId);
+  const completeCardPayment = async (transactionId: string) => {
     const conversationId = await ensureConversation();
     const normalized = normalizedShippingAddress();
 
@@ -331,8 +334,8 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
       );
     }
 
-    await createParcelAfterPaidTransaction(transactionResult.transactionId, conversationId);
-    toast.success(transactionResult.created ? 'Pago con tarjeta completado' : 'Pago confirmado');
+    await createParcelAfterPaidTransaction(transactionId, conversationId);
+    toast.success('Pago con tarjeta confirmado. La venta se cerrará automáticamente con el webhook de Stripe.');
     navigate('/transactions', { replace: true });
   };
 
@@ -355,23 +358,29 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     }
 
     const clientSecret = data?.clientSecret;
-    if (!clientSecret) throw new Error('La función de pagos no devolvió el secreto de Stripe.');
+    const transactionId = data?.transactionId as string | undefined;
+    if (!clientSecret || !transactionId) throw new Error('La función de pagos no devolvió los datos necesarios de Stripe.');
 
     const result = await stripe.confirmCardPayment(clientSecret, {
       payment_method: { card, billing_details: { name: shippingAddress.fullName || user?.email || 'Usuario de Reveta' } },
     });
 
     if (result.error) {
+      await cancelPendingCardTransaction(transactionId);
       setCardError(result.error.message || 'Error en el pago');
       throw new Error(result.error.message || 'Error al procesar el pago');
     }
 
-    if (result.paymentIntent?.status !== 'succeeded' || !result.paymentIntent.id) throw new Error('El pago no se ha completado. Inténtalo de nuevo.');
-    await completeCardPayment(result.paymentIntent.id);
+    if (result.paymentIntent?.status !== 'succeeded' || !result.paymentIntent.id) {
+      await cancelPendingCardTransaction(transactionId);
+      throw new Error('El pago no se ha completado. Inténtalo de nuevo.');
+    }
+
+    await completeCardPayment(transactionId);
   };
 
   const handleInPersonPayment = async () => {
-    const transactionResult = await recordTransaction('pending');
+    const transactionResult = await recordInPersonTransaction();
     if (!transactionResult.created) {
       toast.info('Ya tienes una compra pendiente para este producto.');
       navigate('/transactions', { replace: true });
@@ -487,7 +496,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                 <input value={shippingAddress.city} onChange={(event) => updateAddressField('city', event.target.value)} placeholder="Ciudad" className="w-full rounded-md border px-3 py-2 text-sm" />
                 <input value="España" readOnly className="w-full rounded-md border px-3 py-2 text-sm bg-muted" />
               </div>
-              <p className="text-xs text-muted-foreground">Con tarjeta se usa para crear el envío nacional con Sendcloud. En pago en persona se guarda para coordinar la operación.</p>
+              <p className="text-xs text-muted-foreground">Con tarjeta se usa para guardar la operación y preparar el envío nacional con Sendcloud. En pago en persona se guarda para coordinar la operación.</p>
             </CardContent>
           </Card>
         </div>
@@ -509,7 +518,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                       <CardElement options={{ style: { base: { fontSize: '16px', color: '#1a1a1a', fontFamily: 'system-ui, sans-serif', '::placeholder': { color: '#a1a1aa' } }, invalid: { color: '#ef4444' } } }} onChange={handleCardChange} />
                     </div>
                     {cardError && <div className="flex gap-2 text-destructive text-sm font-medium"><AlertCircle className="h-4 w-4 flex-shrink-0" /><span>{cardError}</span></div>}
-                    <p className="text-xs text-muted-foreground">Pago procesado por Stripe.</p>
+                    <p className="text-xs text-muted-foreground">Pago procesado por Stripe. La confirmación final la registra el webhook de Stripe.</p>
                   </div>
                 )}
 
@@ -528,7 +537,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                 <Shield className="h-5 w-5 text-primary flex-shrink-0" />
                 <div className="text-sm">
                   <p className="font-semibold text-primary">{paymentMethod === 'card' ? 'Pago seguro con Stripe' : 'Reserva para pago en persona'}</p>
-                  <p className="text-muted-foreground">{paymentMethod === 'card' ? 'El pago se procesa con Stripe y después se crea el envío nacional con Sendcloud.' : 'La operación queda pendiente. No se crea envío automático hasta que el pago se confirme entre comprador y vendedor.'}</p>
+                  <p className="text-muted-foreground">{paymentMethod === 'card' ? 'Reveta crea una operación pendiente y Stripe la confirma por webhook para evitar duplicados.' : 'La operación queda pendiente. No se crea envío automático hasta que el pago se confirme entre comprador y vendedor.'}</p>
                 </div>
               </div>
             </CardContent>
@@ -563,13 +572,18 @@ const Checkout = () => {
       return;
     }
     fetchProductAndSeller();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, productId, user?.id]);
 
   const fetchProductAndSeller = async () => {
     if (!productId) return;
     setLoading(true);
     try {
-      const { data: productData, error: productError } = await supabase.from('products').select('*').eq('id', productId).maybeSingle();
+      const { data: productData, error: productError } = await supabase
+        .from('products')
+        .select('id, title, price, images, user_id, location, status')
+        .eq('id', productId)
+        .maybeSingle();
       if (productError) throw productError;
       if (!productData) throw new Error('Producto no encontrado');
       if (productData.user_id === user?.id) {
@@ -601,8 +615,8 @@ const Checkout = () => {
     <>
       <Helmet>
         <title>Checkout - Reveta</title>
-        <meta name="description" content="Completa tu compra en Reveta" />
-        <meta name="robots" content="noindex,nofollow" />
+        <meta name="description" content="Completa tu compra privada en Reveta" />
+        <meta name="robots" content="noindex,nofollow,noarchive" />
       </Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
