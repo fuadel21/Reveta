@@ -280,40 +280,38 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     return data?.parcel || null;
   };
 
-  const saveShippingDetails = async (transactionId: string | null, parcel: any) => {
+  const saveManualShippingDetails = async (transactionId: string | null) => {
     if (!transactionId) return;
     const normalized = normalizedShippingAddress();
-    const updatePayload = {
-      shipping_provider: parcel ? 'sendcloud' : selectedShipping?.name || 'manual',
-      shipping_status: parcel?.status?.message || parcel?.status || 'pending_coordination',
-      sendcloud_parcel_id: parcel?.id ? String(parcel.id) : null,
-      sendcloud_tracking_number: parcel?.tracking_number || parcel?.tracking_code || null,
-      sendcloud_tracking_url: parcel?.tracking_url || parcel?.tracking_url_provider || null,
-      shipping_address: normalized,
-    };
-    const { error } = await supabase.from('transactions').update(updatePayload).eq('id', transactionId);
-    if (error) console.error('Error saving shipping details:', error);
+    const { error } = await supabase
+      .from('transactions')
+      .update({
+        shipping_provider: selectedShipping?.name || 'manual',
+        shipping_status: 'pending_coordination',
+        shipping_address: normalized,
+      })
+      .eq('id', transactionId);
+    if (error) console.error('Error saving manual shipping details:', error);
   };
 
   const createParcelAfterPaidTransaction = async (transactionId: string | null, conversationId: string | null) => {
     try {
-      await saveShippingDetails(transactionId, null);
       const parcel = await createSendcloudParcel(transactionId);
-      await saveShippingDetails(transactionId, parcel);
 
       if (parcel?.alreadyCreated) return;
 
       const parcelId = parcel?.id ? ` ID de envío: ${parcel.id}.` : '';
-      const tracking = parcel?.tracking_number ? ` Seguimiento: ${parcel.tracking_number}.` : '';
+      const trackingNumber = parcel?.tracking_number || parcel?.tracking_code;
+      const tracking = trackingNumber ? ` Seguimiento: ${trackingNumber}.` : '';
       if (conversationId) await sendTransactionMessage(conversationId, `Envío nacional España creado con Sendcloud para “${product.title}”.${parcelId}${tracking}`);
     } catch (error: any) {
       console.error('Sendcloud parcel error:', error);
-      toast.warning('Pago registrado, pero no se pudo crear el envío en Sendcloud. Revisa la configuración de Sendcloud.');
+      toast.warning('Pago registrado, pero no se pudo crear o guardar el envío en Sendcloud. Revisa la configuración de Sendcloud.');
     }
   };
 
   const saveManualDeliveryAfterReservation = async (transactionId: string | null, conversationId: string | null) => {
-    await saveShippingDetails(transactionId, null);
+    await saveManualShippingDetails(transactionId);
     if (conversationId) {
       const normalized = normalizedShippingAddress();
       await sendTransactionMessage(
@@ -496,7 +494,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
                 <input value={shippingAddress.city} onChange={(event) => updateAddressField('city', event.target.value)} placeholder="Ciudad" className="w-full rounded-md border px-3 py-2 text-sm" />
                 <input value="España" readOnly className="w-full rounded-md border px-3 py-2 text-sm bg-muted" />
               </div>
-              <p className="text-xs text-muted-foreground">Con tarjeta se usa para guardar la operación y preparar el envío nacional con Sendcloud. En pago en persona se guarda para coordinar la operación.</p>
+              <p className="text-xs text-muted-foreground">Con tarjeta, la función de Sendcloud guarda el envío y el seguimiento directamente en Reveta. En pago en persona se guarda para coordinar la operación.</p>
             </CardContent>
           </Card>
         </div>
