@@ -21,6 +21,43 @@ const addBoostDays = (currentBoostedUntil: string | null | undefined, days: numb
   return base.toISOString();
 };
 
+const findPurchaseTransaction = async (paymentIntent: Stripe.PaymentIntent, metadata: Stripe.Metadata) => {
+  if (!supabase) throw new Error("Faltan variables de Supabase");
+
+  if (metadata.transactionId) {
+    const { data } = await supabase
+      .from("transactions")
+      .select("id,product_id,buyer_id,seller_id,status")
+      .eq("id", metadata.transactionId)
+      .maybeSingle();
+    if (data) return data;
+  }
+
+  const { data: existingByStripe } = await supabase
+    .from("transactions")
+    .select("id,product_id,buyer_id,seller_id,status")
+    .eq("stripe_payment_intent_id", paymentIntent.id)
+    .maybeSingle();
+
+  if (existingByStripe) return existingByStripe;
+
+  if (metadata.productId && metadata.buyerId) {
+    const { data: existingOpen } = await supabase
+      .from("transactions")
+      .select("id,product_id,buyer_id,seller_id,status")
+      .eq("product_id", metadata.productId)
+      .eq("buyer_id", metadata.buyerId)
+      .in("status", ["pending", "pending_payment", "paid", "shipped", "completed"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingOpen) return existingOpen;
+  }
+
+  return null;
+};
+
 const markProductPurchaseSucceeded = async (paymentIntent: Stripe.PaymentIntent) => {
   if (!supabase) throw new Error("Faltan variables de Supabase");
   const metadata = paymentIntent.metadata || {};
@@ -33,27 +70,38 @@ const markProductPurchaseSucceeded = async (paymentIntent: Stripe.PaymentIntent)
 
   const amount = (paymentIntent.amount_received > 0 ? paymentIntent.amount_received : paymentIntent.amount) / 100;
   const now = new Date().toISOString();
+  const transaction = await findPurchaseTransaction(paymentIntent, metadata);
 
-  const { data: existingByStripe } = await supabase.from("transactions").select("id").eq("stripe_payment_intent_id", paymentIntent.id).maybeSingle();
-
-  if (existingByStripe?.id) {
-    await supabase.from("transactions").update({ status: "completed", payment_provider: "stripe", payment_status: paymentIntent.status, amount, paid_at: now, completed_at: now }).eq("id", existingByStripe.id);
-  } else {
-    const { data: existingOpen } = await supabase
-      .from("transactions")
-      .select("id")
-      .eq("product_id", productId)
-      .eq("buyer_id", buyerId)
-      .in("status", ["pending", "pending_payment", "paid", "shipped", "completed"])
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (existingOpen?.id) {
-      await supabase.from("transactions").update({ status: "completed", payment_provider: "stripe", payment_status: paymentIntent.status, stripe_payment_intent_id: paymentIntent.id, amount, paid_at: now, completed_at: now }).eq("id", existingOpen.id);
-    } else {
-      await supabase.from("transactions").insert({ product_id: productId, buyer_id: buyerId, seller_id: sellerId, amount, status: "completed", payment_provider: "stripe", payment_status: paymentIntent.status, stripe_payment_intent_id: paymentIntent.id, paid_at: now, completed_at: now });
+  if (transaction?.id) {
+    if (transaction.product_id !== productId || transaction.buyer_id !== buyerId || transaction.seller_id !== sellerId) {
+      throw new Error("La transacción no coincide con los metadatos de Stripe");
     }
+
+    await supabase
+      .from("transactions")
+      .update({
+        status: "completed",
+        payment_provider: "stripe",
+        payment_status: paymentIntent.status,
+        stripe_payment_intent_id: paymentIntent.id,
+        amount,
+        paid_at: now,
+        completed_at: now,
+      })
+      .eq("id", transaction.id);
+  } else {
+    await supabase.from("transactions").insert({
+      product_id: productId,
+      buyer_id: buyerId,
+      seller_id: sellerId,
+      amount,
+      status: "completed",
+      payment_provider: "stripe",
+      payment_status: paymentIntent.status,
+      stripe_payment_intent_id: paymentIntent.id,
+      paid_at: now,
+      completed_at: now,
+    });
   }
 
   await supabase.from("products").update({ status: "sold" }).eq("id", productId).in("status", ["active", "reserved"]);
@@ -63,7 +111,26 @@ const markProductPurchaseFailed = async (paymentIntent: Stripe.PaymentIntent) =>
   if (!supabase) throw new Error("Faltan variables de Supabase");
   const metadata = paymentIntent.metadata || {};
   if (metadata.type !== "product_purchase") return;
-  await supabase.from("transactions").update({ payment_provider: "stripe", payment_status: paymentIntent.status, stripe_payment_intent_id: paymentIntent.id }).eq("stripe_payment_intent_id", paymentIntent.id);
+
+  const productId = metadata.productId;
+  const now = new Date().toISOString();
+  const transaction = await findPurchaseTransaction(paymentIntent, metadata);
+
+  if (transaction?.id) {
+    await supabase
+      .from("transactions")
+      .update({
+        status: "cancelled",
+        payment_provider: "stripe",
+        payment_status: paymentIntent.status,
+        stripe_payment_intent_id: paymentIntent.id,
+        completed_at: now,
+      })
+      .eq("id", transaction.id)
+      .in("status", ["pending_payment", "pending"]);
+  }
+
+  if (productId) await supabase.from("products").update({ status: "active" }).eq("id", productId).eq("status", "reserved");
 };
 
 const markProductBoostSucceeded = async (paymentIntent: Stripe.PaymentIntent) => {
