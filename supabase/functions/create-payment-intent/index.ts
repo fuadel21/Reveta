@@ -7,17 +7,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+const OPEN_TRANSACTION_STATUSES = ["pending", "pending_payment", "paid", "shipped", "completed"];
+const PENDING_PAYMENT_TTL_MINUTES = 30;
 
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 405,
-    });
-  }
+const json = (body: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify(body), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status });
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+  let createdTransactionId: string | null = null;
 
   try {
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
@@ -31,9 +31,7 @@ serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
     if (!token) throw new Error("Debes iniciar sesión para comprar");
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false },
-    });
+    const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
 
     const {
       data: { user },
@@ -47,6 +45,14 @@ serve(async (req) => {
     const currency = "eur";
 
     if (!productId) throw new Error("Falta productId");
+
+    const staleCutoff = new Date(Date.now() - PENDING_PAYMENT_TTL_MINUTES * 60 * 1000).toISOString();
+    await supabase
+      .from("transactions")
+      .update({ status: "cancelled", completed_at: new Date().toISOString(), payment_status: "expired" })
+      .eq("product_id", productId)
+      .eq("status", "pending_payment")
+      .lt("created_at", staleCutoff);
 
     const { data: product, error: productError } = await supabase
       .from("products")
@@ -62,12 +68,12 @@ serve(async (req) => {
       .from("transactions")
       .select("id")
       .eq("product_id", productId)
-      .in("status", ["pending", "pending_payment", "paid", "shipped", "completed"])
+      .in("status", OPEN_TRANSACTION_STATUSES)
       .limit(1)
       .maybeSingle();
 
     if (transactionError) throw transactionError;
-    if (existingOpenTransaction?.id) throw new Error("Este producto ya está reservado o vendido");
+    if (existingOpenTransaction?.id) throw new Error("Este producto ya está reservado, pendiente de pago o vendido");
 
     const parsedShippingAmount = Number(shippingAmount || 0);
     if (!Number.isFinite(parsedShippingAmount) || parsedShippingAmount < 0 || parsedShippingAmount > 20000) {
@@ -81,6 +87,26 @@ serve(async (req) => {
     if (totalAmount <= 0) throw new Error("El importe debe ser mayor que cero");
     if (totalAmount > 999999) throw new Error("El importe supera el límite permitido");
 
+    const { data: transaction, error: insertTransactionError } = await supabase
+      .from("transactions")
+      .insert({
+        product_id: productId,
+        buyer_id: user.id,
+        seller_id: product.user_id,
+        amount: totalAmount / 100,
+        status: "pending_payment",
+        payment_provider: "stripe",
+        payment_status: "creating",
+      })
+      .select("id")
+      .single();
+
+    if (insertTransactionError || !transaction?.id) {
+      throw insertTransactionError || new Error("No se pudo reservar la operación de pago");
+    }
+
+    createdTransactionId = transaction.id;
+
     const stripe = new Stripe(stripeKey, {
       apiVersion: "2023-10-16",
       httpClient: Stripe.createFetchHttpClient(),
@@ -92,6 +118,7 @@ serve(async (req) => {
       automatic_payment_methods: { enabled: true },
       metadata: {
         type: "product_purchase",
+        transactionId: transaction.id,
         productId,
         buyerId: user.id,
         sellerId: product.user_id,
@@ -100,19 +127,35 @@ serve(async (req) => {
       },
     });
 
-    return new Response(JSON.stringify({ clientSecret: paymentIntent.client_secret, amount: totalAmount }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
+    const { error: updateTransactionError } = await supabase
+      .from("transactions")
+      .update({ stripe_payment_intent_id: paymentIntent.id, payment_status: paymentIntent.status })
+      .eq("id", transaction.id)
+      .eq("buyer_id", user.id);
+
+    if (updateTransactionError) throw updateTransactionError;
+
+    return json({ clientSecret: paymentIntent.client_secret, amount: totalAmount, transactionId: transaction.id });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error al crear el pago";
     console.error("ERROR DETECTADO EN EDGE FUNCTION:", message);
-    return new Response(
-      JSON.stringify({
-        error: message,
-        details: "Revisa los logs de Supabase para más información",
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
-    );
+
+    if (createdTransactionId) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        if (supabaseUrl && serviceRoleKey) {
+          const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+          await supabase
+            .from("transactions")
+            .update({ status: "cancelled", payment_status: "setup_failed", completed_at: new Date().toISOString() })
+            .eq("id", createdTransactionId);
+        }
+      } catch (cleanupError) {
+        console.error("No se pudo cancelar la transacción creada:", cleanupError);
+      }
+    }
+
+    return json({ error: message, details: "Revisa los logs de Supabase para más información" }, 400);
   }
 });
