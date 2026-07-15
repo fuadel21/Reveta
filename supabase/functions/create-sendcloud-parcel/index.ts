@@ -172,7 +172,35 @@ serve(async (req) => {
       throw new Error(data?.error?.message || data?.message || "No se pudo crear el envío en Sendcloud");
     }
 
-    return new Response(JSON.stringify({ parcel: data.parcel || data }), {
+    const createdParcel = data.parcel || data;
+    const parcelStatus = typeof createdParcel?.status === "object" ? createdParcel?.status?.message : createdParcel?.status;
+    const { error: saveError } = await supabaseAdmin
+      .from("transactions")
+      .update({
+        shipping_provider: "sendcloud",
+        shipping_status: parcelStatus || "pending_coordination",
+        sendcloud_parcel_id: createdParcel?.id ? String(createdParcel.id) : null,
+        sendcloud_tracking_number: createdParcel?.tracking_number || createdParcel?.tracking_code || null,
+        sendcloud_tracking_url: createdParcel?.tracking_url || createdParcel?.tracking_url_provider || null,
+        shipping_address: {
+          fullName: buyerName,
+          phone: buyerPhone,
+          address,
+          houseNumber,
+          postalCode,
+          city,
+          country,
+        },
+      })
+      .eq("id", transaction.id)
+      .eq("buyer_id", user.id);
+
+    if (saveError) {
+      console.error("ERROR SAVING SENDCLOUD TRACKING:", saveError.message);
+      throw new Error("El envío se creó en Sendcloud, pero no se pudo guardar el seguimiento en Reveta");
+    }
+
+    return new Response(JSON.stringify({ parcel: createdParcel }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
