@@ -195,7 +195,7 @@ const SavedSearches = () => {
           <Card className="mt-8 border-primary/20 bg-primary/5"><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Sparkles className="h-5 w-5 text-primary" />Cómo usar esta sección</CardTitle></CardHeader><CardContent className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-3"><div className="flex gap-2"><Search className="h-4 w-4 text-primary shrink-0 mt-0.5" /><span>Guarda búsquedas con filtros concretos.</span></div><div className="flex gap-2"><Bell className="h-4 w-4 text-primary shrink-0 mt-0.5" /><span>Activa alertas para no perder novedades.</span></div><div className="flex gap-2"><ShieldCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" /><span>Compra y negocia siempre dentro de Reveta.</span></div></CardContent></Card>
         </main>
         <Footer />
-        <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
           <AlertDialogContent>
             <AlertDialogHeader><AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive" />Eliminar búsqueda guardada</AlertDialogTitle><AlertDialogDescription>¿Seguro que quieres eliminar “{deleteTarget?.name}”? Dejarás de recibir alertas de esta búsqueda.</AlertDialogDescription></AlertDialogHeader>
             <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={deleteSearch} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction></AlertDialogFooter>
