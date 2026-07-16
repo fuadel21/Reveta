@@ -62,13 +62,32 @@ export const useBlockedUsers = () => {
 
     if (blockedUserIds.has(blockedUserId)) return true;
 
-    const { error } = await supabase
+    const safeReason = normalizeReason(reason);
+    const { data: existingBlock, error: checkError } = await supabase
       .from('blocked_users')
-      .upsert({
-        user_id: user.id,
-        blocked_user_id: blockedUserId,
-        reason: normalizeReason(reason),
-      } as any, { onConflict: 'user_id,blocked_user_id' });
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('blocked_user_id', blockedUserId)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking blocked user:', checkError);
+      return false;
+    }
+
+    const { error } = existingBlock?.id
+      ? await supabase
+        .from('blocked_users')
+        .update({ reason: safeReason })
+        .eq('id', existingBlock.id)
+        .eq('user_id', user.id)
+      : await supabase
+        .from('blocked_users')
+        .insert({
+          user_id: user.id,
+          blocked_user_id: blockedUserId,
+          reason: safeReason,
+        } as any);
 
     if (error) {
       console.error('Error blocking user:', error);
