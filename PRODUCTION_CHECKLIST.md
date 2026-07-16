@@ -1,5 +1,16 @@
 # Reveta - checklist de producción
 
+## Estado actual verificado
+
+- Frontend Build Check en GitHub Actions: OK.
+- Supabase Edge Functions: desplegadas correctamente tras corregir token/ref del proyecto.
+- Vercel: puede quedar pendiente o bloqueado por límite de builds; usar Frontend Build Check como validación temporal cuando Vercel no responda.
+- Pagos con tarjeta: `create-payment-intent` crea transacción `pending_payment` y Stripe metadata incluye `transactionId`.
+- Stripe webhook: reforzado para no devolver éxito si falla una operación crítica de Supabase.
+- Sendcloud: reforzado con estado `sendcloud_creating` para reducir riesgo de duplicados por reintentos.
+- Transacciones: incidencias limitadas; no se permite abrir incidencia en `pending_payment`.
+- Usuarios bloqueados: ya no depende de `upsert onConflict` frágil.
+
 ## 1. Variables de Vercel
 
 Configura en Vercel, solo para el frontend:
