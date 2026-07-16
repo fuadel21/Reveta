@@ -87,7 +87,7 @@ serve(async (req) => {
 
     const { data: transaction, error: transactionError } = await supabaseAdmin
       .from("transactions")
-      .select("id,buyer_id,seller_id,product_id,status,sendcloud_parcel_id,sendcloud_tracking_number,sendcloud_tracking_url")
+      .select("id,buyer_id,seller_id,product_id,status,shipping_provider,shipping_status,sendcloud_parcel_id,sendcloud_tracking_number,sendcloud_tracking_url")
       .eq("id", transactionId)
       .maybeSingle();
 
@@ -111,6 +111,10 @@ serve(async (req) => {
       );
     }
 
+    if (transaction.shipping_provider === "sendcloud" && transaction.shipping_status === "sendcloud_creating") {
+      throw new Error("Ya hay un envío Sendcloud en creación para esta transacción. Espera unos minutos antes de reintentar.");
+    }
+
     const { data: product, error: productError } = await supabaseAdmin
       .from("products")
       .select("id,title,user_id")
@@ -128,6 +132,31 @@ serve(async (req) => {
 
     const buyerName = requiredText(buyerProfile?.full_name || body.buyerName || user.email, "el nombre del comprador");
     const buyerPhone = String(body.buyerPhone || buyerProfile?.phone || "").trim();
+    const shippingAddress = {
+      fullName: buyerName,
+      phone: buyerPhone,
+      address,
+      houseNumber,
+      postalCode,
+      city,
+      country,
+    };
+
+    const { error: lockError } = await supabaseAdmin
+      .from("transactions")
+      .update({
+        shipping_provider: "sendcloud",
+        shipping_status: "sendcloud_creating",
+        shipping_address: shippingAddress,
+      })
+      .eq("id", transaction.id)
+      .eq("buyer_id", user.id)
+      .is("sendcloud_parcel_id", null);
+
+    if (lockError) {
+      console.error("ERROR LOCKING SENDCLOUD CREATION:", lockError.message);
+      throw new Error("No se pudo preparar el envío Sendcloud");
+    }
 
     const shipmentMethodId = Number(Deno.env.get("SENDCLOUD_SHIPPING_METHOD_ID") || 0);
     const parcel: Record<string, unknown> = {
@@ -169,6 +198,12 @@ serve(async (req) => {
     const data = await response.json();
 
     if (!response.ok) {
+      await supabaseAdmin
+        .from("transactions")
+        .update({ shipping_status: "sendcloud_failed" })
+        .eq("id", transaction.id)
+        .eq("buyer_id", user.id)
+        .eq("shipping_status", "sendcloud_creating");
       throw new Error(data?.error?.message || data?.message || "No se pudo crear el envío en Sendcloud");
     }
 
@@ -182,15 +217,7 @@ serve(async (req) => {
         sendcloud_parcel_id: createdParcel?.id ? String(createdParcel.id) : null,
         sendcloud_tracking_number: createdParcel?.tracking_number || createdParcel?.tracking_code || null,
         sendcloud_tracking_url: createdParcel?.tracking_url || createdParcel?.tracking_url_provider || null,
-        shipping_address: {
-          fullName: buyerName,
-          phone: buyerPhone,
-          address,
-          houseNumber,
-          postalCode,
-          city,
-          country,
-        },
+        shipping_address: shippingAddress,
       })
       .eq("id", transaction.id)
       .eq("buyer_id", user.id);
