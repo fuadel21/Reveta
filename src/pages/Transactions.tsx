@@ -392,7 +392,7 @@ const Transactions = () => {
 
   const TransactionCard = ({ transaction, type }: { transaction: Transaction; type: 'purchase' | 'sale' }) => {
     const isPending = transaction.status === 'pending' || transaction.status === 'pending_payment';
-    const canOpenDispute = !['cancelled', 'disputed'].includes(transaction.status) && !transaction.dispute;
+    const canOpenDispute = !transaction.dispute && !['cancelled', 'disputed', 'under_review', 'pending_payment'].includes(transaction.status) && (['paid', 'shipped', 'completed'].includes(transaction.status) || (transaction.status === 'pending' && transaction.payment_provider === 'in_person'));
     const canReview = REVIEWABLE_STATUSES.includes(transaction.status);
     const productImage = transaction.product?.images?.[0] || '/placeholder.svg';
     const hasSendcloudParcel = Boolean(transaction.sendcloud_parcel_id || transaction.sendcloud_tracking_number || transaction.sendcloud_tracking_url);
