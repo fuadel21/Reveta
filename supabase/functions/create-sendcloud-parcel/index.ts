@@ -8,6 +8,7 @@ const corsHeaders = {
 
 const SENDCLOUD_API_BASE_URL = "https://panel.sendcloud.sc/api/v2";
 const ALLOWED_TRANSACTION_STATUSES = new Set(["pending", "pending_payment", "paid", "completed"]);
+const SENDCLOUD_CREATING_LOCK_MINUTES = 10;
 
 const getAuthHeader = () => {
   const publicKey = Deno.env.get("SENDCLOUD_PUBLIC_KEY");
@@ -25,6 +26,14 @@ const requiredText = (value: unknown, label: string) => {
   if (!text) throw new Error(`Falta ${label}`);
   if (text.length > 180) throw new Error(`${label} es demasiado largo`);
   return text;
+};
+
+const isFreshCreatingLock = (updatedAt: string | null | undefined) => {
+  if (!updatedAt) return true;
+  const updatedTime = new Date(updatedAt).getTime();
+  if (!Number.isFinite(updatedTime)) return true;
+  const ageMs = Date.now() - updatedTime;
+  return ageMs < SENDCLOUD_CREATING_LOCK_MINUTES * 60 * 1000;
 };
 
 serve(async (req) => {
@@ -87,7 +96,7 @@ serve(async (req) => {
 
     const { data: transaction, error: transactionError } = await supabaseAdmin
       .from("transactions")
-      .select("id,buyer_id,seller_id,product_id,status,shipping_provider,shipping_status,sendcloud_parcel_id,sendcloud_tracking_number,sendcloud_tracking_url")
+      .select("id,buyer_id,seller_id,product_id,status,shipping_provider,shipping_status,updated_at,sendcloud_parcel_id,sendcloud_tracking_number,sendcloud_tracking_url")
       .eq("id", transactionId)
       .maybeSingle();
 
@@ -111,7 +120,7 @@ serve(async (req) => {
       );
     }
 
-    if (transaction.shipping_provider === "sendcloud" && transaction.shipping_status === "sendcloud_creating") {
+    if (transaction.shipping_provider === "sendcloud" && transaction.shipping_status === "sendcloud_creating" && isFreshCreatingLock(transaction.updated_at)) {
       throw new Error("Ya hay un envío Sendcloud en creación para esta transacción. Espera unos minutos antes de reintentar.");
     }
 
