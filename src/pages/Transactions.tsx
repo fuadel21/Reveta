@@ -87,9 +87,7 @@ const getDisputeStatusLabel = (status: string) => ({
 
 const normalizeText = (value: string, maxLength: number) => value.trim().replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').slice(0, maxLength);
 
-const isShippingAddressView = (value: Json | null): value is ShippingAddressView => {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-};
+const isShippingAddressView = (value: Json | null): value is ShippingAddressView => !!value && typeof value === 'object' && !Array.isArray(value);
 
 const getShippingAddressText = (shippingAddress: Json | null) => {
   if (!isShippingAddressView(shippingAddress)) return '';
@@ -195,8 +193,10 @@ const Transactions = () => {
     if (!user) return;
     const conversationId = await getConversationId(transaction);
     if (!conversationId) return;
-    await supabase.from('messages').insert({ conversation_id: conversationId, sender_id: user.id, content });
-    await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
+    const { error: messageError } = await supabase.from('messages').insert({ conversation_id: conversationId, sender_id: user.id, content });
+    if (messageError) console.error('Error sending transaction message:', messageError);
+    const { error: conversationError } = await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
+    if (conversationError) console.error('Error touching transaction conversation:', conversationError);
   };
 
   const reactivateProductIfSafe = async (transaction: Transaction) => {
@@ -209,11 +209,16 @@ const Transactions = () => {
 
     if (error) {
       console.error('Error checking open transactions:', error);
+      toast.error('La operación se canceló, pero no pudimos comprobar si el producto puede reactivarse.');
       return;
     }
 
     if ((count || 0) === 0) {
-      await supabase.from('products').update({ status: 'active' }).eq('id', transaction.product_id).in('status', ['reserved']);
+      const { error: productError } = await supabase.from('products').update({ status: 'active' }).eq('id', transaction.product_id).in('status', ['reserved']);
+      if (productError) {
+        console.error('Error reactivating product:', productError);
+        toast.error('La operación se canceló, pero no pudimos reactivar el producto automáticamente.');
+      }
     }
   };
 
@@ -273,7 +278,11 @@ const Transactions = () => {
       await sendTransactionMessage(transaction, `Operación cancelada para “${transaction.product?.title || 'este producto'}”.`);
     }
     if (nextStatus === 'paid') {
-      await supabase.from('products').update({ status: 'sold' }).eq('id', transaction.product_id).in('status', ['reserved', 'active']);
+      const { error: productError } = await supabase.from('products').update({ status: 'sold' }).eq('id', transaction.product_id).in('status', ['reserved', 'active']);
+      if (productError) {
+        console.error('Error marking product as sold:', productError);
+        toast.error('Pago confirmado, pero no pudimos marcar el producto como vendido. Revisa la operación en admin.');
+      }
       await sendTransactionMessage(transaction, `Pago confirmado por el vendedor para “${transaction.product?.title || 'este producto'}”.`);
     }
     if (nextStatus === 'shipped') await sendTransactionMessage(transaction, `El vendedor ha marcado “${transaction.product?.title || 'este producto'}” como enviado.`);
@@ -368,7 +377,14 @@ const Transactions = () => {
       return;
     }
 
-    await supabase.from('transactions').update({ status: 'disputed', completed_at: null }).eq('id', disputeTarget.id);
+    const { error: transactionError } = await supabase.from('transactions').update({ status: 'disputed', completed_at: null }).eq('id', disputeTarget.id);
+    if (transactionError) {
+      console.error('Error marking transaction as disputed:', transactionError);
+      toast.error('La incidencia se creó, pero no se pudo marcar la transacción como disputada. Revisa admin.');
+      setUpdatingId(null);
+      return;
+    }
+
     await sendTransactionMessage(disputeTarget, `He abierto una incidencia Reveta. Motivo: ${disputeReason}. ${details ? `Detalles: ${details}` : ''}`);
 
     toast.success('Incidencia abierta');
