@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Loader2, XCircle } from 'lucide-react';
+import { CalendarClock, Loader2, ShoppingCart, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -189,6 +189,11 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
     }
   };
 
+  const handleContinueCheckout = () => {
+    if (!reservation?.id) return;
+    window.location.assign(`/checkout/${productId}?reservation=${reservation.id}`);
+  };
+
   const expiryLabel = reservation?.expires_at
     ? new Date(reservation.expires_at).toLocaleString('es-ES', {
         day: '2-digit',
@@ -222,6 +227,9 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
             <p className="mt-2 text-xs opacity-80">Completa la compra o coordina la entrega desde el chat antes de que venza.</p>
           </div>
         </div>
+        <Button type="button" className="w-full" onClick={handleContinueCheckout}>
+          <ShoppingCart className="mr-2 h-4 w-4" /> Continuar con la compra
+        </Button>
         <Button
           type="button"
           variant="outline"
