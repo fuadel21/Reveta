@@ -17,11 +17,11 @@ interface SellerTrustCardProps {
     avatar_url: string | null;
     created_at: string;
     verified: boolean | null;
-  };
-  productId: string;
-  isOwner: boolean;
+  } | null;
+  productId?: string;
+  isOwner?: boolean;
   activeProductsCount?: number;
-  onContactSeller: () => void;
+  onContactSeller?: () => void;
 }
 
 interface ReviewStats {
@@ -54,24 +54,28 @@ const getTrustLabel = (score: number) => {
   return 'Nuevo vendedor';
 };
 
-const getReputationLevel = (score: number) => {
-  if (score >= 85) return 'Vendedor destacado';
+const getReputationLevel = (score: number, verified?: boolean | null) => {
+  if (verified && score >= 85) return 'Vendedor top verificado';
+  if (verified && score >= 70) return 'Vendedor verificado recomendado';
+  if (verified) return 'Vendedor verificado';
   if (score >= 70) return 'Vendedor recomendado';
   if (score >= 50) return 'Vendedor fiable';
   if (score >= 30) return 'Vendedor en progreso';
   return 'Vendedor nuevo';
 };
 
-const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, onContactSeller }: SellerTrustCardProps) => {
+const SellerTrustCard = ({ seller, productId, isOwner = false, activeProductsCount = 0, onContactSeller }: SellerTrustCardProps) => {
   const [soldCount, setSoldCount] = useState(0);
   const [reviewStats, setReviewStats] = useState<ReviewStats>({ totalReviews: 0, averageRating: 0 });
 
   useEffect(() => {
+    if (!seller?.id) return;
     fetchTrustStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seller.id]);
+  }, [seller?.id]);
 
   const fetchTrustStats = async () => {
+    if (!seller?.id) return;
     const [{ count: soldProductsCount }, { data: reviews }] = await Promise.all([
       supabase
         .from('products')
@@ -93,6 +97,8 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
     setSoldCount(soldProductsCount || 0);
     setReviewStats({ totalReviews, averageRating });
   };
+
+  if (!seller) return null;
 
   const accountAgeDays = getAccountAgeInDays(seller.created_at);
   const sellerProfilePath = `/usuario/${seller.username || seller.id}`;
@@ -129,13 +135,13 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
   }, [trustBreakdown]);
 
   const trustLabel = getTrustLabel(trustScore);
-  const reputationLevel = getReputationLevel(trustScore);
+  const reputationLevel = getReputationLevel(trustScore, seller.verified);
   const accountAgeLabel = getAccountAgeLabel(accountAgeDays);
   const averageRatingLabel = reviewStats.totalReviews > 0 ? reviewStats.averageRating.toFixed(1) : '—';
 
   const trustSignals = [
-    seller.verified ? 'Identidad verificada' : 'Identidad pendiente de verificar',
-    reviewStats.totalReviews > 0 ? `${reviewStats.totalReviews} valoraciones públicas` : 'Todavía sin valoraciones',
+    seller.verified ? 'Identidad verificada por Reveta' : 'Identidad pendiente de verificar',
+    reviewStats.totalReviews > 0 ? `${reviewStats.totalReviews} valoraciones públicas` : 'Todavía sin valoraciones públicas',
     soldCount > 0 ? `${soldCount} productos vendidos` : 'Sin ventas registradas todavía',
     activeProductsCount > 0 ? `${activeProductsCount} anuncios activos` : 'Sin anuncios activos adicionales',
     accountAgeLabel,
@@ -167,8 +173,8 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
           <div className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-primary" />
             <div>
-              <p className="text-sm font-bold">Reputación del vendedor</p>
-              <p className="text-xs text-muted-foreground">{reputationLevel} · {trustLabel}</p>
+              <p className="text-sm font-bold">{reputationLevel}</p>
+              <p className="text-xs text-muted-foreground">Confianza Reveta · {trustLabel}</p>
             </div>
           </div>
           <Badge variant="secondary" className="text-sm font-bold">{trustScore}/100</Badge>
@@ -177,7 +183,7 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${trustScore}%` }} />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
-          Cálculo orientativo basado en verificación, valoraciones, ventas, anuncios activos y antigüedad de la cuenta.
+          Puntuación orientativa basada en verificación, valoraciones, ventas, anuncios activos y antigüedad.
         </p>
       </div>
 
@@ -210,7 +216,7 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
       <div className="mb-5 rounded-xl border border-border/60 p-4">
         <div className="mb-3 flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-primary" />
-          <p className="text-sm font-semibold">Resumen de confianza</p>
+          <p className="text-sm font-semibold">Señales de confianza</p>
         </div>
         <div className="space-y-2 text-sm text-muted-foreground">
           {trustSignals.map((signal) => (
@@ -235,15 +241,17 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
         <ul className="space-y-1.5">
           <li>• Revisa fotos, descripción, estado y accesorios incluidos.</li>
           <li>• Mantén la conversación y los acuerdos dentro del chat.</li>
-          <li>• Desconfía si te pide pago externo o cerrar con urgencia.</li>
+          <li>• Desconfía si te pide pago externo, códigos SMS o cerrar con urgencia.</li>
         </ul>
       </div>
 
       {!isOwner && (
         <div className="space-y-2">
-          <Button className="w-full" onClick={onContactSeller}>
-            <MessageCircle className="h-4 w-4 mr-2" /> Contactar con el vendedor
-          </Button>
+          {onContactSeller && (
+            <Button className="w-full" onClick={onContactSeller}>
+              <MessageCircle className="h-4 w-4 mr-2" /> Contactar con el vendedor
+            </Button>
+          )}
           <Button asChild variant="outline" className="w-full">
             <Link to={sellerProfilePath}><Store className="h-4 w-4 mr-2" /> Ver perfil completo</Link>
           </Button>
@@ -251,7 +259,7 @@ const SellerTrustCard = ({ seller, productId, isOwner, activeProductsCount = 0, 
             <Link to={`/search?seller=${seller.id}`}>Ver más productos del vendedor</Link>
           </Button>
           <div className="pt-2 flex flex-col gap-2">
-            <ReportDialog productId={productId} userId={seller.id} />
+            {productId && <ReportDialog productId={productId} userId={seller.id} />}
             <BlockUserButton userId={seller.id} userName={sellerName} />
           </div>
         </div>
