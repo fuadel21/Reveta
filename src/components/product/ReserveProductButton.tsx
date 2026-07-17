@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { CalendarClock } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarClock, Loader2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,6 +13,8 @@ interface ReserveProductButtonProps {
 
 interface ReservationResult {
   id: string;
+  buyer_id?: string;
+  seller_id?: string;
   expires_at: string;
   status: string;
 }
@@ -33,14 +35,81 @@ const getReservationErrorMessage = (error: unknown) => {
     return 'La función Reserva 24h todavía no está activa en Supabase. Ejecuta las migraciones pendientes.';
   }
 
-  return message || 'No se pudo reservar el producto. Inténtalo de nuevo.';
+  return message || 'No se pudo completar la operación. Inténtalo de nuevo.';
+};
+
+const formatRemainingTime = (expiresAt: string, now: number) => {
+  const remainingMs = new Date(expiresAt).getTime() - now;
+  if (remainingMs <= 0) return 'Reserva caducada';
+
+  const totalMinutes = Math.ceil(remainingMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) return `${minutes} min restantes`;
+  return `${hours} h ${minutes} min restantes`;
 };
 
 export const ReserveProductButton = ({ productId, sellerId, disabled = false }: ReserveProductButtonProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [reserving, setReserving] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [loadingReservation, setLoadingReservation] = useState(false);
   const [reservation, setReservation] = useState<ReservationResult | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  const fetchActiveReservation = useCallback(async () => {
+    if (!user || !productId || user.id === sellerId) {
+      setReservation(null);
+      return;
+    }
+
+    setLoadingReservation(true);
+    try {
+      const { data, error } = await (supabase as any)
+        .from('product_reservations')
+        .select('id, buyer_id, seller_id, expires_at, status')
+        .eq('product_id', productId)
+        .eq('buyer_id', user.id)
+        .eq('status', 'active')
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        const message = String(error.message || '');
+        if (message.includes('does not exist') || message.includes('schema cache')) return;
+        throw error;
+      }
+
+      setReservation((data || null) as ReservationResult | null);
+    } catch (error) {
+      console.error('Error loading active product reservation:', error);
+    } finally {
+      setLoadingReservation(false);
+    }
+  }, [productId, sellerId, user]);
+
+  useEffect(() => {
+    fetchActiveReservation();
+  }, [fetchActiveReservation]);
+
+  useEffect(() => {
+    if (!reservation?.expires_at) return;
+
+    const intervalId = window.setInterval(() => {
+      const currentTime = Date.now();
+      setNow(currentTime);
+
+      if (new Date(reservation.expires_at).getTime() <= currentTime) {
+        setReservation(null);
+      }
+    }, 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [reservation?.expires_at]);
 
   const handleReserve = async () => {
     if (!user) {
@@ -67,6 +136,7 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
       if (!result?.id || !result.expires_at) throw new Error('Supabase no devolvió los datos de la reserva.');
 
       setReservation(result);
+      setNow(Date.now());
       const expiryLabel = new Date(result.expires_at).toLocaleString('es-ES', {
         day: '2-digit',
         month: '2-digit',
@@ -78,8 +148,6 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
         title: 'Producto reservado durante 24 horas',
         description: `La reserva estará activa hasta ${expiryLabel}. Completa la compra o coordina la entrega desde el chat.`,
       });
-
-      window.setTimeout(() => window.location.reload(), 900);
     } catch (error) {
       console.error('Error reserving product for 24h:', error);
       toast({
@@ -92,6 +160,35 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
     }
   };
 
+  const handleCancelReservation = async () => {
+    if (!reservation?.id || cancelling) return;
+
+    setCancelling(true);
+    try {
+      const { error } = await (supabase as any).rpc('cancel_product_reservation', {
+        target_reservation_id: reservation.id,
+      });
+
+      if (error) throw error;
+
+      setReservation(null);
+      toast({
+        title: 'Reserva cancelada',
+        description: 'El producto vuelve a estar disponible para otros compradores.',
+      });
+      window.setTimeout(() => window.location.reload(), 700);
+    } catch (error) {
+      console.error('Error cancelling product reservation:', error);
+      toast({
+        title: 'No se pudo cancelar la reserva',
+        description: getReservationErrorMessage(error),
+        variant: 'destructive',
+      });
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const expiryLabel = reservation?.expires_at
     ? new Date(reservation.expires_at).toLocaleString('es-ES', {
         day: '2-digit',
@@ -101,6 +198,44 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
       })
     : null;
 
+  const remainingLabel = useMemo(
+    () => (reservation?.expires_at ? formatRemainingTime(reservation.expires_at, now) : null),
+    [now, reservation?.expires_at],
+  );
+
+  if (loadingReservation) {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-border/60 p-3 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Comprobando reserva...
+      </div>
+    );
+  }
+
+  if (reservation) {
+    return (
+      <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+        <div className="flex items-start gap-3">
+          <CalendarClock className="mt-0.5 h-5 w-5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">Reservado para ti durante 24h</p>
+            <p className="mt-1 text-xs">{remainingLabel} · hasta {expiryLabel}</p>
+            <p className="mt-2 text-xs opacity-80">Completa la compra o coordina la entrega desde el chat antes de que venza.</p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full border-amber-300 bg-white/70 hover:bg-white"
+          onClick={handleCancelReservation}
+          disabled={cancelling}
+        >
+          {cancelling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+          {cancelling ? 'Cancelando...' : 'Cancelar reserva'}
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <Button
@@ -108,15 +243,13 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
         variant="secondary"
         className="w-full"
         onClick={handleReserve}
-        disabled={disabled || reserving || !!reservation}
+        disabled={disabled || reserving}
       >
-        <CalendarClock className="mr-2 h-4 w-4" />
-        {reservation ? 'Reservado durante 24h' : reserving ? 'Reservando...' : 'Reservar durante 24h'}
+        {reserving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarClock className="mr-2 h-4 w-4" />}
+        {reserving ? 'Reservando...' : 'Reservar durante 24h'}
       </Button>
       <p className="text-center text-xs text-muted-foreground">
-        {expiryLabel
-          ? `Reserva activa hasta ${expiryLabel}`
-          : 'Bloquea temporalmente el producto mientras completas la compra o acuerdas la entrega.'}
+        Bloquea temporalmente el producto mientras completas la compra o acuerdas la entrega.
       </p>
     </div>
   );
