@@ -1,5 +1,6 @@
 import React from 'react';
 import { CheckCircle, Award, Zap } from 'lucide-react';
+import SellerReservationsPanel from '@/components/profile/SellerReservationsPanel';
 
 interface ProfileBadgeProps {
   isVerified?: boolean;
@@ -15,27 +16,33 @@ export const ProfileBadge: React.FC<ProfileBadgeProps> = ({
   className = '',
 }) => {
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
-      {isVerified && (
-        <div className="flex items-center gap-1 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-semibold">
-          <CheckCircle size={16} />
-          <span>Verificado</span>
-        </div>
-      )}
+    <div className="w-full space-y-4">
+      <div className={`flex flex-wrap items-center justify-center gap-2 ${className}`}>
+        {isVerified && (
+          <div className="flex items-center gap-1 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-semibold">
+            <CheckCircle size={16} />
+            <span>Verificado</span>
+          </div>
+        )}
 
-      {isFeatured && (
-        <div className="flex items-center gap-1 bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm font-semibold">
-          <Zap size={16} />
-          <span>Destacado</span>
-        </div>
-      )}
+        {isFeatured && (
+          <div className="flex items-center gap-1 bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm font-semibold">
+            <Zap size={16} />
+            <span>Destacado</span>
+          </div>
+        )}
 
-      {isPremium && (
-        <div className="flex items-center gap-1 bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm font-semibold">
-          <Award size={16} />
-          <span>Premium</span>
-        </div>
-      )}
+        {isPremium && (
+          <div className="flex items-center gap-1 bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm font-semibold">
+            <Award size={16} />
+            <span>Premium</span>
+          </div>
+        )}
+      </div>
+
+      <div className="w-full text-left">
+        <SellerReservationsPanel />
+      </div>
     </div>
   );
 };
