@@ -19,10 +19,15 @@ type OfferInsert = TablesInsert<'offers'>;
 type CallSessionInsert = TablesInsert<'call_sessions'>;
 
 const MAX_CHAT_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const MAX_CHAT_MESSAGE_LENGTH = 1000;
+const MAX_OFFER_NOTE_LENGTH = 300;
+const CONVERSATION_SELECT = 'id, product_id, buyer_id, seller_id, updated_at';
+const MESSAGE_SELECT = 'id, conversation_id, sender_id, content, created_at, read';
 const ALLOWED_CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const isValidChatImageFile = (file: File) => ALLOWED_CHAT_IMAGE_TYPES.has(file.type) && file.size <= MAX_CHAT_IMAGE_SIZE_BYTES;
 const isActiveProduct = (product?: ProductSummary | null) => product?.status === 'active';
 const formatPrice = (value?: number | null) => typeof value === 'number' && Number.isFinite(value) ? `${value.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : 'precio indicado';
+const normalizeChatText = (value: string, maxLength: number) => value.trim().replace(/[ \t]+/g, ' ').replace(/\n{4,}/g, '\n\n\n').slice(0, maxLength);
 
 export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
   const { user } = useAuth();
@@ -60,9 +65,13 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     if (!user) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('conversations').select('*').or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`).order('updated_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('conversations')
+        .select(CONVERSATION_SELECT)
+        .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
+        .order('updated_at', { ascending: false });
       if (error) throw error;
-      setConversations(await Promise.all((data || []).map((conversation) => hydrateConversation(conversation))));
+      setConversations(await Promise.all(((data || []) as Conversation[]).map((conversation) => hydrateConversation(conversation))));
     } catch (error) {
       console.error('Error fetching conversations:', error);
       toast({ title: 'Error', description: 'No se pudieron cargar tus conversaciones', variant: 'destructive' });
@@ -96,17 +105,34 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
         return null;
       }
 
-      const { data: existing, error: existingError } = await supabase.from('conversations').select('*').eq('product_id', targetProductId).eq('buyer_id', buyerId).eq('seller_id', targetSellerId).maybeSingle();
+      const { data: existing, error: existingError } = await supabase
+        .from('conversations')
+        .select(CONVERSATION_SELECT)
+        .eq('product_id', targetProductId)
+        .eq('buyer_id', buyerId)
+        .eq('seller_id', targetSellerId)
+        .maybeSingle();
       if (existingError) throw existingError;
-      if (existing) return hydrateConversation(existing);
-      const { data: created, error: createError } = await supabase.from('conversations').insert({ product_id: targetProductId, buyer_id: buyerId, seller_id: targetSellerId }).select('*').single();
+      if (existing) return hydrateConversation(existing as Conversation);
+
+      const { data: created, error: createError } = await supabase
+        .from('conversations')
+        .insert({ product_id: targetProductId, buyer_id: buyerId, seller_id: targetSellerId })
+        .select(CONVERSATION_SELECT)
+        .single();
       if (createError) {
         console.error('Error creating conversation:', createError);
-        const { data: fallback, error: fallbackError } = await supabase.from('conversations').select('*').eq('product_id', targetProductId).eq('buyer_id', buyerId).eq('seller_id', targetSellerId).maybeSingle();
+        const { data: fallback, error: fallbackError } = await supabase
+          .from('conversations')
+          .select(CONVERSATION_SELECT)
+          .eq('product_id', targetProductId)
+          .eq('buyer_id', buyerId)
+          .eq('seller_id', targetSellerId)
+          .maybeSingle();
         if (fallbackError) throw fallbackError;
-        return fallback ? hydrateConversation(fallback) : null;
+        return fallback ? hydrateConversation(fallback as Conversation) : null;
       }
-      return created ? hydrateConversation(created) : null;
+      return created ? hydrateConversation(created as Conversation) : null;
     } catch (err) {
       console.error('Exception in getOrCreateConversation:', err);
       toast({ title: 'No se pudo abrir el chat', description: 'Inténtalo de nuevo en unos segundos.', variant: 'destructive' });
@@ -151,14 +177,21 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
   useEffect(() => {
     if (!selectedConversation) return;
     const fetchMessages = async () => {
-      const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', selectedConversation.id).order('created_at', { ascending: true });
+      const { data, error } = await supabase
+        .from('messages')
+        .select(MESSAGE_SELECT)
+        .eq('conversation_id', selectedConversation.id)
+        .order('created_at', { ascending: true });
       if (error) {
         console.error('Error fetching messages:', error);
         toast({ title: 'Error', description: 'No se pudieron cargar los mensajes', variant: 'destructive' });
         return;
       }
-      setMessages(data || []);
-      if (user) await supabase.from('messages').update({ read: true }).eq('conversation_id', selectedConversation.id).neq('sender_id', user.id);
+      setMessages((data || []) as Message[]);
+      if (user) {
+        const { error: readError } = await supabase.from('messages').update({ read: true }).eq('conversation_id', selectedConversation.id).neq('sender_id', user.id);
+        if (readError) console.warn('Messages read status not updated:', readError.message);
+      }
     };
     fetchMessages();
     const subscription = supabase.channel(`messages:${selectedConversation.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `conversation_id=eq.${selectedConversation.id}` }, (payload) => {
@@ -241,7 +274,13 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConversation || !user) return;
-    const content = newMessage.trim();
+    const content = normalizeChatText(newMessage, MAX_CHAT_MESSAGE_LENGTH);
+    if (!content) return;
+    if (newMessage.trim().length > MAX_CHAT_MESSAGE_LENGTH) {
+      toast({ title: 'Mensaje demasiado largo', description: `Máximo ${MAX_CHAT_MESSAGE_LENGTH} caracteres.`, variant: 'destructive' });
+      return;
+    }
+
     setNewMessage('');
     setLoading(true);
     await stopTyping();
@@ -309,7 +348,12 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
       return;
     }
 
-    const note = offerNote.trim();
+    const note = normalizeChatText(offerNote, MAX_OFFER_NOTE_LENGTH);
+    if (offerNote.trim().length > MAX_OFFER_NOTE_LENGTH) {
+      toast({ title: 'Nota demasiado larga', description: `Máximo ${MAX_OFFER_NOTE_LENGTH} caracteres.`, variant: 'destructive' });
+      return;
+    }
+
     setSendingOffer(true);
     try {
       const offerPayload: OfferInsert = {
@@ -318,7 +362,7 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
         buyer_id: selectedConversation.buyer_id,
         seller_id: selectedConversation.seller_id,
         amount: normalizedAmount,
-        message: note,
+        message: note || null,
         status: 'pending',
       };
       const { error: offerError } = await supabase.from('offers').insert(offerPayload);
@@ -350,14 +394,18 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     }
 
     setUploadingImage(true);
+    let fileName: string | null = null;
     try {
       const fileExt = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
-      const fileName = `${user.id}/chat/${crypto.randomUUID()}.${fileExt}`;
+      fileName = `${user.id}/chat/${crypto.randomUUID()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage.from('products').upload(fileName, file, { contentType: file.type, upsert: false });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(fileName);
       const { error: msgError } = await supabase.from('messages').insert({ conversation_id: selectedConversation.id, sender_id: user.id, content: publicUrl });
-      if (msgError) throw msgError;
+      if (msgError) {
+        await supabase.storage.from('products').remove([fileName]);
+        throw msgError;
+      }
       await updateConversationTimestamp(selectedConversation.id);
     } catch (err) {
       console.error('Error uploading image:', err);
@@ -421,12 +469,14 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
                   <input
                     type="text"
                     value={offerNote}
-                    onChange={(event) => setOfferNote(event.target.value)}
+                    maxLength={MAX_OFFER_NOTE_LENGTH}
+                    onChange={(event) => setOfferNote(event.target.value.slice(0, MAX_OFFER_NOTE_LENGTH))}
                     placeholder="Mensaje opcional"
                     className="rounded-lg border px-3 py-2 text-sm"
                     disabled={sendingOffer}
                   />
                 </div>
+                <p className="text-right text-[11px] text-muted-foreground">{offerNote.length}/{MAX_OFFER_NOTE_LENGTH}</p>
                 <div className="flex flex-wrap gap-2">
                   <button type="submit" disabled={sendingOffer} className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50">
                     {sendingOffer ? 'Enviando...' : 'Enviar oferta'}
@@ -448,7 +498,7 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
             <button type="button" onClick={openOfferPanel} disabled={sendingOffer || loading || !canSendOffer} className="p-2 rounded-lg text-muted-foreground hover:bg-slate-100 disabled:opacity-50 transition" aria-label="Hacer oferta" title={canSendOffer ? 'Hacer oferta' : 'Las ofertas no están disponibles'}><HandCoins size={22} /></button>
             <button type="button" onClick={handleCreatePrivateCall} disabled={!canCreateCall} className="p-2 rounded-lg text-muted-foreground hover:bg-slate-100 disabled:opacity-50 transition" aria-label="Crear llamada privada" title="Crear llamada privada"><PhoneCall size={22} /></button>
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingImage} className="p-2 rounded-lg text-muted-foreground hover:bg-slate-100 disabled:opacity-50 transition" aria-label="Adjuntar imagen"><ImageIcon size={22} /></button>
-            <input type="text" value={newMessage} onChange={(e) => { setNewMessage(e.target.value); if (otherUser?.full_name) startTyping(otherUser.full_name); }} onBlur={() => stopTyping()} placeholder="Escribe un mensaje..." className="flex-1 px-4 py-2 bg-slate-100 border-none rounded-full focus:outline-none focus:ring-2 focus:ring-primary/20" disabled={loading} />
+            <input type="text" value={newMessage} maxLength={MAX_CHAT_MESSAGE_LENGTH} onChange={(e) => { setNewMessage(e.target.value.slice(0, MAX_CHAT_MESSAGE_LENGTH)); if (otherUser?.full_name) startTyping(otherUser.full_name); }} onBlur={() => stopTyping()} placeholder="Escribe un mensaje..." className="flex-1 px-4 py-2 bg-slate-100 border-none rounded-full focus:outline-none focus:ring-2 focus:ring-primary/20" disabled={loading} />
             <button type="submit" disabled={loading || !newMessage.trim()} className="bg-primary text-primary-foreground p-2 rounded-full hover:opacity-90 disabled:opacity-50 transition flex items-center justify-center w-10 h-10"><Send size={20} /></button>
           </form>
         </>
