@@ -10,7 +10,7 @@ declare
   current_user_id uuid := auth.uid();
   product_record public.products%rowtype;
   reservation_record public.product_reservations%rowtype;
-  conversation_id uuid;
+  v_conversation_id uuid;
   buyer_name text;
   expiry_label text;
 begin
@@ -117,32 +117,32 @@ begin
   end;
 
   begin
-    select id
-    into conversation_id
-    from public.conversations
-    where product_id = product_record.id
-      and buyer_id = current_user_id
-      and seller_id = product_record.user_id
-    order by created_at asc
+    select c.id
+    into v_conversation_id
+    from public.conversations c
+    where c.product_id = product_record.id
+      and c.buyer_id = current_user_id
+      and c.seller_id = product_record.user_id
+    order by c.created_at asc
     limit 1;
 
-    if conversation_id is null then
+    if v_conversation_id is null then
       insert into public.conversations (product_id, buyer_id, seller_id)
       values (product_record.id, current_user_id, product_record.user_id)
-      returning id into conversation_id;
+      returning id into v_conversation_id;
     end if;
 
     if not exists (
       select 1
-      from public.messages
-      where conversation_id = conversation_id
-        and sender_id = current_user_id
-        and content like '📅 Reserva 24h confirmada%'
-        and created_at >= reservation_record.created_at - interval '1 minute'
+      from public.messages m
+      where m.conversation_id = v_conversation_id
+        and m.sender_id = current_user_id
+        and m.content like '📅 Reserva 24h confirmada%'
+        and m.created_at >= reservation_record.created_at - interval '1 minute'
     ) then
       insert into public.messages (conversation_id, sender_id, content)
       values (
-        conversation_id,
+        v_conversation_id,
         current_user_id,
         '📅 Reserva 24h confirmada' || E'\n\n' ||
         'He reservado “' || product_record.title || '” hasta ' || expiry_label || '. ' ||
@@ -150,9 +150,9 @@ begin
       );
     end if;
 
-    update public.conversations
+    update public.conversations c
     set updated_at = now()
-    where id = conversation_id;
+    where c.id = v_conversation_id;
   exception when others then
     raise warning 'No se pudo registrar el mensaje de reserva %: %', reservation_record.id, sqlerrm;
   end;
