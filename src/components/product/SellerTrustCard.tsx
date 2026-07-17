@@ -1,13 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import SellerRating from '@/components/SellerRating';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import ReportDialog from '@/components/ReportDialog';
 import BlockUserButton from '@/components/BlockUserButton';
+import ReserveProductButton from '@/components/product/ReserveProductButton';
 import { supabase } from '@/integrations/supabase/client';
-import { AlertTriangle, Award, CalendarDays, CheckCircle2, Clock3, MessageCircle, Package, Shield, ShoppingBag, Store, TrendingUp, Trophy } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  AlertTriangle,
+  Award,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  MessageCircle,
+  Package,
+  Shield,
+  ShoppingBag,
+  Store,
+  TrendingUp,
+  Trophy,
+} from 'lucide-react';
 
 interface SellerTrustCardProps {
   seller: {
@@ -64,43 +79,54 @@ const getReputationLevel = (score: number, verified?: boolean | null) => {
   return 'Vendedor nuevo';
 };
 
-const SellerTrustCard = ({ seller, productId, isOwner = false, activeProductsCount = 0, onContactSeller }: SellerTrustCardProps) => {
+const SellerTrustCard = ({
+  seller,
+  productId,
+  isOwner = false,
+  activeProductsCount = 0,
+  onContactSeller,
+}: SellerTrustCardProps) => {
+  const { id: routeProductId } = useParams<{ id: string }>();
+  const { user } = useAuth();
   const [soldCount, setSoldCount] = useState(0);
   const [reviewStats, setReviewStats] = useState<ReviewStats>({ totalReviews: 0, averageRating: 0 });
 
   useEffect(() => {
     if (!seller?.id) return;
+
+    const fetchTrustStats = async () => {
+      const [{ count: soldProductsCount }, { data: reviews, error: reviewsError }] = await Promise.all([
+        supabase
+          .from('products')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', seller.id)
+          .eq('status', 'sold'),
+        (supabase as any)
+          .from('reviews')
+          .select('rating')
+          .eq('reviewed_id', seller.id),
+      ]);
+
+      if (reviewsError) console.error('Error loading seller reviews:', reviewsError);
+      const validReviews = (reviews || []).filter((review: { rating?: number }) => typeof review.rating === 'number');
+      const totalReviews = validReviews.length;
+      const averageRating = totalReviews > 0
+        ? validReviews.reduce((sum: number, review: { rating: number }) => sum + review.rating, 0) / totalReviews
+        : 0;
+
+      setSoldCount(soldProductsCount || 0);
+      setReviewStats({ totalReviews, averageRating });
+    };
+
     fetchTrustStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seller?.id]);
-
-  const fetchTrustStats = async () => {
-    if (!seller?.id) return;
-    const [{ count: soldProductsCount }, { data: reviews }] = await Promise.all([
-      supabase
-        .from('products')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', seller.id)
-        .eq('status', 'sold'),
-      (supabase as any)
-        .from('reviews')
-        .select('rating')
-        .eq('reviewed_id', seller.id),
-    ]);
-
-    const validReviews = (reviews || []).filter((review: { rating?: number }) => typeof review.rating === 'number');
-    const totalReviews = validReviews.length;
-    const averageRating = totalReviews > 0
-      ? validReviews.reduce((sum: number, review: { rating: number }) => sum + review.rating, 0) / totalReviews
-      : 0;
-
-    setSoldCount(soldProductsCount || 0);
-    setReviewStats({ totalReviews, averageRating });
-  };
 
   if (!seller) return null;
 
+  const effectiveProductId = productId || routeProductId;
+  const effectiveIsOwner = isOwner || user?.id === seller.id;
   const accountAgeDays = getAccountAgeInDays(seller.created_at);
+  const accountAgeLabel = getAccountAgeLabel(accountAgeDays);
   const sellerProfilePath = `/usuario/${seller.username || seller.id}`;
   const sellerName = seller.full_name || seller.username || 'Usuario';
 
@@ -112,31 +138,12 @@ const SellerTrustCard = ({ seller, productId, isOwner = false, activeProductsCou
     const activeProductsPoints = Math.min(activeProductsCount * 2, 8);
     const seniorityPoints = accountAgeDays >= 365 ? 6 : accountAgeDays >= 90 ? 4 : accountAgeDays >= 30 ? 2 : 0;
 
-    return {
-      verificationPoints,
-      ratingPoints,
-      reviewVolumePoints,
-      soldPoints,
-      activeProductsPoints,
-      seniorityPoints,
-    };
+    return verificationPoints + ratingPoints + reviewVolumePoints + soldPoints + activeProductsPoints + seniorityPoints;
   }, [seller.verified, reviewStats.averageRating, reviewStats.totalReviews, soldCount, activeProductsCount, accountAgeDays]);
 
-  const trustScore = useMemo(() => {
-    return Math.min(
-      100,
-      trustBreakdown.verificationPoints +
-        trustBreakdown.ratingPoints +
-        trustBreakdown.reviewVolumePoints +
-        trustBreakdown.soldPoints +
-        trustBreakdown.activeProductsPoints +
-        trustBreakdown.seniorityPoints,
-    );
-  }, [trustBreakdown]);
-
+  const trustScore = Math.min(100, trustBreakdown);
   const trustLabel = getTrustLabel(trustScore);
   const reputationLevel = getReputationLevel(trustScore, seller.verified);
-  const accountAgeLabel = getAccountAgeLabel(accountAgeDays);
   const averageRatingLabel = reviewStats.totalReviews > 0 ? reviewStats.averageRating.toFixed(1) : '—';
 
   const trustSignals = [
@@ -148,21 +155,25 @@ const SellerTrustCard = ({ seller, productId, isOwner = false, activeProductsCou
   ];
 
   return (
-    <div className="bg-card rounded-xl p-6 shadow-card border border-border/50">
+    <div className="rounded-xl border border-border/50 bg-card p-6 shadow-card">
       <div className="mb-5 flex items-start gap-4">
-        <Link to={sellerProfilePath} className="h-14 w-14 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-xl font-bold text-primary-foreground overflow-hidden transition hover:scale-105" aria-label={`Ver perfil de ${sellerName}`}>
+        <Link
+          to={sellerProfilePath}
+          className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary to-accent text-xl font-bold text-primary-foreground transition hover:scale-105"
+          aria-label={`Ver perfil de ${sellerName}`}
+        >
           {seller.avatar_url ? <img src={seller.avatar_url} alt={sellerName} className="h-full w-full object-cover" /> : sellerName[0]?.toUpperCase() || 'U'}
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Link to={sellerProfilePath} className="font-semibold truncate hover:text-primary hover:underline">
+            <Link to={sellerProfilePath} className="truncate font-semibold hover:text-primary hover:underline">
               {sellerName}
             </Link>
             {seller.verified ? <VerifiedBadge size="sm" /> : <Badge variant="outline">Sin verificar</Badge>}
           </div>
           {seller.username && <p className="text-xs text-muted-foreground">@{seller.username}</p>}
           <SellerRating sellerId={seller.id} size="sm" />
-          <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
+          <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
             <CalendarDays className="h-4 w-4" /> Miembro desde {getMemberSince(seller.created_at)}
           </p>
         </div>
@@ -202,14 +213,14 @@ const SellerTrustCard = ({ seller, productId, isOwner = false, activeProductsCou
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 mb-5">
+      <div className="mb-5 grid grid-cols-2 gap-3">
         <div className="rounded-lg border border-border/60 p-3">
           <p className="text-lg font-bold">{activeProductsCount}</p>
-          <p className="text-xs text-muted-foreground flex items-center gap-1"><Package className="h-3.5 w-3.5" /> Anuncios activos</p>
+          <p className="flex items-center gap-1 text-xs text-muted-foreground"><Package className="h-3.5 w-3.5" /> Anuncios activos</p>
         </div>
         <div className="rounded-lg border border-border/60 p-3">
           <p className="text-lg font-bold">{seller.verified ? 'Sí' : 'Pendiente'}</p>
-          <p className="text-xs text-muted-foreground flex items-center gap-1"><Shield className="h-3.5 w-3.5" /> Verificación</p>
+          <p className="flex items-center gap-1 text-xs text-muted-foreground"><Shield className="h-3.5 w-3.5" /> Verificación</p>
         </div>
       </div>
 
@@ -228,7 +239,7 @@ const SellerTrustCard = ({ seller, productId, isOwner = false, activeProductsCou
         </div>
       </div>
 
-      <div className="space-y-2 rounded-xl bg-primary/5 border border-primary/10 p-4 mb-5 text-sm">
+      <div className="mb-5 space-y-2 rounded-xl border border-primary/10 bg-primary/5 p-4 text-sm">
         <div className="flex items-center gap-2"><Award className="h-4 w-4 text-primary" /><span>Nivel: {reputationLevel}</span></div>
         <div className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-primary" /><span>{accountAgeLabel}</span></div>
         <div className="flex items-center gap-2"><ShoppingBag className="h-4 w-4 text-primary" /><span>Historial de ventas y actividad visible</span></div>
@@ -245,21 +256,24 @@ const SellerTrustCard = ({ seller, productId, isOwner = false, activeProductsCou
         </ul>
       </div>
 
-      {!isOwner && (
+      {!effectiveIsOwner && (
         <div className="space-y-2">
+          {effectiveProductId && (
+            <ReserveProductButton productId={effectiveProductId} sellerId={seller.id} />
+          )}
           {onContactSeller && (
             <Button className="w-full" onClick={onContactSeller}>
-              <MessageCircle className="h-4 w-4 mr-2" /> Contactar con el vendedor
+              <MessageCircle className="mr-2 h-4 w-4" /> Contactar con el vendedor
             </Button>
           )}
           <Button asChild variant="outline" className="w-full">
-            <Link to={sellerProfilePath}><Store className="h-4 w-4 mr-2" /> Ver perfil completo</Link>
+            <Link to={sellerProfilePath}><Store className="mr-2 h-4 w-4" /> Ver perfil completo</Link>
           </Button>
           <Button asChild variant="outline" className="w-full">
             <Link to={`/search?seller=${seller.id}`}>Ver más productos del vendedor</Link>
           </Button>
-          <div className="pt-2 flex flex-col gap-2">
-            {productId && <ReportDialog productId={productId} userId={seller.id} />}
+          <div className="flex flex-col gap-2 pt-2">
+            {effectiveProductId && <ReportDialog productId={effectiveProductId} userId={seller.id} />}
             <BlockUserButton userId={seller.id} userName={sellerName} />
           </div>
         </div>
