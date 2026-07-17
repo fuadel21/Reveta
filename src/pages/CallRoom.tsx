@@ -9,7 +9,7 @@ import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Mic, MicOff, Phone, PhoneOff, Shield } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Mic, MicOff, Phone, PhoneOff, Shield } from 'lucide-react';
 
 type CallSession = Tables<'call_sessions'>;
 type CallSignal = Tables<'call_signals'>;
@@ -22,6 +22,15 @@ const rtcConfig: RTCConfiguration = {
 };
 
 const CLOSED_CALL_STATUSES = ['ended', 'declined', 'expired', 'cancelled'];
+
+const getCallErrorMessage = (error: unknown) => {
+  if (error instanceof DOMException) {
+    if (error.name === 'NotAllowedError') return 'Permiso de micrófono denegado. Activa el micrófono en el navegador y vuelve a entrar.';
+    if (error.name === 'NotFoundError') return 'No se ha encontrado micrófono disponible en este dispositivo.';
+    if (error.name === 'NotReadableError') return 'El micrófono está siendo usado por otra aplicación.';
+  }
+  return error instanceof Error ? error.message : 'No se pudo iniciar la llamada.';
+};
 
 const CallRoom = () => {
   const { id } = useParams<{ id: string }>();
@@ -36,6 +45,7 @@ const CallRoom = () => {
   const [muted, setMuted] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [statusText, setStatusText] = useState('Preparando llamada privada...');
+  const [errorText, setErrorText] = useState<string | null>(null);
 
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -73,7 +83,11 @@ const CallRoom = () => {
           setStatusText(updated.status === 'declined' ? 'Llamada rechazada' : 'Llamada finalizada');
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          setErrorText('No se pudo mantener la conexión en tiempo real de la llamada. Vuelve a intentarlo desde mensajes.');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -89,7 +103,7 @@ const CallRoom = () => {
 
     const { data, error } = await supabase
       .from('call_sessions')
-      .select('id, product_id, caller_id, callee_id, status, created_at, updated_at, ended_at')
+      .select('id, conversation_id, product_id, caller_id, callee_id, status, created_at, updated_at, ended_at')
       .eq('id', id)
       .maybeSingle();
 
@@ -115,6 +129,9 @@ const CallRoom = () => {
 
   const createPeerConnection = async () => {
     if (!user || !call || !isParticipant || isClosedCall) return null;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Tu navegador no permite llamadas de audio desde esta pantalla. Prueba con Chrome o Safari actualizado.');
+    }
 
     const peer = new RTCPeerConnection(rtcConfig);
 
@@ -130,10 +147,14 @@ const CallRoom = () => {
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === 'connected') {
         setConnected(true);
+        setErrorText(null);
         setStatusText('Llamada conectada');
+      } else if (peer.connectionState === 'connecting') {
+        setStatusText('Conectando audio...');
       } else if (peer.connectionState === 'failed' || peer.connectionState === 'disconnected') {
         setConnected(false);
         setStatusText('La conexión se ha interrumpido');
+        setErrorText('La conexión de audio se ha interrumpido. En algunas redes móviles puede fallar si el operador bloquea WebRTC.');
       } else if (peer.connectionState === 'closed') {
         setConnected(false);
       }
@@ -150,7 +171,10 @@ const CallRoom = () => {
   const sendSignal = async (type: CallSignal['type'], payload: Json) => {
     if (!user || !call || !isParticipant || isClosedCall) return;
     const { error } = await supabase.from('call_signals').insert({ call_id: call.id, sender_id: user.id, type, payload });
-    if (error) console.error('Error sending call signal:', error);
+    if (error) {
+      console.error('Error sending call signal:', error);
+      setErrorText('No se pudo enviar la señal de llamada. Vuelve al chat y crea una llamada nueva.');
+    }
   };
 
   const handleIncomingSignal = async (signal: CallSignal) => {
@@ -183,6 +207,7 @@ const CallRoom = () => {
     } catch (error) {
       console.error('Error handling call signal:', error);
       setStatusText('No se pudo conectar la llamada');
+      setErrorText(getCallErrorMessage(error));
     }
   };
 
@@ -197,6 +222,7 @@ const CallRoom = () => {
 
     if (error) {
       console.error('Error loading existing call signals:', error);
+      setErrorText('No se pudieron cargar las señales de la llamada. Prueba a crear otra llamada desde el chat.');
       return;
     }
 
@@ -219,6 +245,7 @@ const CallRoom = () => {
     startedRef.current = true;
     setHasStarted(true);
     setJoining(true);
+    setErrorText(null);
 
     try {
       setStatusText('Solicitando permiso de micrófono...');
@@ -238,7 +265,9 @@ const CallRoom = () => {
       }
     } catch (error) {
       console.error('Error starting call:', error);
-      toast({ title: 'No se pudo iniciar la llamada', description: 'Revisa los permisos del micrófono.', variant: 'destructive' });
+      const message = getCallErrorMessage(error);
+      setErrorText(message);
+      toast({ title: 'No se pudo iniciar la llamada', description: message, variant: 'destructive' });
       cleanupCall();
       startedRef.current = false;
       setHasStarted(false);
@@ -248,13 +277,22 @@ const CallRoom = () => {
   };
 
   const updateCallStatus = async (status: CallSession['status']) => {
-    if (!call || !user || !isParticipant) return;
+    if (!call || !user || !isParticipant) return false;
     const now = new Date().toISOString();
-    await supabase
+    const { error } = await supabase
       .from('call_sessions')
       .update({ status, updated_at: now, ...(status === 'ended' ? { ended_at: now } : {}) })
       .eq('id', call.id)
       .or(`caller_id.eq.${user.id},callee_id.eq.${user.id}`);
+
+    if (error) {
+      console.error('Error updating call status:', error);
+      setErrorText('No se pudo actualizar el estado de la llamada. Vuelve al chat y crea una llamada nueva.');
+      return false;
+    }
+
+    setCall((prev) => (prev ? { ...prev, status, updated_at: now, ended_at: status === 'ended' ? now : prev.ended_at } : prev));
+    return true;
   };
 
   const toggleMute = () => {
@@ -274,10 +312,12 @@ const CallRoom = () => {
     setMuted(false);
   };
 
+  const goBackToChat = () => navigate('/messages');
+
   const endCall = async () => {
     cleanupCall();
     await updateCallStatus('ended');
-    navigate('/messages');
+    goBackToChat();
   };
 
   if (authLoading || loading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
@@ -286,7 +326,7 @@ const CallRoom = () => {
     return (
       <>
         <Helmet><title>Llamada privada | Reveta</title><meta name="robots" content="noindex,nofollow,noarchive" /></Helmet>
-        <div className="min-h-screen flex flex-col bg-background"><Header /><main className="flex-1 container py-8 max-w-xl"><Card><CardHeader><CardTitle>Acceso no permitido</CardTitle><CardDescription>Esta llamada privada solo está disponible para los dos usuarios del producto.</CardDescription></CardHeader><CardContent><Button onClick={() => navigate('/messages')} className="w-full">Volver a mensajes</Button></CardContent></Card></main><Footer /></div>
+        <div className="min-h-screen flex flex-col bg-background"><Header /><main className="flex-1 container py-8 max-w-xl"><Card><CardHeader><CardTitle>Acceso no permitido</CardTitle><CardDescription>Esta llamada privada solo está disponible para los dos usuarios del producto.</CardDescription></CardHeader><CardContent><Button onClick={goBackToChat} className="w-full">Volver a mensajes</Button></CardContent></Card></main><Footer /></div>
       </>
     );
   }
@@ -297,17 +337,20 @@ const CallRoom = () => {
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <main className="flex-1 container py-8 max-w-xl">
+          <Button variant="ghost" className="mb-4 gap-2" onClick={goBackToChat}><ArrowLeft className="h-4 w-4" />Volver al chat</Button>
           <Card className="border-border/50">
             <CardHeader className="text-center"><div className="mx-auto h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mb-4"><Phone className="h-10 w-10 text-primary" /></div><CardTitle>Llamada privada de Reveta</CardTitle><CardDescription>{statusText}</CardDescription></CardHeader>
             <CardContent className="space-y-6">
               <audio ref={remoteAudioRef} autoPlay playsInline />
               <div className="rounded-xl border border-primary/10 bg-primary/5 p-4 text-sm text-muted-foreground flex gap-3"><Shield className="h-5 w-5 text-primary shrink-0" /><p>Esta llamada usa audio del navegador. Reveta no muestra números de teléfono entre usuarios.</p></div>
+              <div className="rounded-xl border bg-muted/30 p-4 text-xs text-muted-foreground">Consejo: si la llamada no conecta en datos móviles, prueba Wi‑Fi. Algunas redes necesitan un servidor TURN para WebRTC.</div>
+              {errorText && <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive flex gap-3"><AlertTriangle className="h-5 w-5 shrink-0" /><p>{errorText}</p></div>}
               {isClosedCall && <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">Esta llamada ya terminó. Vuelve a mensajes para continuar por chat o solicitar una nueva llamada.</div>}
-              <div className="flex items-center justify-center gap-3">
+              <div className="flex flex-wrap items-center justify-center gap-3">
                 {!hasStarted ? (
                   <Button onClick={startCall} disabled={joining || isClosedCall} className="h-14 px-8 text-base font-bold"><Phone className="h-5 w-5 mr-2" />{joining ? 'Conectando...' : 'Entrar en llamada'}</Button>
                 ) : (
-                  <><Button variant="outline" size="icon" className="h-14 w-14 rounded-full" onClick={toggleMute}>{muted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}</Button><Button variant="destructive" size="icon" className="h-14 w-14 rounded-full" onClick={endCall}><PhoneOff className="h-6 w-6" /></Button></>
+                  <><Button variant="outline" size="icon" className="h-14 w-14 rounded-full" onClick={toggleMute} aria-label={muted ? 'Activar micrófono' : 'Silenciar micrófono'}>{muted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}</Button><Button variant="destructive" size="icon" className="h-14 w-14 rounded-full" onClick={endCall} aria-label="Colgar llamada"><PhoneOff className="h-6 w-6" /></Button></>
                 )}
               </div>
               {connected && <p className="text-center text-sm text-green-600 font-medium">Conectado</p>}
