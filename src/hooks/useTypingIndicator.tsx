@@ -11,10 +11,19 @@ export const useTypingIndicator = (conversationId: string | undefined, userId: s
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  useEffect(() => {
-    if (!conversationId || !userId) return;
+  const clearTypingTimeout = useCallback(() => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  }, []);
 
-    // Create a presence channel for typing indicators
+  useEffect(() => {
+    if (!conversationId || !userId) {
+      setTypingUsers([]);
+      return;
+    }
+
     const channel = supabase.channel(`typing:${conversationId}`, {
       config: {
         presence: {
@@ -27,7 +36,7 @@ export const useTypingIndicator = (conversationId: string | undefined, userId: s
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
         const typing: TypingUser[] = [];
-        
+
         Object.keys(state).forEach((key) => {
           if (key !== userId) {
             const presences = state[key] as any[];
@@ -38,7 +47,7 @@ export const useTypingIndicator = (conversationId: string | undefined, userId: s
             });
           }
         });
-        
+
         setTypingUsers(typing);
       })
       .subscribe(async (status) => {
@@ -50,39 +59,31 @@ export const useTypingIndicator = (conversationId: string | undefined, userId: s
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
+      clearTypingTimeout();
+      setTypingUsers([]);
+      channel.untrack().catch((error) => console.warn('Typing presence untrack failed:', error));
+      supabase.removeChannel(channel);
+      if (channelRef.current === channel) channelRef.current = null;
     };
-  }, [conversationId, userId]);
-
-  const startTyping = useCallback(async (userName: string = 'Usuario') => {
-    if (!channelRef.current) return;
-
-    // Clear any existing timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    // Track that user is typing
-    await channelRef.current.track({ isTyping: true, name: userName });
-
-    // Auto-stop typing after 3 seconds
-    typingTimeoutRef.current = setTimeout(async () => {
-      await stopTyping();
-    }, 3000);
-  }, []);
+  }, [clearTypingTimeout, conversationId, userId]);
 
   const stopTyping = useCallback(async () => {
     if (!channelRef.current) return;
 
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = null;
-    }
-
+    clearTypingTimeout();
     await channelRef.current.track({ isTyping: false, name: '' });
-  }, []);
+  }, [clearTypingTimeout]);
+
+  const startTyping = useCallback(async (userName: string = 'Usuario') => {
+    if (!channelRef.current) return;
+
+    clearTypingTimeout();
+    await channelRef.current.track({ isTyping: true, name: userName });
+
+    typingTimeoutRef.current = setTimeout(() => {
+      stopTyping().catch((error) => console.warn('Typing auto-stop failed:', error));
+    }, 3000);
+  }, [clearTypingTimeout, stopTyping]);
 
   return { typingUsers, startTyping, stopTyping };
 };
