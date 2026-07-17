@@ -95,12 +95,12 @@ export const MessageBubble = ({ content, isOwn, isRead, timestamp }: MessageBubb
     <div className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-[70%] rounded-2xl transition-all',
+          'max-w-[86%] rounded-2xl transition-all sm:max-w-[70%]',
           hasOnlyImage ? 'p-1' : 'px-4 py-2',
           isOwn ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none',
         )}
       >
-        <div className={cn('text-sm whitespace-pre-wrap', hasOnlyImage && 'p-0')}>
+        <div className={cn('text-sm whitespace-pre-wrap break-words', hasOnlyImage && 'p-0')}>
           {parts.map((part, index) => {
             if (part.type === 'image') {
               return <ImagePreview key={index} src={part.content} className="my-1" />;
@@ -131,6 +131,7 @@ export const MessageBubble = ({ content, isOwn, isRead, timestamp }: MessageBubb
                   href={part.content}
                   target="_blank"
                   rel="noopener noreferrer"
+                  referrerPolicy="no-referrer"
                   className={cn('underline break-all', isOwn ? 'text-primary-foreground/90' : 'text-primary')}
                 >
                   {part.content}
