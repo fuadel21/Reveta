@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { TablesInsert } from '@/integrations/supabase/types';
 import { useAuth } from '@/hooks/useAuth';
-import { Send, X, Image as ImageIcon, ArrowLeft, MessageCircle, HandCoins } from 'lucide-react';
+import { Send, X, Image as ImageIcon, ArrowLeft, MessageCircle, HandCoins, PhoneCall } from 'lucide-react';
 import { MessageBubble } from '@/components/chat/MessageBubble';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
 import { PendingOffers } from '@/components/chat/PendingOffers';
@@ -16,6 +16,7 @@ interface Conversation { id: string; product_id: string; buyer_id: string; selle
 interface ChatProps { productId?: string; sellerId?: string; onClose?: () => void; }
 
 type OfferInsert = TablesInsert<'offers'>;
+type CallSessionInsert = TablesInsert<'call_sessions'>;
 
 const MAX_CHAT_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_CHAT_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -34,6 +35,7 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
   const [initLoading, setInitLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [sendingOffer, setSendingOffer] = useState(false);
+  const [creatingCall, setCreatingCall] = useState(false);
   const [offerPanelOpen, setOfferPanelOpen] = useState(false);
   const [offerAmount, setOfferAmount] = useState('');
   const [offerNote, setOfferNote] = useState('');
@@ -254,6 +256,40 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
     setLoading(false);
   };
 
+  const handleCreatePrivateCall = async () => {
+    if (!user || !selectedConversation || creatingCall) return;
+    const calleeId = selectedConversation.buyer_id === user.id ? selectedConversation.seller_id : selectedConversation.buyer_id;
+    if (!calleeId || calleeId === user.id) {
+      toast({ title: 'No se pudo crear la llamada', description: 'No hemos encontrado al otro participante.', variant: 'destructive' });
+      return;
+    }
+
+    setCreatingCall(true);
+    try {
+      const callPayload: CallSessionInsert = {
+        conversation_id: selectedConversation.id,
+        product_id: selectedConversation.product_id,
+        caller_id: user.id,
+        callee_id: calleeId,
+        status: 'requested',
+      };
+      const { data: callSession, error: callError } = await supabase.from('call_sessions').insert(callPayload).select('id').single();
+      if (callError || !callSession?.id) throw callError || new Error('No se recibió el ID de la llamada');
+
+      const content = `📞 Llamada privada creada\n/call/${callSession.id}`;
+      const { error: messageError } = await supabase.from('messages').insert({ conversation_id: selectedConversation.id, sender_id: user.id, content });
+      if (messageError) throw messageError;
+
+      await updateConversationTimestamp(selectedConversation.id);
+      toast({ title: 'Llamada creada', description: 'El enlace privado ya está en el chat.' });
+    } catch (error) {
+      console.error('Error creating private call:', error);
+      toast({ title: 'No se pudo crear la llamada', description: 'Inténtalo de nuevo en unos segundos.', variant: 'destructive' });
+    } finally {
+      setCreatingCall(false);
+    }
+  };
+
   const handleSubmitOffer = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!user || !selectedConversation) return;
@@ -334,18 +370,22 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
 
   const otherUser = selectedConversation && (selectedConversation.buyer_id === user?.id ? selectedConversation.seller : selectedConversation.buyer);
   const canSendOffer = !!selectedConversation && user?.id === selectedConversation.buyer_id && isActiveProduct(selectedConversation.product);
+  const canCreateCall = !!selectedConversation && !!user && !creatingCall;
 
   if (initLoading) return <div className="flex flex-col h-full items-center justify-center bg-white p-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div><p className="text-muted-foreground">Iniciando chat...</p></div>;
 
   return (
     <div className="flex flex-col h-full bg-white rounded-lg shadow-lg overflow-hidden border border-border">
       <div className="flex items-center justify-between p-4 border-b bg-primary text-primary-foreground">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           {selectedConversation && !productId && <button onClick={() => setSelectedConversation(null)} className="hover:bg-primary-foreground/10 p-2 rounded-lg transition" aria-label="Volver"><ArrowLeft size={20} /></button>}
-          <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg overflow-hidden">{otherUser?.avatar_url ? <img src={otherUser.avatar_url} alt="" className="w-full h-full object-cover" /> : (otherUser?.full_name || 'U')[0].toUpperCase()}</div>
-          <div><h3 className="font-semibold leading-none">{otherUser?.full_name || 'Chat'}</h3>{selectedConversation?.product && <p className="text-xs text-primary-foreground/80 mt-1 truncate max-w-[200px]">{selectedConversation.product.title}{!isActiveProduct(selectedConversation.product) ? ' · no disponible' : ''}</p>}</div>
+          <div className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg overflow-hidden shrink-0">{otherUser?.avatar_url ? <img src={otherUser.avatar_url} alt="" className="w-full h-full object-cover" /> : (otherUser?.full_name || 'U')[0].toUpperCase()}</div>
+          <div className="min-w-0"><h3 className="font-semibold leading-none truncate">{otherUser?.full_name || 'Chat'}</h3>{selectedConversation?.product && <p className="text-xs text-primary-foreground/80 mt-1 truncate max-w-[200px]">{selectedConversation.product.title}{!isActiveProduct(selectedConversation.product) ? ' · no disponible' : ''}</p>}</div>
         </div>
-        {onClose && <button onClick={onClose} className="hover:bg-primary-foreground/10 p-2 rounded-lg transition" aria-label="Cerrar chat"><X size={20} /></button>}
+        <div className="flex items-center gap-1">
+          {selectedConversation && <button onClick={handleCreatePrivateCall} disabled={!canCreateCall} className="hover:bg-primary-foreground/10 p-2 rounded-lg transition disabled:opacity-50" aria-label="Crear llamada privada" title="Crear llamada privada"><PhoneCall size={20} /></button>}
+          {onClose && <button onClick={onClose} className="hover:bg-primary-foreground/10 p-2 rounded-lg transition" aria-label="Cerrar chat"><X size={20} /></button>}
+        </div>
       </div>
 
       {!selectedConversation ? (
@@ -406,6 +446,7 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
           <form onSubmit={handleSendMessage} className="border-t p-4 flex gap-2 bg-white">
             <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/jpeg,image/png,image/webp" className="hidden" />
             <button type="button" onClick={openOfferPanel} disabled={sendingOffer || loading || !canSendOffer} className="p-2 rounded-lg text-muted-foreground hover:bg-slate-100 disabled:opacity-50 transition" aria-label="Hacer oferta" title={canSendOffer ? 'Hacer oferta' : 'Las ofertas no están disponibles'}><HandCoins size={22} /></button>
+            <button type="button" onClick={handleCreatePrivateCall} disabled={!canCreateCall} className="p-2 rounded-lg text-muted-foreground hover:bg-slate-100 disabled:opacity-50 transition" aria-label="Crear llamada privada" title="Crear llamada privada"><PhoneCall size={22} /></button>
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingImage} className="p-2 rounded-lg text-muted-foreground hover:bg-slate-100 disabled:opacity-50 transition" aria-label="Adjuntar imagen"><ImageIcon size={22} /></button>
             <input type="text" value={newMessage} onChange={(e) => { setNewMessage(e.target.value); if (otherUser?.full_name) startTyping(otherUser.full_name); }} onBlur={() => stopTyping()} placeholder="Escribe un mensaje..." className="flex-1 px-4 py-2 bg-slate-100 border-none rounded-full focus:outline-none focus:ring-2 focus:ring-primary/20" disabled={loading} />
             <button type="submit" disabled={loading || !newMessage.trim()} className="bg-primary text-primary-foreground p-2 rounded-full hover:opacity-90 disabled:opacity-50 transition flex items-center justify-center w-10 h-10"><Send size={20} /></button>
