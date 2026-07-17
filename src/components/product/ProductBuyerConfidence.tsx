@@ -1,55 +1,66 @@
-import { AlertTriangle, BadgeCheck, CheckCircle2, CreditCard, MessageCircle, PackageCheck, ShieldCheck, Truck } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, CheckCircle2, CreditCard, MessageCircle, PackageCheck, PhoneCall, ShieldCheck, Truck } from 'lucide-react';
 
-const trustItems = [
+const securePurchaseItems = [
   {
-    icon: ShieldCheck,
-    title: 'Compra con registro',
-    description: 'Prioriza el pago dentro de Reveta para que la operación quede registrada y sea más fácil revisarla si hay un problema.',
-  },
-  {
-    icon: MessageCircle,
-    title: 'Chat registrado',
-    description: 'Negocia por el chat de Reveta, guarda acuerdos y evita cerrar por enlaces externos o mensajes fuera de la plataforma.',
+    icon: CreditCard,
+    title: 'Pago protegido',
+    description: 'Cuando pagas con tarjeta, Reveta registra la operación y Stripe confirma el pago de forma segura.',
   },
   {
     icon: Truck,
-    title: 'Entrega clara',
-    description: 'Pregunta si el producto se entrega en mano o con envío, quién paga el transporte y cuándo se confirma la entrega.',
+    title: 'Envío con seguimiento',
+    description: 'Los envíos compatibles pueden guardar seguimiento en Reveta para que comprador y vendedor tengan trazabilidad.',
+  },
+  {
+    icon: MessageCircle,
+    title: 'Chat privado',
+    description: 'Mantén preguntas, acuerdos, fotos y ofertas dentro del chat para tener historial si surge una incidencia.',
+  },
+  {
+    icon: PhoneCall,
+    title: 'Llamada privada',
+    description: 'Puedes hablar por audio desde Reveta sin publicar ni compartir números de teléfono entre usuarios.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Incidencias Reveta',
+    description: 'Si algo no encaja, puedes abrir una incidencia desde la operación para que quede registrada y revisable.',
   },
   {
     icon: BadgeCheck,
-    title: 'Revisa al vendedor',
-    description: 'Mira antigüedad, valoraciones, ventas, anuncios activos y verificación antes de decidir.',
+    title: 'Vendedor valorado',
+    description: 'Consulta reputación, antigüedad, valoraciones, productos vendidos y señales de verificación antes de comprar.',
   },
 ];
 
 const checklist = [
-  'Pide fotos reales y actuales si tienes dudas.',
-  'Comprueba estado, accesorios incluidos y posibles defectos.',
-  'No envíes dinero por adelantado fuera de Reveta.',
-  'Desconfía de prisas, excusas raras o precios demasiado bajos.',
+  'Comprueba fotos reales, estado, accesorios y posibles defectos.',
+  'Usa el chat de Reveta para dejar constancia de los acuerdos.',
+  'Prioriza pago con tarjeta si quieres operación registrada automáticamente.',
+  'Desconfía de enlaces externos, prisas raras o precios demasiado bajos.',
 ];
 
 export const ProductBuyerConfidence = () => {
   return (
-    <section className="rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/5 via-background to-accent/5 p-5 shadow-sm">
+    <section className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-background to-accent/10 p-5 shadow-sm">
       <div className="mb-4 flex items-start gap-3">
         <div className="rounded-full bg-primary/10 p-2 text-primary">
           <PackageCheck className="h-5 w-5" />
         </div>
         <div>
-          <h2 className="text-base font-bold text-foreground">Compra con más seguridad en Reveta</h2>
+          <p className="text-xs font-bold uppercase tracking-wide text-primary">Reveta Compra Segura</p>
+          <h2 className="text-base font-bold text-foreground">Compra, habla y acuerda dentro de Reveta</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Antes de pagar, revisa el producto, el vendedor y deja los acuerdos importantes dentro del chat de Reveta.
+            Una capa de confianza para comprar segunda mano con chat, llamada privada, pago registrado, seguimiento e incidencias.
           </p>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {trustItems.map((item) => {
+        {securePurchaseItems.map((item) => {
           const Icon = item.icon;
           return (
-            <div key={item.title} className="rounded-xl border border-border/60 bg-card/80 p-3">
+            <div key={item.title} className="rounded-xl border border-border/60 bg-card/90 p-3 shadow-sm">
               <div className="mb-1 flex items-center gap-2">
                 <Icon className="h-4 w-4 text-primary" />
                 <p className="text-sm font-semibold text-foreground">{item.title}</p>
@@ -60,10 +71,10 @@ export const ProductBuyerConfidence = () => {
         })}
       </div>
 
-      <div className="mt-4 rounded-xl border border-border/60 bg-card/80 p-4">
+      <div className="mt-4 rounded-xl border border-border/60 bg-card/90 p-4">
         <div className="mb-3 flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4 text-primary" />
-          <p className="text-sm font-bold text-foreground">Checklist antes de comprar</p>
+          <p className="text-sm font-bold text-foreground">Checklist rápido antes de comprar</p>
         </div>
         <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
           {checklist.map((item) => (
@@ -79,14 +90,9 @@ export const ProductBuyerConfidence = () => {
         <div className="flex gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            Alerta antifraude: no aceptes enlaces externos, pagos por adelantado ni vendedores que presionan para cerrar fuera de Reveta.
+            Alerta antifraude: no aceptes enlaces externos, códigos SMS, pagos por adelantado fuera de Reveta ni usuarios que presionan para cerrar rápido.
           </p>
         </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <CreditCard className="h-4 w-4 text-primary" />
-        <span>Consejo Reveta: usa chat, pago dentro de Reveta y reporta cualquier comportamiento sospechoso.</span>
       </div>
     </section>
   );
