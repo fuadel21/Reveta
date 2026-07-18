@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  MapPin,
   MessageCircle,
   Package,
   Shield,
@@ -44,13 +45,21 @@ interface ReviewStats {
   averageRating: number;
 }
 
+const normalizeLocation = (value?: string | null) =>
+  (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(',')[0]
+    .trim();
+
 const getMemberSince = (dateString: string) =>
   new Date(dateString).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
 const getAccountAgeInDays = (dateString: string) => {
   const createdAt = new Date(dateString).getTime();
   if (Number.isNaN(createdAt)) return 0;
-  return Math.max(0, Math.floor((Date.now() - createdAt) / (1000 * 60 * 60 * 24)));
+  return Math.max(0, Math.floor((Date.now() - createdAt) / 86400000));
 };
 
 const getAccountAgeLabel = (days: number) => {
@@ -69,16 +78,6 @@ const getTrustLabel = (score: number) => {
   return 'Nuevo vendedor';
 };
 
-const getReputationLevel = (score: number, verified?: boolean | null) => {
-  if (verified && score >= 85) return 'Vendedor top verificado';
-  if (verified && score >= 70) return 'Vendedor verificado recomendado';
-  if (verified) return 'Vendedor verificado';
-  if (score >= 70) return 'Vendedor recomendado';
-  if (score >= 50) return 'Vendedor fiable';
-  if (score >= 30) return 'Vendedor en progreso';
-  return 'Vendedor nuevo';
-};
-
 const SellerTrustCard = ({
   seller,
   productId,
@@ -90,21 +89,21 @@ const SellerTrustCard = ({
   const { user } = useAuth();
   const [soldCount, setSoldCount] = useState(0);
   const [reviewStats, setReviewStats] = useState<ReviewStats>({ totalReviews: 0, averageRating: 0 });
+  const [sellerLocation, setSellerLocation] = useState<string | null>(null);
+  const [productLocation, setProductLocation] = useState<string | null>(null);
 
   useEffect(() => {
     if (!seller?.id) return;
 
     const fetchTrustStats = async () => {
-      const [{ count: soldProductsCount }, { data: reviews, error: reviewsError }] = await Promise.all([
-        supabase
-          .from('products')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', seller.id)
-          .eq('status', 'sold'),
-        (supabase as any)
-          .from('reviews')
-          .select('rating')
-          .eq('reviewed_id', seller.id),
+      const effectiveProductId = productId || routeProductId;
+      const [{ count: soldProductsCount }, { data: reviews, error: reviewsError }, { data: profileData }, productResult] = await Promise.all([
+        supabase.from('products').select('id', { count: 'exact', head: true }).eq('user_id', seller.id).eq('status', 'sold'),
+        (supabase as any).from('reviews').select('rating').eq('reviewed_id', seller.id),
+        (supabase as any).from('profiles').select('location').eq('id', seller.id).maybeSingle(),
+        effectiveProductId
+          ? supabase.from('products').select('location').eq('id', effectiveProductId).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
 
       if (reviewsError) console.error('Error loading seller reviews:', reviewsError);
@@ -116,10 +115,12 @@ const SellerTrustCard = ({
 
       setSoldCount(soldProductsCount || 0);
       setReviewStats({ totalReviews, averageRating });
+      setSellerLocation(profileData?.location || null);
+      setProductLocation((productResult as any)?.data?.location || null);
     };
 
     fetchTrustStats();
-  }, [seller?.id]);
+  }, [seller?.id, productId, routeProductId]);
 
   if (!seller) return null;
 
@@ -130,21 +131,40 @@ const SellerTrustCard = ({
   const sellerProfilePath = `/usuario/${seller.username || seller.id}`;
   const sellerName = seller.full_name || seller.username || 'Usuario';
 
-  const trustBreakdown = useMemo(() => {
-    const verificationPoints = seller.verified ? 25 : 0;
-    const ratingPoints = reviewStats.totalReviews > 0 ? Math.round((reviewStats.averageRating / 5) * 30) : 0;
-    const reviewVolumePoints = Math.min(reviewStats.totalReviews * 3, 15);
-    const soldPoints = Math.min(soldCount * 4, 16);
-    const activeProductsPoints = Math.min(activeProductsCount * 2, 8);
-    const seniorityPoints = accountAgeDays >= 365 ? 6 : accountAgeDays >= 90 ? 4 : accountAgeDays >= 30 ? 2 : 0;
-
-    return verificationPoints + ratingPoints + reviewVolumePoints + soldPoints + activeProductsPoints + seniorityPoints;
-  }, [seller.verified, reviewStats.averageRating, reviewStats.totalReviews, soldCount, activeProductsCount, accountAgeDays]);
-
-  const trustScore = Math.min(100, trustBreakdown);
+  const verificationPoints = seller.verified ? 25 : 0;
+  const ratingPoints = reviewStats.totalReviews > 0 ? Math.round((reviewStats.averageRating / 5) * 30) : 0;
+  const reviewVolumePoints = Math.min(reviewStats.totalReviews * 3, 15);
+  const soldPoints = Math.min(soldCount * 4, 16);
+  const activeProductsPoints = Math.min(activeProductsCount * 2, 8);
+  const seniorityPoints = accountAgeDays >= 365 ? 6 : accountAgeDays >= 90 ? 4 : accountAgeDays >= 30 ? 2 : 0;
+  const trustScore = Math.min(100, verificationPoints + ratingPoints + reviewVolumePoints + soldPoints + activeProductsPoints + seniorityPoints);
   const trustLabel = getTrustLabel(trustScore);
-  const reputationLevel = getReputationLevel(trustScore, seller.verified);
   const averageRatingLabel = reviewStats.totalReviews > 0 ? reviewStats.averageRating.toFixed(1) : '—';
+
+  const normalizedSellerLocation = normalizeLocation(sellerLocation);
+  const normalizedProductLocation = normalizeLocation(productLocation);
+  const sameLocalArea = Boolean(normalizedSellerLocation && normalizedProductLocation && normalizedSellerLocation === normalizedProductLocation);
+  const isTopLocalSeller = Boolean(
+    sameLocalArea &&
+    seller.verified &&
+    reviewStats.totalReviews >= 3 &&
+    reviewStats.averageRating >= 4.5 &&
+    soldCount >= 3,
+  );
+
+  const reputationLevel = isTopLocalSeller
+    ? 'Vendedor top local'
+    : seller.verified && trustScore >= 85
+      ? 'Vendedor top verificado'
+      : seller.verified && trustScore >= 70
+        ? 'Vendedor verificado recomendado'
+        : seller.verified
+          ? 'Vendedor verificado'
+          : trustScore >= 70
+            ? 'Vendedor recomendado'
+            : trustScore >= 50
+              ? 'Vendedor fiable'
+              : 'Vendedor nuevo';
 
   const trustSignals = [
     seller.verified ? 'Identidad verificada por Reveta' : 'Identidad pendiente de verificar',
@@ -157,25 +177,22 @@ const SellerTrustCard = ({
   return (
     <div className="rounded-xl border border-border/50 bg-card p-6 shadow-card">
       <div className="mb-5 flex items-start gap-4">
-        <Link
-          to={sellerProfilePath}
-          className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary to-accent text-xl font-bold text-primary-foreground transition hover:scale-105"
-          aria-label={`Ver perfil de ${sellerName}`}
-        >
+        <Link to={sellerProfilePath} className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary to-accent text-xl font-bold text-primary-foreground transition hover:scale-105">
           {seller.avatar_url ? <img src={seller.avatar_url} alt={sellerName} className="h-full w-full object-cover" /> : sellerName[0]?.toUpperCase() || 'U'}
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Link to={sellerProfilePath} className="truncate font-semibold hover:text-primary hover:underline">
-              {sellerName}
-            </Link>
+            <Link to={sellerProfilePath} className="truncate font-semibold hover:text-primary hover:underline">{sellerName}</Link>
             {seller.verified ? <VerifiedBadge size="sm" /> : <Badge variant="outline">Sin verificar</Badge>}
+            {isTopLocalSeller && (
+              <Badge className="gap-1 bg-amber-500 text-white hover:bg-amber-500">
+                <MapPin className="h-3.5 w-3.5" /> Top local
+              </Badge>
+            )}
           </div>
           {seller.username && <p className="text-xs text-muted-foreground">@{seller.username}</p>}
           <SellerRating sellerId={seller.id} size="sm" />
-          <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-            <CalendarDays className="h-4 w-4" /> Miembro desde {getMemberSince(seller.created_at)}
-          </p>
+          <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground"><CalendarDays className="h-4 w-4" /> Miembro desde {getMemberSince(seller.created_at)}</p>
         </div>
       </div>
 
@@ -190,52 +207,20 @@ const SellerTrustCard = ({
           </div>
           <Badge variant="secondary" className="text-sm font-bold">{trustScore}/100</Badge>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${trustScore}%` }} />
-        </div>
-        <p className="mt-3 text-xs text-muted-foreground">
-          Puntuación orientativa basada en verificación, valoraciones, ventas, anuncios activos y antigüedad.
-        </p>
+        <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${trustScore}%` }} /></div>
+        {isTopLocalSeller && <p className="mt-3 text-xs font-medium text-primary">Destacado en {sellerLocation || productLocation} por valoración, ventas y verificación.</p>}
       </div>
 
       <div className="mb-5 grid grid-cols-3 gap-2">
-        <div className="rounded-lg border border-border/60 p-3 text-center">
-          <p className="text-lg font-bold">{averageRatingLabel}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Nota media</p>
-        </div>
-        <div className="rounded-lg border border-border/60 p-3 text-center">
-          <p className="text-lg font-bold">{reviewStats.totalReviews}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Opiniones</p>
-        </div>
-        <div className="rounded-lg border border-border/60 p-3 text-center">
-          <p className="text-lg font-bold">{soldCount}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Vendidos</p>
-        </div>
-      </div>
-
-      <div className="mb-5 grid grid-cols-2 gap-3">
-        <div className="rounded-lg border border-border/60 p-3">
-          <p className="text-lg font-bold">{activeProductsCount}</p>
-          <p className="flex items-center gap-1 text-xs text-muted-foreground"><Package className="h-3.5 w-3.5" /> Anuncios activos</p>
-        </div>
-        <div className="rounded-lg border border-border/60 p-3">
-          <p className="text-lg font-bold">{seller.verified ? 'Sí' : 'Pendiente'}</p>
-          <p className="flex items-center gap-1 text-xs text-muted-foreground"><Shield className="h-3.5 w-3.5" /> Verificación</p>
-        </div>
+        <div className="rounded-lg border border-border/60 p-3 text-center"><p className="text-lg font-bold">{averageRatingLabel}</p><p className="mt-1 text-xs text-muted-foreground">Nota media</p></div>
+        <div className="rounded-lg border border-border/60 p-3 text-center"><p className="text-lg font-bold">{reviewStats.totalReviews}</p><p className="mt-1 text-xs text-muted-foreground">Opiniones</p></div>
+        <div className="rounded-lg border border-border/60 p-3 text-center"><p className="text-lg font-bold">{soldCount}</p><p className="mt-1 text-xs text-muted-foreground">Vendidos</p></div>
       </div>
 
       <div className="mb-5 rounded-xl border border-border/60 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-primary" />
-          <p className="text-sm font-semibold">Señales de confianza</p>
-        </div>
+        <div className="mb-3 flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /><p className="text-sm font-semibold">Señales de confianza</p></div>
         <div className="space-y-2 text-sm text-muted-foreground">
-          {trustSignals.map((signal) => (
-            <div key={signal} className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
-              <span>{signal}</span>
-            </div>
-          ))}
+          {trustSignals.map((signal) => <div key={signal} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-primary" /><span>{signal}</span></div>)}
         </div>
       </div>
 
@@ -246,32 +231,16 @@ const SellerTrustCard = ({
       </div>
 
       <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950">
-        <div className="mb-2 flex items-center gap-2 font-semibold">
-          <AlertTriangle className="h-4 w-4" /> Antes de pagar
-        </div>
-        <ul className="space-y-1.5">
-          <li>• Revisa fotos, descripción, estado y accesorios incluidos.</li>
-          <li>• Mantén la conversación y los acuerdos dentro del chat.</li>
-          <li>• Desconfía si te pide pago externo, códigos SMS o cerrar con urgencia.</li>
-        </ul>
+        <div className="mb-2 flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" /> Antes de pagar</div>
+        <ul className="space-y-1.5"><li>• Revisa fotos, descripción, estado y accesorios incluidos.</li><li>• Mantén la conversación y los acuerdos dentro del chat.</li><li>• Desconfía si te pide pago externo, códigos SMS o cerrar con urgencia.</li></ul>
       </div>
 
       {!effectiveIsOwner && (
         <div className="space-y-2">
-          {effectiveProductId && (
-            <ReserveProductButton productId={effectiveProductId} sellerId={seller.id} />
-          )}
-          {onContactSeller && (
-            <Button className="w-full" onClick={onContactSeller}>
-              <MessageCircle className="mr-2 h-4 w-4" /> Contactar con el vendedor
-            </Button>
-          )}
-          <Button asChild variant="outline" className="w-full">
-            <Link to={sellerProfilePath}><Store className="mr-2 h-4 w-4" /> Ver perfil completo</Link>
-          </Button>
-          <Button asChild variant="outline" className="w-full">
-            <Link to={`/search?seller=${seller.id}`}>Ver más productos del vendedor</Link>
-          </Button>
+          {effectiveProductId && <ReserveProductButton productId={effectiveProductId} sellerId={seller.id} />}
+          {onContactSeller && <Button className="w-full" onClick={onContactSeller}><MessageCircle className="mr-2 h-4 w-4" /> Contactar con el vendedor</Button>}
+          <Button asChild variant="outline" className="w-full"><Link to={sellerProfilePath}><Store className="mr-2 h-4 w-4" /> Ver perfil completo</Link></Button>
+          <Button asChild variant="outline" className="w-full"><Link to={`/search?seller=${seller.id}`}>Ver más productos del vendedor</Link></Button>
           <div className="flex flex-col gap-2 pt-2">
             {effectiveProductId && <ReportDialog productId={effectiveProductId} userId={seller.id} />}
             <BlockUserButton userId={seller.id} userName={sellerName} />
