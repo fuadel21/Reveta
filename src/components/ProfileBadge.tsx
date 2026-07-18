@@ -1,6 +1,7 @@
 import React from 'react';
-import { CheckCircle, Award, Zap } from 'lucide-react';
+import { Award, CalendarClock, CheckCircle, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import SellerReservationsPanel from '@/components/profile/SellerReservationsPanel';
+import { Button } from '@/components/ui/button';
 
 interface ProfileBadgeProps {
   isVerified?: boolean;
@@ -15,8 +16,11 @@ export const ProfileBadge: React.FC<ProfileBadgeProps> = ({
   isPremium,
   className = '',
 }) => {
+  const [showReservations, setShowReservations] = React.useState(false);
+  const isPrivateProfile = typeof window !== 'undefined' && window.location.pathname === '/profile';
+
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full space-y-3">
       <div className={`flex flex-wrap items-center justify-center gap-2 ${className}`}>
         {isVerified && (
           <div className="flex items-center gap-1 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-semibold">
@@ -40,9 +44,29 @@ export const ProfileBadge: React.FC<ProfileBadgeProps> = ({
         )}
       </div>
 
-      <div className="w-full text-left">
-        <SellerReservationsPanel />
-      </div>
+      {isPrivateProfile && (
+        <div className="w-full text-left">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full justify-between"
+            onClick={() => setShowReservations((current) => !current)}
+            aria-expanded={showReservations}
+          >
+            <span className="flex items-center gap-2">
+              <CalendarClock className="h-4 w-4" /> Reservas recibidas
+            </span>
+            {showReservations ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+
+          {showReservations && (
+            <div className="mt-3">
+              <SellerReservationsPanel />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
