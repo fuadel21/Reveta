@@ -50,7 +50,7 @@ jobs:
       - name: Preview migrations
         if: ${{ github.event.inputs.mode == 'dry-run' }}
         shell: bash
-        run: supabase db push --linked --dry-run --include-all --password "$SUPABASE_DB_PASSWORD"
+        run: supabase db push --linked --dry-run --password "$SUPABASE_DB_PASSWORD"
 
       - name: Check repair confirmation
         if: ${{ github.event.inputs.mode == 'repair-history' }}
@@ -118,4 +118,4 @@ jobs:
       - name: Apply migrations
         if: ${{ github.event.inputs.mode == 'apply' }}
         shell: bash
-        run: supabase db push --linked --include-all --password "$SUPABASE_DB_PASSWORD"
+        run: supabase db push --linked --password "$SUPABASE_DB_PASSWORD"
