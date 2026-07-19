@@ -4,6 +4,17 @@ import { AlertTriangle, CalendarClock, ExternalLink, RefreshCw, UserRound, XCirc
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -163,6 +174,7 @@ export const SellerReservationsPanel = () => {
             {activeReservations.map((reservation) => {
               const image = getProductImage(reservation);
               const buyerName = reservation.buyer?.full_name || 'Comprador Reveta';
+              const productTitle = reservation.product?.title || 'Producto reservado';
               const remainingMs = new Date(reservation.expires_at).getTime() - now;
               const isUrgent = remainingMs > 0 && remainingMs <= TWO_HOURS_MS;
               const remaining = formatRemaining(reservation.expires_at, now);
@@ -188,7 +200,7 @@ export const SellerReservationsPanel = () => {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate font-semibold">{reservation.product?.title || 'Producto reservado'}</p>
+                          <p className="truncate font-semibold">{productTitle}</p>
                           <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                             <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-muted">
                               {reservation.buyer?.avatar_url ? (
@@ -222,16 +234,47 @@ export const SellerReservationsPanel = () => {
                             <ExternalLink className="mr-1 h-4 w-4" /> Ver producto
                           </Link>
                         </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          disabled={cancellingId === reservation.id}
-                          onClick={() => handleCancel(reservation.id)}
-                        >
-                          <XCircle className="mr-1 h-4 w-4" />
-                          {cancellingId === reservation.id ? 'Cancelando...' : 'Cancelar reserva'}
-                        </Button>
+
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              disabled={cancellingId === reservation.id}
+                            >
+                              <XCircle className="mr-1 h-4 w-4" />
+                              {cancellingId === reservation.id ? 'Cancelando...' : 'Cancelar reserva'}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>¿Cancelar esta reserva?</AlertDialogTitle>
+                              <AlertDialogDescription asChild>
+                                <div className="space-y-3 text-left">
+                                  <p>
+                                    Vas a cancelar la reserva de <strong>{productTitle}</strong> realizada por <strong>{buyerName}</strong>.
+                                  </p>
+                                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                                    <p className="font-semibold">Al confirmar:</p>
+                                    <p className="mt-1">• El comprador perderá su reserva.</p>
+                                    <p>• El producto volverá a estar disponible si no existe una compra abierta.</p>
+                                    <p>• Esta acción no se puede deshacer desde este panel.</p>
+                                  </div>
+                                </div>
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Mantener reserva</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={() => handleCancel(reservation.id)}
+                              >
+                                Sí, cancelar reserva
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
                   </div>
