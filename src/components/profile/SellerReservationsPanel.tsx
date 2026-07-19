@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarClock, ExternalLink, RefreshCw, UserRound, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, ExternalLink, RefreshCw, UserRound, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +26,8 @@ type ReservationRow = {
     avatar_url: string | null;
   } | null;
 };
+
+const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
 const formatRemaining = (expiresAt: string, now: number) => {
   const remainingMs = Math.max(0, new Date(expiresAt).getTime() - now);
@@ -161,25 +163,54 @@ export const SellerReservationsPanel = () => {
             {activeReservations.map((reservation) => {
               const image = getProductImage(reservation);
               const buyerName = reservation.buyer?.full_name || 'Comprador Reveta';
+              const remainingMs = new Date(reservation.expires_at).getTime() - now;
+              const isUrgent = remainingMs > 0 && remainingMs <= TWO_HOURS_MS;
               const remaining = formatRemaining(reservation.expires_at, now);
 
               return (
-                <div key={reservation.id} className="rounded-xl border border-border/60 bg-card p-4">
+                <div
+                  key={reservation.id}
+                  className={`rounded-xl border p-4 ${
+                    isUrgent ? 'border-red-300 bg-red-50/70' : 'border-border/60 bg-card'
+                  }`}
+                >
                   <div className="flex gap-3">
                     <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
-                      {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><CalendarClock className="h-5 w-5 text-muted-foreground" /></div>}
+                      {image ? (
+                        <img src={image} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <CalendarClock className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                      )}
                     </div>
 
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="truncate font-semibold">{reservation.product?.title || 'Producto reservado'}</p>
-                          <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                            <UserRound className="h-3.5 w-3.5" /> {buyerName}
-                          </p>
+                          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                            <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-muted">
+                              {reservation.buyer?.avatar_url ? (
+                                <img src={reservation.buyer.avatar_url} alt="" className="h-full w-full object-cover" />
+                              ) : (
+                                <UserRound className="h-4 w-4" />
+                              )}
+                            </div>
+                            <span>{buyerName}</span>
+                          </div>
                         </div>
-                        <Badge variant="secondary">Quedan {remaining}</Badge>
+                        <Badge className={isUrgent ? 'bg-red-600 text-white hover:bg-red-600' : ''} variant={isUrgent ? 'default' : 'secondary'}>
+                          {isUrgent ? 'Urgente: ' : 'Quedan '}{remaining}
+                        </Badge>
                       </div>
+
+                      {isUrgent && (
+                        <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-white/70 p-2 text-xs font-medium text-red-800">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                          La reserva está a punto de caducar. Comprueba si el comprador completará la operación.
+                        </div>
+                      )}
 
                       <p className="mt-2 text-xs text-muted-foreground">
                         Caduca el {new Date(reservation.expires_at).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
@@ -187,7 +218,9 @@ export const SellerReservationsPanel = () => {
 
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Button asChild size="sm" variant="outline">
-                          <Link to={`/product/${reservation.product_id}`}><ExternalLink className="mr-1 h-4 w-4" /> Ver producto</Link>
+                          <Link to={`/product/${reservation.product_id}`}>
+                            <ExternalLink className="mr-1 h-4 w-4" /> Ver producto
+                          </Link>
                         </Button>
                         <Button
                           type="button"
