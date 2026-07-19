@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Loader2, ShoppingCart, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Loader2, ShoppingCart, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -203,6 +203,9 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
       })
     : null;
 
+  const remainingMs = reservation?.expires_at ? new Date(reservation.expires_at).getTime() - now : null;
+  const isUrgent = remainingMs !== null && remainingMs > 0 && remainingMs <= 2 * 60 * 60 * 1000;
+
   const remainingLabel = useMemo(
     () => (reservation?.expires_at ? formatRemainingTime(reservation.expires_at, now) : null),
     [now, reservation?.expires_at],
@@ -218,22 +221,36 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
 
   if (reservation) {
     return (
-      <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+      <div
+        className={`space-y-3 rounded-xl border p-4 ${
+          isUrgent
+            ? 'border-red-300 bg-red-50 text-red-950'
+            : 'border-amber-200 bg-amber-50 text-amber-950'
+        }`}
+      >
         <div className="flex items-start gap-3">
-          <CalendarClock className="mt-0.5 h-5 w-5 shrink-0" />
+          {isUrgent ? (
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+          ) : (
+            <CalendarClock className="mt-0.5 h-5 w-5 shrink-0" />
+          )}
           <div className="min-w-0 flex-1">
-            <p className="font-semibold">Reservado para ti durante 24h</p>
-            <p className="mt-1 text-xs">{remainingLabel} · hasta {expiryLabel}</p>
-            <p className="mt-2 text-xs opacity-80">Completa la compra o coordina la entrega desde el chat antes de que venza.</p>
+            <p className="font-semibold">{isUrgent ? 'Tu reserva caduca muy pronto' : 'Reservado para ti durante 24h'}</p>
+            <p className="mt-1 text-xs font-medium">{remainingLabel} · hasta {expiryLabel}</p>
+            <p className="mt-2 text-xs opacity-80">
+              {isUrgent
+                ? 'Completa la compra ahora para no perder la reserva.'
+                : 'Completa la compra o coordina la entrega desde el chat antes de que venza.'}
+            </p>
           </div>
         </div>
         <Button type="button" className="w-full" onClick={handleContinueCheckout}>
-          <ShoppingCart className="mr-2 h-4 w-4" /> Continuar con la compra
+          <ShoppingCart className="mr-2 h-4 w-4" /> {isUrgent ? 'Completar compra ahora' : 'Continuar con la compra'}
         </Button>
         <Button
           type="button"
           variant="outline"
-          className="w-full border-amber-300 bg-white/70 hover:bg-white"
+          className={`w-full bg-white/70 hover:bg-white ${isUrgent ? 'border-red-300' : 'border-amber-300'}`}
           onClick={handleCancelReservation}
           disabled={cancelling}
         >
