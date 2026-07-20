@@ -13,6 +13,7 @@ import Auth from "./pages/Auth";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
+import SellerDashboard from "./pages/SellerDashboard";
 import PublicSellerProfile from "./pages/PublicSellerProfile";
 import Upload from "./pages/Upload";
 import Messages from "./pages/Messages";
@@ -64,6 +65,7 @@ const App = () => (
                 <Route path="/forgot-password" element={privatePage("Recuperar contraseña | Reveta", <ForgotPassword />)} />
                 <Route path="/reset-password" element={privatePage("Restablecer contraseña | Reveta", <ResetPassword />)} />
                 <Route path="/profile" element={privatePage("Mi perfil | Reveta", <Profile />)} />
+                <Route path="/seller-dashboard" element={privatePage("Panel del vendedor | Reveta", <SellerDashboard />)} />
                 <Route path="/usuario/:id" element={<PublicSellerProfile />} />
                 <Route path="/upload" element={privatePage("Publicar producto | Reveta", <Upload />)} />
                 <Route path="/messages" element={privatePage("Mensajes | Reveta", <Messages />)} />
