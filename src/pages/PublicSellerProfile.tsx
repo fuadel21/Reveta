@@ -10,6 +10,7 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import FollowSellerButton from '@/components/seller/FollowSellerButton';
 import SocialShareButtons from '@/components/SocialShareButtons';
 import RecentReviews from '@/components/reviews/RecentReviews';
+import TrustSafetyActions from '@/components/safety/TrustSafetyActions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -274,6 +275,7 @@ const PublicSellerProfile = () => {
                     <Store className="mr-2 h-4 w-4" /> Ver todos sus anuncios
                   </Link>
                 </Button>
+                <TrustSafetyActions targetUserId={seller.id} targetName={displayName} />
               </div>
             </div>
 
