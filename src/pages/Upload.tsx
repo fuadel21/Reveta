@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '@/hooks/useAuth';
@@ -12,8 +12,27 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle2, Euro, ImagePlus, Lightbulb, Locate, MapPin, Navigation, ShieldCheck, Upload as UploadIcon, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  CheckCircle2,
+  Clock3,
+  Euro,
+  Eye,
+  ImagePlus,
+  Lightbulb,
+  Locate,
+  MapPin,
+  Navigation,
+  Save,
+  ShieldCheck,
+  Sparkles,
+  Upload as UploadIcon,
+  X,
+} from 'lucide-react';
 
 interface Category { id: string; name: string; icon?: string | null; }
 interface Subcategory { id: string; category_id: string; name: string; icon?: string | null; }
@@ -27,6 +46,7 @@ const MAX_PRICE = 50000;
 const MIN_TITLE_LENGTH = 8;
 const MIN_DESCRIPTION_LENGTH = 20;
 const MAX_DESCRIPTION_LENGTH = 2000;
+const DRAFT_KEY = 'reveta:listing-draft:v1';
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 const conditionLabels: Record<string, string> = {
@@ -35,6 +55,18 @@ const conditionLabels: Record<string, string> = {
   good: 'Buen estado',
   fair: 'Aceptable',
   poor: 'Necesita reparación',
+};
+
+const emptyForm = {
+  title: '',
+  description: '',
+  price: '',
+  category_id: '',
+  subcategory_id: '',
+  condition: '',
+  location: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
 };
 
 const normalizeText = (value: string) => value.trim().replace(/\s+/g, ' ');
@@ -54,17 +86,10 @@ const Upload = () => {
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [useCurrentLocation, setUseCurrentLocation] = useState(false);
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    price: '',
-    category_id: '',
-    subcategory_id: '',
-    condition: '',
-    location: '',
-    latitude: null as number | null,
-    longitude: null as number | null,
-  });
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [formData, setFormData] = useState(emptyForm);
 
   useEffect(() => { if (!authLoading && !user) navigate('/auth'); }, [user, authLoading, navigate]);
   useEffect(() => { fetchCategories(); }, []);
@@ -72,6 +97,32 @@ const Upload = () => {
   useEffect(() => { if (useCurrentLocation && geolocation.latitude && geolocation.longitude) reverseGeocode(geolocation.latitude, geolocation.longitude); }, [useCurrentLocation, geolocation.latitude, geolocation.longitude]);
   useEffect(() => { imageUrlsRef.current = imageUrls; }, [imageUrls]);
   useEffect(() => () => { imageUrlsRef.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(DRAFT_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (parsed?.formData) {
+        setFormData({ ...emptyForm, ...parsed.formData, latitude: null, longitude: null });
+        setDraftRestored(true);
+        if (parsed.savedAt) setLastSavedAt(new Date(parsed.savedAt));
+      }
+    } catch (error) {
+      console.warn('No se pudo restaurar el borrador:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const hasContent = Object.values(formData).some((value) => value !== '' && value !== null);
+      if (!hasContent) return;
+      const savedAt = new Date();
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ formData: { ...formData, latitude: null, longitude: null }, savedAt: savedAt.toISOString() }));
+      setLastSavedAt(savedAt);
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [formData]);
 
   const fetchCategories = async () => {
     const { data, error } = await supabase.from('categories').select('id, name, icon').order('name');
@@ -123,39 +174,35 @@ const Upload = () => {
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(event.target.files || []);
     event.target.value = '';
-
     if (images.length + selectedFiles.length > MAX_IMAGES) {
       toast({ title: 'Límite de imágenes', description: `Puedes subir hasta ${MAX_IMAGES} fotos por producto.`, variant: 'destructive' });
       return;
     }
-
     const validFiles = selectedFiles.filter(isValidImageFile);
-    const rejectedCount = selectedFiles.length - validFiles.length;
-
-    if (rejectedCount > 0) {
-      toast({ title: 'Algunas imágenes no se añadieron', description: 'Solo se permiten JPG, PNG o WEBP de hasta 5 MB.', variant: 'destructive' });
-    }
-
+    if (validFiles.length !== selectedFiles.length) toast({ title: 'Algunas imágenes no se añadieron', description: 'Solo se permiten JPG, PNG o WEBP de hasta 5 MB.', variant: 'destructive' });
     if (validFiles.length === 0) return;
-
     setImages(prev => [...prev, ...validFiles]);
     setImageUrls(prev => [...prev, ...validFiles.map(file => URL.createObjectURL(file))]);
   };
 
   const removeImage = (index: number) => {
-    const urlToRemove = imageUrls[index];
-    if (urlToRemove) URL.revokeObjectURL(urlToRemove);
+    if (imageUrls[index]) URL.revokeObjectURL(imageUrls[index]);
     setImages(prev => prev.filter((_, i) => i !== index));
     setImageUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const moveImage = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= images.length) return;
+    setImages(prev => { const next = [...prev]; [next[index], next[target]] = [next[target], next[index]]; return next; });
+    setImageUrls(prev => { const next = [...prev]; [next[index], next[target]] = [next[target], next[index]]; return next; });
   };
 
   const uploadImages = async (): Promise<UploadedImageResult> => {
     if (!user || images.length === 0) return { urls: [], paths: [] };
     const urls: string[] = [];
     const paths: string[] = [];
-
     for (const image of images) {
-      if (!isValidImageFile(image)) throw new Error('Una imagen no cumple los requisitos de formato o tamaño.');
       const fileExt = image.type === 'image/png' ? 'png' : image.type === 'image/webp' ? 'webp' : 'jpg';
       const fileName = `${user.id}/${crypto.randomUUID()}.${fileExt}`;
       const { error } = await supabase.storage.from('products').upload(fileName, image, { contentType: image.type, upsert: false });
@@ -164,7 +211,6 @@ const Upload = () => {
       urls.push(publicUrl);
       paths.push(fileName);
     }
-
     return { urls, paths };
   };
 
@@ -174,32 +220,45 @@ const Upload = () => {
     if (error) console.warn('No se pudieron limpiar imágenes huérfanas:', error.message);
   };
 
+  const checks = useMemo(() => [
+    { label: 'Al menos una foto', ok: images.length > 0 },
+    { label: `Título de ${MIN_TITLE_LENGTH}+ caracteres`, ok: normalizeText(formData.title).length >= MIN_TITLE_LENGTH },
+    { label: `Descripción de ${MIN_DESCRIPTION_LENGTH}+ caracteres`, ok: normalizeMultiline(formData.description).length >= MIN_DESCRIPTION_LENGTH },
+    { label: 'Precio válido', ok: Number(formData.price) >= MIN_PRICE && Number(formData.price) <= MAX_PRICE },
+    { label: 'Categoría elegida', ok: !!formData.category_id },
+    { label: 'Estado indicado', ok: !!formData.condition },
+    { label: 'Ubicación añadida', ok: normalizeText(formData.location).length >= 2 },
+  ], [formData, images.length]);
+
+  const qualityScore = Math.round((checks.filter(check => check.ok).length / checks.length) * 100);
+  const selectedCategory = categories.find(category => category.id === formData.category_id)?.name;
+
   const validateForm = () => {
     const title = normalizeText(formData.title);
     const description = normalizeMultiline(formData.description);
     const location = normalizeText(formData.location);
     const priceNum = parseFloat(String(formData.price).replace(',', '.'));
-
-    if (images.length === 0) { toast({ title: 'Añade al menos una foto', description: 'Los anuncios con fotos reciben más mensajes.', variant: 'destructive' }); return null; }
-    if (title.length < MIN_TITLE_LENGTH) { toast({ title: 'Título demasiado corto', description: `Escribe al menos ${MIN_TITLE_LENGTH} caracteres.`, variant: 'destructive' }); return null; }
-    if (description.length < MIN_DESCRIPTION_LENGTH) { toast({ title: 'Descripción demasiado corta', description: `Añade al menos ${MIN_DESCRIPTION_LENGTH} caracteres con estado, uso y detalles.`, variant: 'destructive' }); return null; }
-    if (description.length > MAX_DESCRIPTION_LENGTH) { toast({ title: 'Descripción demasiado larga', description: `Máximo ${MAX_DESCRIPTION_LENGTH} caracteres.`, variant: 'destructive' }); return null; }
-    if (!formData.price || isNaN(priceNum) || priceNum < MIN_PRICE || priceNum > MAX_PRICE) { toast({ title: 'Precio inválido', description: `Introduce un precio entre ${MIN_PRICE} € y ${MAX_PRICE.toLocaleString('es-ES')} €.`, variant: 'destructive' }); return null; }
-    if (!formData.category_id) { toast({ title: 'Selecciona una categoría', description: 'Ayuda a los compradores a encontrar tu anuncio.', variant: 'destructive' }); return null; }
-    if (!formData.condition) { toast({ title: 'Selecciona el estado', description: 'Indica si está nuevo, usado o necesita reparación.', variant: 'destructive' }); return null; }
-    if (location.length < 2) { toast({ title: 'Añade una ubicación', description: 'Escribe al menos la ciudad donde está el producto.', variant: 'destructive' }); return null; }
-    if (hasSuspiciousContactText(`${title} ${description}`)) { toast({ title: 'Evita datos de contacto en el anuncio', description: 'Por seguridad, usa el chat de Reveta para negociar y compartir datos.', variant: 'destructive' }); return null; }
-
+    if (images.length === 0) { toast({ title: 'Añade al menos una foto', variant: 'destructive' }); return null; }
+    if (title.length < MIN_TITLE_LENGTH) { toast({ title: 'Título demasiado corto', variant: 'destructive' }); return null; }
+    if (description.length < MIN_DESCRIPTION_LENGTH || description.length > MAX_DESCRIPTION_LENGTH) { toast({ title: 'Revisa la descripción', description: `Debe tener entre ${MIN_DESCRIPTION_LENGTH} y ${MAX_DESCRIPTION_LENGTH} caracteres.`, variant: 'destructive' }); return null; }
+    if (!Number.isFinite(priceNum) || priceNum < MIN_PRICE || priceNum > MAX_PRICE) { toast({ title: 'Precio inválido', variant: 'destructive' }); return null; }
+    if (!formData.category_id || !formData.condition || location.length < 2) { toast({ title: 'Faltan datos importantes', description: 'Completa categoría, estado y ubicación.', variant: 'destructive' }); return null; }
+    if (hasSuspiciousContactText(`${title} ${description}`)) { toast({ title: 'Evita datos de contacto en el anuncio', description: 'Usa el chat de Reveta.', variant: 'destructive' }); return null; }
     return { title, description, location, priceNum };
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setLastSavedAt(null);
+    setDraftRestored(false);
+    toast({ title: 'Borrador eliminado' });
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!user) { navigate('/auth'); return; }
-
     const validated = validateForm();
     if (!validated) return;
-
     setUploading(true);
     let uploadedPaths: string[] = [];
     try {
@@ -221,7 +280,8 @@ const Upload = () => {
         status: 'active',
       });
       if (error) throw error;
-      toast({ title: 'Producto publicado', description: geocodedLocation ? 'Tu anuncio ya aparece en Reveta y en búsquedas cercanas.' : 'Tu anuncio ya aparece en Reveta.' });
+      localStorage.removeItem(DRAFT_KEY);
+      toast({ title: 'Producto publicado', description: 'Tu anuncio ya está visible en Reveta.' });
       navigate('/profile');
     } catch (error: any) {
       await cleanupUploadedImages(uploadedPaths);
@@ -235,127 +295,53 @@ const Upload = () => {
 
   return (
     <>
-      <Helmet>
-        <title>Publicar producto | Reveta</title>
-        <meta name="description" content="Publica gratis un producto de segunda mano en Reveta. Añade fotos, precio, ciudad y empieza a recibir mensajes de compradores." />
-        <meta name="robots" content="noindex,nofollow,noarchive" />
-      </Helmet>
+      <Helmet><title>Publicar producto | Reveta</title><meta name="robots" content="noindex,nofollow,noarchive" /></Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <main className="flex-1 container py-8">
-          <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1fr_320px]">
+          <div className="mx-auto mb-6 max-w-6xl rounded-2xl border bg-card p-4 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div><div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" /><h1 className="text-2xl font-bold">Publicación profesional</h1></div><p className="text-sm text-muted-foreground">Completa los pasos, revisa la vista previa y publica cuando el anuncio esté listo.</p></div>
+              <div className="min-w-[220px]"><div className="mb-2 flex justify-between text-sm"><span>Calidad del anuncio</span><strong>{qualityScore}%</strong></div><Progress value={qualityScore} /></div>
+            </div>
+            {(lastSavedAt || draftRestored) && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground"><span className="flex items-center gap-2"><Clock3 className="h-4 w-4" />Borrador guardado automáticamente{lastSavedAt ? ` a las ${lastSavedAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}` : ''}.</span><Button type="button" variant="ghost" size="sm" onClick={clearDraft}>Eliminar borrador</Button></div>}
+          </div>
+
+          <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1fr_340px]">
             <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-2xl"><UploadIcon className="h-6 w-6" />Publicar producto</CardTitle>
-                <CardDescription>Sube buenas fotos, escribe un título claro y añade un precio realista para vender antes.</CardDescription>
-              </CardHeader>
+              <CardHeader><CardTitle className="flex items-center gap-2"><UploadIcon className="h-5 w-5" />Crear anuncio</CardTitle><CardDescription>La primera foto será la principal. Puedes cambiar el orden antes de publicar.</CardDescription></CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-7">
                   <section className="space-y-4">
-                    <div>
-                      <Label className="text-base font-semibold">1. Fotos del producto *</Label>
-                      <p className="mt-1 text-sm text-muted-foreground">Añade hasta 5 fotos JPG, PNG o WEBP de máximo 5 MB. La primera será la imagen principal.</p>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4 sm:grid-cols-5">
-                      {imageUrls.map((url, index) => (
-                        <div key={url} className="relative aspect-square overflow-hidden rounded-lg border border-border">
-                          <img src={url} alt={`Foto ${index + 1}`} className="h-full w-full object-cover" />
-                          <button type="button" onClick={() => removeImage(index)} className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground" aria-label="Quitar foto"><X className="h-4 w-4" /></button>
-                        </div>
-                      ))}
-                      {images.length < MAX_IMAGES && (
-                        <>
-                          <label className="flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border text-muted-foreground transition-colors hover:border-primary hover:text-foreground">
-                            <ImagePlus className="h-6 w-6" /><span className="text-xs">Galería</span>
-                            <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleImageChange} className="hidden" />
-                          </label>
-                          <label className="flex aspect-square w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border text-muted-foreground transition-colors hover:border-primary hover:text-foreground">
-                            <UploadIcon className="h-6 w-6" /><span className="text-xs">Cámara</span>
-                            <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={handleImageChange} className="hidden" />
-                          </label>
-                        </>
-                      )}
+                    <Label className="text-base font-semibold">1. Fotografías *</Label>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+                      {imageUrls.map((url, index) => <div key={url} className="relative aspect-square overflow-hidden rounded-xl border bg-muted"><img src={url} alt={`Foto ${index + 1}`} className="h-full w-full object-cover" />{index === 0 && <Badge className="absolute left-1 top-1">Principal</Badge>}<button type="button" onClick={() => removeImage(index)} className="absolute right-1 top-1 rounded-full bg-destructive p-1 text-white"><X className="h-4 w-4" /></button><div className="absolute bottom-1 left-1 right-1 flex justify-between"><button type="button" disabled={index === 0} onClick={() => moveImage(index, -1)} className="rounded-full bg-black/60 p-1 text-white disabled:opacity-30"><ArrowUp className="h-4 w-4 -rotate-90" /></button><button type="button" disabled={index === imageUrls.length - 1} onClick={() => moveImage(index, 1)} className="rounded-full bg-black/60 p-1 text-white disabled:opacity-30"><ArrowDown className="h-4 w-4 -rotate-90" /></button></div></div>)}
+                      {images.length < MAX_IMAGES && <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed hover:border-primary"><ImagePlus className="h-6 w-6" /><span className="text-xs">Añadir fotos</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleImageChange} className="hidden" /></label>}
                     </div>
                   </section>
 
-                  <section className="space-y-4">
-                    <div>
-                      <Label className="text-base font-semibold">2. Información del anuncio</Label>
-                      <p className="mt-1 text-sm text-muted-foreground">Sé concreto. Ejemplo: “iPhone 13 128GB azul en buen estado”.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="title">Título *</Label>
-                      <Input id="title" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="¿Qué vendes?" maxLength={100} />
-                      <p className="text-xs text-muted-foreground">Mínimo {MIN_TITLE_LENGTH} caracteres.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Descripción *</Label>
-                      <Textarea id="description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Explica el estado, tiempo de uso, accesorios incluidos y motivo de venta." rows={5} maxLength={MAX_DESCRIPTION_LENGTH} />
-                      <p className="text-xs text-muted-foreground">No pongas teléfono, email, WhatsApp, Bizum ni enlaces externos en la descripción.</p>
-                    </div>
-                  </section>
+                  <section className="space-y-4"><Label className="text-base font-semibold">2. Información del producto</Label><div className="space-y-2"><Label htmlFor="title">Título *</Label><Input id="title" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} maxLength={100} placeholder="Ej. iPhone 13 128GB azul" /><p className="text-right text-xs text-muted-foreground">{formData.title.length}/100</p></div><div className="space-y-2"><Label htmlFor="description">Descripción *</Label><Textarea id="description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} rows={6} maxLength={MAX_DESCRIPTION_LENGTH} placeholder="Estado, antigüedad, accesorios, defectos y motivo de venta." /><p className="text-right text-xs text-muted-foreground">{formData.description.length}/{MAX_DESCRIPTION_LENGTH}</p></div></section>
 
-                  <section className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="price">Precio *</Label>
-                      <div className="relative"><Euro className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input id="price" type="number" min={MIN_PRICE} max={MAX_PRICE} step="0.01" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} placeholder="0.00" className="pl-10" /></div>
-                      <p className="text-xs text-muted-foreground">Entre {MIN_PRICE} € y {MAX_PRICE.toLocaleString('es-ES')} €.</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Estado *</Label>
-                      <Select value={formData.condition} onValueChange={value => setFormData({ ...formData, condition: value })}>
-                        <SelectTrigger><SelectValue placeholder="Estado del producto" /></SelectTrigger>
-                        <SelectContent>{Object.entries(conditionLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                  </section>
+                  <section className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="price">Precio *</Label><div className="relative"><Euro className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input id="price" type="number" min={MIN_PRICE} max={MAX_PRICE} step="0.01" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} className="pl-10" /></div></div><div className="space-y-2"><Label>Estado *</Label><Select value={formData.condition} onValueChange={value => setFormData({ ...formData, condition: value })}><SelectTrigger><SelectValue placeholder="Estado del producto" /></SelectTrigger><SelectContent>{Object.entries(conditionLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div></section>
 
-                  <section className="space-y-4">
-                    <div>
-                      <Label className="text-base font-semibold">3. Categoría y ubicación</Label>
-                      <p className="mt-1 text-sm text-muted-foreground">Ayuda a los compradores a encontrar tu anuncio.</p>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label>Categoría *</Label>
-                        <Select value={formData.category_id} onValueChange={value => setFormData({ ...formData, category_id: value, subcategory_id: '' })}>
-                          <SelectTrigger><SelectValue placeholder="Selecciona categoría" /></SelectTrigger>
-                          <SelectContent>{categories.map(category => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
-                      {formData.category_id && subcategories.length > 0 && (
-                        <div className="space-y-2">
-                          <Label>Subcategoría</Label>
-                          <Select value={formData.subcategory_id} onValueChange={value => setFormData({ ...formData, subcategory_id: value })}>
-                            <SelectTrigger><SelectValue placeholder="Selecciona subcategoría" /></SelectTrigger>
-                            <SelectContent>{subcategories.map(subcategory => <SelectItem key={subcategory.id} value={subcategory.id}>{subcategory.name}</SelectItem>)}</SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-3">
-                      <Label htmlFor="location">Ubicación *</Label>
-                      <div className="relative"><MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input id="location" value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value, latitude: null, longitude: null })} placeholder="Ciudad" className="pl-10" /></div>
-                      <Button type="button" variant={useCurrentLocation && geolocation.hasLocation ? 'default' : 'outline'} size="sm" className="gap-2" onClick={() => { if (!useCurrentLocation) { setUseCurrentLocation(true); geolocation.requestLocation(); } else { setUseCurrentLocation(false); setFormData(prev => ({ ...prev, location: '', latitude: null, longitude: null })); } }} disabled={geolocation.loading}>{geolocation.loading ? <><div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Obteniendo...</> : useCurrentLocation && geolocation.hasLocation ? <><Locate className="h-4 w-4" />Ubicación detectada</> : <><Navigation className="h-4 w-4" />Usar mi ubicación actual</>}</Button>
-                      {useCurrentLocation && geolocation.error && <p className="text-sm text-destructive">{geolocation.error}</p>}
-                    </div>
-                  </section>
+                  <section className="space-y-4"><Label className="text-base font-semibold">3. Categoría y ubicación</Label><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Categoría *</Label><Select value={formData.category_id} onValueChange={value => setFormData({ ...formData, category_id: value, subcategory_id: '' })}><SelectTrigger><SelectValue placeholder="Selecciona categoría" /></SelectTrigger><SelectContent>{categories.map(category => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div>{formData.category_id && subcategories.length > 0 && <div className="space-y-2"><Label>Subcategoría</Label><Select value={formData.subcategory_id} onValueChange={value => setFormData({ ...formData, subcategory_id: value })}><SelectTrigger><SelectValue placeholder="Selecciona subcategoría" /></SelectTrigger><SelectContent>{subcategories.map(subcategory => <SelectItem key={subcategory.id} value={subcategory.id}>{subcategory.name}</SelectItem>)}</SelectContent></Select></div>}</div><div className="space-y-3"><Label htmlFor="location">Ubicación *</Label><div className="relative"><MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input id="location" value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value, latitude: null, longitude: null })} placeholder="Ciudad" className="pl-10" /></div><Button type="button" variant={useCurrentLocation && geolocation.hasLocation ? 'default' : 'outline'} size="sm" onClick={() => { if (!useCurrentLocation) { setUseCurrentLocation(true); geolocation.requestLocation(); } else setUseCurrentLocation(false); }} disabled={geolocation.loading}>{geolocation.loading ? 'Obteniendo...' : useCurrentLocation && geolocation.hasLocation ? <><Locate className="mr-2 h-4 w-4" />Ubicación detectada</> : <><Navigation className="mr-2 h-4 w-4" />Usar mi ubicación</>}</Button></div></section>
 
-                  <div className="flex gap-4 border-t pt-6">
-                    <Button type="button" variant="outline" onClick={() => navigate(-1)} className="flex-1" disabled={uploading}>Cancelar</Button>
-                    <Button type="submit" className="flex-1 gradient-hero" disabled={uploading}>{uploading ? 'Publicando...' : 'Publicar anuncio gratis'}</Button>
-                  </div>
+                  <div className="flex flex-col gap-3 border-t pt-6 sm:flex-row"><Button type="button" variant="outline" onClick={() => setPreviewOpen(true)} className="flex-1"><Eye className="mr-2 h-4 w-4" />Vista previa</Button><Button type="button" variant="outline" onClick={() => { localStorage.setItem(DRAFT_KEY, JSON.stringify({ formData, savedAt: new Date().toISOString() })); setLastSavedAt(new Date()); toast({ title: 'Borrador guardado' }); }} className="flex-1"><Save className="mr-2 h-4 w-4" />Guardar borrador</Button><Button type="submit" className="flex-1 gradient-hero" disabled={uploading}>{uploading ? 'Publicando...' : 'Publicar anuncio'}</Button></div>
                 </form>
               </CardContent>
             </Card>
+
             <aside className="space-y-4">
-              <Card className="border-primary/20 bg-primary/5"><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Lightbulb className="h-5 w-5 text-primary" />Consejos para vender antes</CardTitle></CardHeader><CardContent className="space-y-3 text-sm text-muted-foreground"><div className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>Sube fotos claras con buena luz.</span></div><div className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>Indica marca, modelo, estado y accesorios.</span></div><div className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>Usa un precio competitivo para recibir más mensajes.</span></div><div className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>Responde rápido a las ofertas.</span></div></CardContent></Card>
-              <Card><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><ShieldCheck className="h-5 w-5 text-primary" />Publicación segura</CardTitle></CardHeader><CardContent className="text-sm text-muted-foreground">No compartas datos sensibles en la descripción. Usa el chat de Reveta para negociar y evita pagos externos sospechosos.</CardContent></Card>
+              <Card><CardHeader><CardTitle className="text-lg">Lista de comprobación</CardTitle></CardHeader><CardContent className="space-y-2">{checks.map(check => <div key={check.label} className={`flex items-center gap-2 text-sm ${check.ok ? 'text-foreground' : 'text-muted-foreground'}`}><CheckCircle2 className={`h-4 w-4 ${check.ok ? 'text-green-600' : ''}`} />{check.label}</div>)}</CardContent></Card>
+              <Card className="border-primary/20 bg-primary/5"><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Lightbulb className="h-5 w-5 text-primary" />Para vender antes</CardTitle></CardHeader><CardContent className="space-y-2 text-sm text-muted-foreground"><p>• Usa varias fotos claras y ordena la mejor como principal.</p><p>• Menciona defectos y accesorios incluidos.</p><p>• Compara precios similares antes de publicar.</p><p>• Responde rápido a mensajes y ofertas.</p></CardContent></Card>
+              <Card><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><ShieldCheck className="h-5 w-5 text-primary" />Publicación segura</CardTitle></CardHeader><CardContent className="text-sm text-muted-foreground">No publiques teléfono, correo, Bizum ni enlaces externos. Negocia dentro de Reveta.</CardContent></Card>
             </aside>
           </div>
         </main>
         <Footer />
       </div>
+
+      {previewOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-card p-5 shadow-2xl"><div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-medium text-primary">VISTA PREVIA</p><h2 className="text-xl font-bold">Así verá tu anuncio el comprador</h2></div><Button variant="ghost" size="icon" onClick={() => setPreviewOpen(false)}><X className="h-4 w-4" /></Button></div><div className="aspect-[4/3] overflow-hidden rounded-xl bg-muted">{imageUrls[0] ? <img src={imageUrls[0]} alt="Vista previa" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-muted-foreground">Añade una foto principal</div>}</div><div className="mt-4 space-y-3"><div className="flex items-start justify-between gap-4"><div><h3 className="text-xl font-bold">{formData.title || 'Título del producto'}</h3><p className="text-sm text-muted-foreground">{formData.location || 'Ubicación'} · {selectedCategory || 'Categoría'}</p></div><p className="text-2xl font-bold text-primary">{formData.price ? `${Number(formData.price).toLocaleString('es-ES')} €` : '0 €'}</p></div><Badge variant="secondary">{conditionLabels[formData.condition] || 'Estado sin indicar'}</Badge><p className="whitespace-pre-line text-sm text-muted-foreground">{formData.description || 'Aquí aparecerá la descripción de tu producto.'}</p></div><Button className="mt-5 w-full" onClick={() => setPreviewOpen(false)}>Seguir editando</Button></div></div>}
     </>
   );
 };
