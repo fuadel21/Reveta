@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, User, Heart, MessageCircle, Search, Shield, ShieldAlert, Settings, BookMarked, Receipt, MapPin, BarChart3 } from "lucide-react";
+import { Plus, User, Heart, MessageCircle, Search, Shield, ShieldAlert, Settings, BookMarked, Receipt, MapPin, BarChart3, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
@@ -128,6 +128,7 @@ const Header = () => {
           {user ? (
             <>
               {isAdmin && <Button variant="ghost" size="icon" className="hidden sm:flex text-purple-500 hover:text-purple-600 hover:bg-purple-500/10 transition-all" asChild><Link to="/admin"><Shield className="h-5 w-5" /></Link></Button>}
+              <Button variant="ghost" size="icon" className="hidden sm:flex text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all" asChild><Link to="/comprador" aria-label="Centro del comprador"><ShoppingBag className="h-5 w-5" /></Link></Button>
               <Button variant="ghost" size="icon" className="hidden sm:flex text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all" asChild><Link to="/profile?tab=favorites"><Heart className="h-5 w-5" /></Link></Button>
               <Button variant="ghost" size="icon" className="hidden sm:flex text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all" asChild><Link to="/messages" aria-label={unreadMessages > 0 ? `${unreadMessages} mensajes sin leer` : 'Mensajes'}><MessagesIcon /></Link></Button>
               <NotificationCenter />
@@ -137,6 +138,7 @@ const Header = () => {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem asChild><Link to="/segunda-mano" className="flex items-center gap-2"><MapPin className="h-4 w-4" />Segunda mano</Link></DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild><Link to="/comprador" className="flex items-center gap-2"><ShoppingBag className="h-4 w-4" />Centro del comprador</Link></DropdownMenuItem>
                   <DropdownMenuItem asChild><Link to="/profile" className="flex items-center gap-2"><User className="h-4 w-4" />Mi Perfil</Link></DropdownMenuItem>
                   <DropdownMenuItem asChild><Link to="/seller-dashboard" className="flex items-center gap-2"><BarChart3 className="h-4 w-4" />Panel del vendedor</Link></DropdownMenuItem>
                   <DropdownMenuItem asChild><Link to="/transactions" className="flex items-center gap-2"><Receipt className="h-4 w-4" />Transacciones</Link></DropdownMenuItem>
