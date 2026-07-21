@@ -111,8 +111,11 @@ ${notes || 'Ninguna'}`;
     const payload = await response.json();
     if (!response.ok) {
       console.error('Groq listing analysis error:', payload);
-      const status = response.status === 429 ? 429 : response.status;
-      return respond({ error: response.status === 429 ? 'Se alcanzó el límite gratuito de Groq. Inténtalo más tarde.' : payload?.error?.message || 'Groq no pudo analizar el producto' }, status);
+      return respond({
+        error: response.status === 429
+          ? 'Se alcanzó el límite gratuito de Groq. Inténtalo más tarde.'
+          : payload?.error?.message || 'Groq no pudo analizar el producto',
+      }, response.status);
     }
 
     const outputText = extractOutputText(payload);
