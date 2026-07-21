@@ -6,6 +6,7 @@ import { useGeolocation } from '@/hooks/useGeolocation';
 import { supabase } from '@/integrations/supabase/client';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import AIListingAssistant from '@/components/upload/AIListingAssistant';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -198,6 +199,13 @@ const Upload = () => {
     setImageUrls(prev => { const next = [...prev]; [next[index], next[target]] = [next[target], next[index]]; return next; });
   };
 
+  const addGeneratedImage = (file: File) => {
+    if (images.length >= MAX_IMAGES) return;
+    const url = URL.createObjectURL(file);
+    setImages(prev => [file, ...prev]);
+    setImageUrls(prev => [url, ...prev]);
+  };
+
   const uploadImages = async (): Promise<UploadedImageResult> => {
     if (!user || images.length === 0) return { urls: [], paths: [] };
     const urls: string[] = [];
@@ -301,7 +309,7 @@ const Upload = () => {
         <main className="flex-1 container py-8">
           <div className="mx-auto mb-6 max-w-6xl rounded-2xl border bg-card p-4 shadow-sm">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div><div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" /><h1 className="text-2xl font-bold">Publicación profesional</h1></div><p className="text-sm text-muted-foreground">Completa los pasos, revisa la vista previa y publica cuando el anuncio esté listo.</p></div>
+              <div><div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" /><h1 className="text-2xl font-bold">Publicación profesional</h1></div><p className="text-sm text-muted-foreground">Sube fotos, deja que la IA te ayude y revisa todo antes de publicar.</p></div>
               <div className="min-w-[220px]"><div className="mb-2 flex justify-between text-sm"><span>Calidad del anuncio</span><strong>{qualityScore}%</strong></div><Progress value={qualityScore} /></div>
             </div>
             {(lastSavedAt || draftRestored) && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground"><span className="flex items-center gap-2"><Clock3 className="h-4 w-4" />Borrador guardado automáticamente{lastSavedAt ? ` a las ${lastSavedAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}` : ''}.</span><Button type="button" variant="ghost" size="sm" onClick={clearDraft}>Eliminar borrador</Button></div>}
@@ -320,6 +328,16 @@ const Upload = () => {
                     </div>
                   </section>
 
+                  <AIListingAssistant
+                    images={images}
+                    categories={categories}
+                    subcategories={subcategories}
+                    formData={formData}
+                    onApply={(next) => setFormData((current) => ({ ...current, ...next }))}
+                    onAddGeneratedImage={addGeneratedImage}
+                    maxImagesReached={images.length >= MAX_IMAGES}
+                  />
+
                   <section className="space-y-4"><Label className="text-base font-semibold">2. Información del producto</Label><div className="space-y-2"><Label htmlFor="title">Título *</Label><Input id="title" value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} maxLength={100} placeholder="Ej. iPhone 13 128GB azul" /><p className="text-right text-xs text-muted-foreground">{formData.title.length}/100</p></div><div className="space-y-2"><Label htmlFor="description">Descripción *</Label><Textarea id="description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} rows={6} maxLength={MAX_DESCRIPTION_LENGTH} placeholder="Estado, antigüedad, accesorios, defectos y motivo de venta." /><p className="text-right text-xs text-muted-foreground">{formData.description.length}/{MAX_DESCRIPTION_LENGTH}</p></div></section>
 
                   <section className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="price">Precio *</Label><div className="relative"><Euro className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input id="price" type="number" min={MIN_PRICE} max={MAX_PRICE} step="0.01" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} className="pl-10" /></div></div><div className="space-y-2"><Label>Estado *</Label><Select value={formData.condition} onValueChange={value => setFormData({ ...formData, condition: value })}><SelectTrigger><SelectValue placeholder="Estado del producto" /></SelectTrigger><SelectContent>{Object.entries(conditionLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div></section>
@@ -333,8 +351,8 @@ const Upload = () => {
 
             <aside className="space-y-4">
               <Card><CardHeader><CardTitle className="text-lg">Lista de comprobación</CardTitle></CardHeader><CardContent className="space-y-2">{checks.map(check => <div key={check.label} className={`flex items-center gap-2 text-sm ${check.ok ? 'text-foreground' : 'text-muted-foreground'}`}><CheckCircle2 className={`h-4 w-4 ${check.ok ? 'text-green-600' : ''}`} />{check.label}</div>)}</CardContent></Card>
-              <Card className="border-primary/20 bg-primary/5"><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Lightbulb className="h-5 w-5 text-primary" />Para vender antes</CardTitle></CardHeader><CardContent className="space-y-2 text-sm text-muted-foreground"><p>• Usa varias fotos claras y ordena la mejor como principal.</p><p>• Menciona defectos y accesorios incluidos.</p><p>• Compara precios similares antes de publicar.</p><p>• Responde rápido a mensajes y ofertas.</p></CardContent></Card>
-              <Card><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><ShieldCheck className="h-5 w-5 text-primary" />Publicación segura</CardTitle></CardHeader><CardContent className="text-sm text-muted-foreground">No publiques teléfono, correo, Bizum ni enlaces externos. Negocia dentro de Reveta.</CardContent></Card>
+              <Card className="border-primary/20 bg-primary/5"><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><Lightbulb className="h-5 w-5 text-primary" />Para vender antes</CardTitle></CardHeader><CardContent className="space-y-2 text-sm text-muted-foreground"><p>• Usa varias fotos claras y ordena la mejor como principal.</p><p>• Menciona defectos y accesorios incluidos.</p><p>• Revisa siempre los datos sugeridos por la IA.</p><p>• Responde rápido a mensajes y ofertas.</p></CardContent></Card>
+              <Card><CardHeader><CardTitle className="flex items-center gap-2 text-lg"><ShieldCheck className="h-5 w-5 text-primary" />Publicación segura</CardTitle></CardHeader><CardContent className="text-sm text-muted-foreground">No publiques teléfono, correo, Bizum ni enlaces externos. La IA puede equivocarse: revisa que fotos y texto describan el producto real.</CardContent></Card>
             </aside>
           </div>
         </main>
