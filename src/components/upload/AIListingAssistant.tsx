@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ImagePlus, Loader2, Sparkles, WandSparkles } from 'lucide-react';
+import { Loader2, Sparkles, WandSparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,8 +43,6 @@ interface Props {
   subcategories: Subcategory[];
   formData: ListingFormData;
   onApply: (next: Partial<ListingFormData>) => void;
-  onAddGeneratedImage: (file: File) => void;
-  maxImagesReached: boolean;
 }
 
 const normalize = (value: string) => value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -74,20 +72,10 @@ const resizeImage = (file: File, maxDimension = 1280, quality = 0.82): Promise<s
   image.src = objectUrl;
 });
 
-const dataUrlToFile = (dataUrl: string) => {
-  const [header, encoded] = dataUrl.split(',');
-  const mimeType = header.match(/data:(.*?);base64/)?.[1] || 'image/png';
-  const binary = atob(encoded);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return new File([bytes], `reveta-ia-${crypto.randomUUID()}.png`, { type: mimeType });
-};
-
-const AIListingAssistant = ({ images, categories, subcategories, formData, onApply, onAddGeneratedImage, maxImagesReached }: Props) => {
+const AIListingAssistant = ({ images, categories, subcategories, formData, onApply }: Props) => {
   const { toast } = useToast();
   const [notes, setNotes] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
-  const [enhancing, setEnhancing] = useState(false);
   const [result, setResult] = useState<AIResult | null>(null);
 
   const categoryPayload = useMemo(() => categories.map((category) => ({
@@ -95,16 +83,15 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
     subcategories: subcategories.filter((subcategory) => subcategory.category_id === category.id).map((subcategory) => ({ name: subcategory.name })),
   })), [categories, subcategories]);
 
-  const prepareImages = async (limit = 3) => Promise.all(images.slice(0, limit).map((file) => resizeImage(file)));
-
   const analyze = async () => {
     if (images.length === 0) {
-      toast({ title: 'Añade una foto primero', description: 'La IA necesita ver el producto para ayudarte.', variant: 'destructive' });
+      toast({ title: 'Añade una foto primero', description: 'Groq necesita ver el producto para ayudarte.', variant: 'destructive' });
       return;
     }
+
     setAnalyzing(true);
     try {
-      const imageData = await prepareImages(3);
+      const imageData = await Promise.all(images.slice(0, 3).map((file) => resizeImage(file)));
       const { data, error } = await supabase.functions.invoke('ai-listing-assistant', {
         body: {
           action: 'analyze',
@@ -120,8 +107,9 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
           },
         },
       });
+
       if (error) throw error;
-      if (!data?.result) throw new Error(data?.error || 'La IA no devolvió una propuesta');
+      if (!data?.result) throw new Error(data?.error || 'Groq no devolvió una propuesta');
       const suggestion = data.result as AIResult;
       setResult(suggestion);
 
@@ -139,65 +127,33 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
         condition: validCondition || formData.condition,
         price: Number.isFinite(suggestedPrice) && suggestedPrice > 0 ? String(Math.round(suggestedPrice * 100) / 100) : formData.price,
       });
-      toast({ title: 'Propuesta aplicada', description: 'Revisa los datos antes de publicar. La IA puede equivocarse.' });
+
+      toast({ title: 'Propuesta aplicada con Groq', description: 'Revisa los datos antes de publicar. La IA puede equivocarse.' });
     } catch (error: any) {
-      console.error('AI listing analysis error:', error);
-      toast({ title: 'No se pudo completar con IA', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+      console.error('Groq listing analysis error:', error);
+      toast({ title: 'No se pudo completar con Groq', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
     } finally {
       setAnalyzing(false);
-    }
-  };
-
-  const enhanceImage = async () => {
-    if (images.length === 0) {
-      toast({ title: 'Añade una foto primero', variant: 'destructive' });
-      return;
-    }
-    if (maxImagesReached) {
-      toast({ title: 'Ya tienes el máximo de fotos', description: 'Elimina una foto antes de crear la versión mejorada.', variant: 'destructive' });
-      return;
-    }
-    setEnhancing(true);
-    try {
-      const [image] = await prepareImages(1);
-      const { data, error } = await supabase.functions.invoke('ai-listing-assistant', {
-        body: { action: 'enhance-image', images: [image], title: formData.title, notes },
-      });
-      if (error) throw error;
-      if (!data?.image) throw new Error(data?.error || 'La IA no devolvió ninguna imagen');
-      onAddGeneratedImage(dataUrlToFile(data.image));
-      toast({ title: 'Foto mejorada añadida', description: 'La hemos colocado como principal. Comprueba que representa fielmente el producto.' });
-    } catch (error: any) {
-      console.error('AI image enhancement error:', error);
-      toast({ title: 'No se pudo mejorar la foto', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
-    } finally {
-      setEnhancing(false);
     }
   };
 
   return (
     <Card className="border-primary/30 bg-primary/5">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Asistente IA para publicar</CardTitle>
-        <CardDescription>Sube fotos reales y deja que la IA prepare una propuesta. Tú siempre decides qué se publica.</CardDescription>
+        <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Asistente gratuito con Groq</CardTitle>
+        <CardDescription>Sube fotos reales y Groq preparará el título, la descripción y los datos principales del anuncio.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={800} rows={3} placeholder="Opcional: marca, modelo, antigüedad, accesorios, defectos o cualquier dato que la foto no muestre." />
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Button type="button" onClick={analyze} disabled={analyzing || enhancing || images.length === 0} className="flex-1">
-            {analyzing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
-            {analyzing ? 'Analizando producto...' : 'Completar anuncio con IA'}
-          </Button>
-          <Button type="button" variant="outline" onClick={enhanceImage} disabled={enhancing || analyzing || images.length === 0 || maxImagesReached} className="flex-1">
-            {enhancing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}
-            {enhancing ? 'Creando foto...' : 'Crear foto principal limpia'}
-          </Button>
-        </div>
+        <Button type="button" onClick={analyze} disabled={analyzing || images.length === 0} className="w-full">
+          {analyzing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
+          {analyzing ? 'Analizando producto...' : 'Completar anuncio con Groq'}
+        </Button>
 
         {result && (
           <div className="space-y-3 rounded-xl border bg-background p-4 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <strong>Resultado de la IA</strong>
+              <strong>Resultado de Groq</strong>
               <Badge variant="secondary">Confianza: {Math.max(0, Math.min(100, Number(result.confidence) || 0))}%</Badge>
             </div>
             {(result.price_min || result.price_max) && <p className="text-muted-foreground">Precio orientativo: {result.price_min || '—'} € – {result.price_max || '—'} €</p>}
@@ -207,7 +163,7 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
           </div>
         )}
 
-        <p className="text-xs text-muted-foreground">La IA no debe inventar características ni ocultar defectos. Las fotos generadas o mejoradas tienen que representar el producto real.</p>
+        <p className="text-xs text-muted-foreground">Groq analiza las fotos y genera texto, pero no crea ni modifica imágenes. Conservamos siempre las fotografías reales del vendedor.</p>
       </CardContent>
     </Card>
   );
