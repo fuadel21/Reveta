@@ -33,8 +33,19 @@ interface ProductGridProps {
   className?: string;
 }
 
+const RECENT_KEY = 'reveta_recent_products_v1';
 const isFeaturedProduct = (boostedUntil?: string | null) => !!boostedUntil && new Date(boostedUntil).getTime() > Date.now();
 const createProductSlug = (title: string) => title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'producto';
+
+const rememberRecentlyViewed = (productId: string) => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    const current = Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+    localStorage.setItem(RECENT_KEY, JSON.stringify([productId, ...current.filter((id) => id !== productId)].slice(0, 20)));
+  } catch {
+    localStorage.setItem(RECENT_KEY, JSON.stringify([productId]));
+  }
+};
 
 export const ProductGrid = ({ products, favorites, useGeoFilter, formatDistance, formatDate, selectedProductId, onProductHover, compact = false, className }: ProductGridProps) => {
   const navigate = useNavigate();
@@ -49,6 +60,7 @@ export const ProductGrid = ({ products, favorites, useGeoFilter, formatDistance,
   }, []);
 
   const handleProductClick = (product: Product) => {
+    rememberRecentlyViewed(product.id);
     void (supabase as any).from('product_clicks').insert({ product_id: product.id, user_id: user?.id || null, source: 'product_grid' });
     navigate(`/producto/${product.id}/${createProductSlug(product.title)}`);
   };
