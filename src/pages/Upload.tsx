@@ -32,7 +32,6 @@ const MIN_DESCRIPTION_LENGTH = 20;
 const MAX_DESCRIPTION_LENGTH = 2000;
 const DRAFT_KEY = 'reveta:listing-draft:v1';
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-
 const conditionLabels: Record<string, string> = { new: 'Nuevo', like_new: 'Como nuevo', good: 'Buen estado', fair: 'Aceptable', poor: 'Necesita reparación' };
 const emptyForm = { title: '', description: '', price: '', category_id: '', subcategory_id: '', condition: '', location: '', latitude: null as number | null, longitude: null as number | null };
 const normalizeText = (value: string) => value.trim().replace(/\s+/g, ' ');
