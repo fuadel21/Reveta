@@ -43,8 +43,6 @@ interface Props {
   subcategories: Subcategory[];
   formData: ListingFormData;
   onApply: (next: Partial<ListingFormData>) => void;
-  onAddGeneratedImage?: (file: File) => void;
-  maxImagesReached?: boolean;
 }
 
 const normalize = (value: string) => value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
