@@ -77,6 +77,8 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
   const [notes, setNotes] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<AIResult | null>(null);
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const [resetAt, setResetAt] = useState<string | null>(null);
 
   const categoryPayload = useMemo(() => categories.map((category) => ({
     name: category.name,
@@ -108,6 +110,8 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
         },
       });
 
+      if (data?.remaining !== undefined) setRemaining(Number(data.remaining));
+      if (data?.reset_at) setResetAt(String(data.reset_at));
       if (error) throw error;
       if (!data?.result) throw new Error(data?.error || 'Groq no devolvió una propuesta');
       const suggestion = data.result as AIResult;
@@ -128,7 +132,12 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
         price: Number.isFinite(suggestedPrice) && suggestedPrice > 0 ? String(Math.round(suggestedPrice * 100) / 100) : formData.price,
       });
 
-      toast({ title: 'Propuesta aplicada con Groq', description: 'Revisa los datos antes de publicar. La IA puede equivocarse.' });
+      toast({
+        title: 'Propuesta aplicada con Groq',
+        description: data?.remaining !== undefined
+          ? `Revisa los datos antes de publicar. Te quedan ${data.remaining} análisis hoy.`
+          : 'Revisa los datos antes de publicar. La IA puede equivocarse.',
+      });
     } catch (error: any) {
       console.error('Groq listing analysis error:', error);
       toast({ title: 'No se pudo completar con Groq', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
@@ -140,15 +149,24 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
   return (
     <Card className="border-primary/30 bg-primary/5">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Asistente gratuito con Groq</CardTitle>
-        <CardDescription>Sube fotos reales y Groq preparará el título, la descripción y los datos principales del anuncio.</CardDescription>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Asistente gratuito con Groq</CardTitle>
+            <CardDescription>Sube fotos reales y Groq preparará el título, la descripción y los datos principales del anuncio.</CardDescription>
+          </div>
+          {remaining !== null && <Badge variant={remaining > 0 ? 'secondary' : 'destructive'}>{remaining} usos restantes hoy</Badge>}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={800} rows={3} placeholder="Opcional: marca, modelo, antigüedad, accesorios, defectos o cualquier dato que la foto no muestre." />
-        <Button type="button" onClick={analyze} disabled={analyzing || images.length === 0} className="w-full">
+        <Button type="button" onClick={analyze} disabled={analyzing || images.length === 0 || remaining === 0} className="w-full">
           {analyzing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
-          {analyzing ? 'Analizando producto...' : 'Completar anuncio con Groq'}
+          {analyzing ? 'Analizando producto...' : remaining === 0 ? 'Límite diario agotado' : 'Completar anuncio con Groq'}
         </Button>
+
+        {remaining === 0 && resetAt && (
+          <Alert><AlertDescription>Has usado todos los análisis gratuitos de hoy. El límite se reinicia mañana.</AlertDescription></Alert>
+        )}
 
         {result && (
           <div className="space-y-3 rounded-xl border bg-background p-4 text-sm">
@@ -163,7 +181,7 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
           </div>
         )}
 
-        <p className="text-xs text-muted-foreground">Groq analiza las fotos y genera texto, pero no crea ni modifica imágenes. Conservamos siempre las fotografías reales del vendedor.</p>
+        <p className="text-xs text-muted-foreground">Groq analiza las fotos y genera texto, pero no crea ni modifica imágenes. Cada usuario dispone de una cuota diaria para proteger el plan gratuito.</p>
       </CardContent>
     </Card>
   );
