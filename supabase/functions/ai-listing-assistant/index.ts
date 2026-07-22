@@ -1,3 +1,5 @@
+import { createClient } from 'npm:@supabase/supabase-js@2';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': Deno.env.get('ALLOWED_ORIGIN') || 'https://reveta.es',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -7,6 +9,8 @@ const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
 const MAX_IMAGES = 3;
 const MAX_DATA_URL_LENGTH = 4_500_000;
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
+const DAILY_LIMIT = Math.max(1, Number(Deno.env.get('AI_LISTING_DAILY_LIMIT') || 5));
+const COOLDOWN_SECONDS = Math.max(5, Number(Deno.env.get('AI_LISTING_COOLDOWN_SECONDS') || 20));
 
 const respond = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: jsonHeaders });
 
@@ -40,12 +44,54 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return respond({ error: 'Method not allowed' }, 405);
 
   const apiKey = Deno.env.get('GROQ_API_KEY');
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!apiKey) return respond({ error: 'Groq todavía no está configurado en el servidor' }, 503);
+  if (!supabaseUrl || !anonKey || !serviceRoleKey) return respond({ error: 'Supabase no está configurado para controlar el uso de IA' }, 503);
+
+  const authorization = req.headers.get('Authorization') || '';
+  if (!authorization.startsWith('Bearer ')) return respond({ error: 'Debes iniciar sesión para usar el asistente', code: 'UNAUTHENTICATED' }, 401);
+
+  const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } });
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+  let usageId: string | null = null;
 
   try {
+    const { data: authData, error: authError } = await userClient.auth.getUser();
+    if (authError || !authData.user) return respond({ error: 'La sesión no es válida', code: 'UNAUTHENTICATED' }, 401);
+
+    const { data: claim, error: claimError } = await userClient.rpc('claim_ai_listing_usage', {
+      p_daily_limit: DAILY_LIMIT,
+      p_cooldown_seconds: COOLDOWN_SECONDS,
+    });
+    if (claimError) {
+      console.error('AI usage claim error:', claimError);
+      return respond({ error: 'No se pudo comprobar el límite de uso' }, 500);
+    }
+
+    if (!claim?.ok) {
+      if (claim?.code === 'COOLDOWN') {
+        return respond({
+          error: `Espera ${claim.retry_after_seconds || COOLDOWN_SECONDS} segundos antes de volver a intentarlo.`,
+          code: 'COOLDOWN',
+          retry_after_seconds: claim.retry_after_seconds,
+          remaining: claim.remaining,
+          reset_at: claim.reset_at,
+        }, 429);
+      }
+      return respond({
+        error: 'Has agotado los análisis gratuitos de hoy. Podrás volver a usar el asistente mañana.',
+        code: 'DAILY_LIMIT',
+        remaining: 0,
+        reset_at: claim?.reset_at,
+      }, 429);
+    }
+
+    usageId = String(claim.usage_id);
     const body = await req.json();
     const action = String(body?.action || 'analyze');
-    if (action !== 'analyze') return respond({ error: 'Groq solo permite analizar fotos y generar texto' }, 400);
+    if (action !== 'analyze') throw new Error('Groq solo permite analizar fotos y generar texto');
 
     const images = validateImages(body?.images);
     const categories = Array.isArray(body?.categories) ? body.categories.slice(0, 100) : [];
@@ -110,19 +156,35 @@ ${notes || 'Ninguna'}`;
 
     const payload = await response.json();
     if (!response.ok) {
-      console.error('Groq listing analysis error:', payload);
+      const errorCode = response.status === 429 ? 'GROQ_LIMIT' : `GROQ_${response.status}`;
+      await adminClient.from('ai_listing_usage').update({ status: 'failed', error_code: errorCode, completed_at: new Date().toISOString() }).eq('id', usageId);
       return respond({
         error: response.status === 429
-          ? 'Se alcanzó el límite gratuito de Groq. Inténtalo más tarde.'
+          ? 'Se alcanzó el límite gratuito global de Groq. Inténtalo más tarde.'
           : payload?.error?.message || 'Groq no pudo analizar el producto',
+        code: errorCode,
+        remaining: claim.remaining,
+        reset_at: claim.reset_at,
       }, response.status);
     }
 
     const outputText = extractOutputText(payload);
-    if (!outputText) return respond({ error: 'Groq no devolvió una propuesta de anuncio' }, 502);
-    return respond({ result: cleanJson(outputText), provider: 'groq', model: payload?.model || null });
+    if (!outputText) throw new Error('Groq no devolvió una propuesta de anuncio');
+    const result = cleanJson(outputText);
+    await adminClient.from('ai_listing_usage').update({ status: 'success', completed_at: new Date().toISOString() }).eq('id', usageId);
+
+    return respond({
+      result,
+      provider: 'groq',
+      model: payload?.model || null,
+      remaining: claim.remaining,
+      reset_at: claim.reset_at,
+    });
   } catch (error) {
     console.error('ai-listing-assistant Groq error:', error);
+    if (usageId) {
+      await adminClient.from('ai_listing_usage').update({ status: 'failed', error_code: 'INTERNAL_ERROR', completed_at: new Date().toISOString() }).eq('id', usageId);
+    }
     return respond({ error: error instanceof Error ? error.message : 'No se pudo completar la solicitud' }, 500);
   }
 });
