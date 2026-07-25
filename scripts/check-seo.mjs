@@ -1,0 +1,89 @@
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const failures = [];
+const warnings = [];
+
+const read = (path) => {
+  const absolutePath = resolve(path);
+  if (!existsSync(absolutePath)) {
+    failures.push(`Falta el archivo obligatorio: ${path}`);
+    return '';
+  }
+  return readFileSync(absolutePath, 'utf8');
+};
+
+const expect = (condition, message) => {
+  if (!condition) failures.push(message);
+};
+
+const warn = (condition, message) => {
+  if (!condition) warnings.push(message);
+};
+
+const indexHtml = read('index.html');
+const robots = read('public/robots.txt');
+const sitemap = read('public/sitemap.xml');
+const vercelRaw = read('vercel.json');
+const app = read('src/App.tsx');
+const productDetail = read('src/pages/ProductDetail.tsx');
+const seoLanding = read('src/pages/SeoLanding.tsx');
+
+expect(/<html\s+lang=["']es["']/.test(indexHtml), 'index.html debe declarar lang="es".');
+expect(/name=["']description["']/.test(indexHtml), 'Falta la meta description base.');
+expect(/rel=["']canonical["']/.test(indexHtml), 'Falta la canonical base.');
+expect(/google-site-verification/.test(indexHtml), 'Falta la verificación de Google Search Console.');
+expect(/property=["']og:title["']/.test(indexHtml), 'Falta og:title en la plantilla base.');
+expect(/name=["']twitter:card["']/.test(indexHtml), 'Falta twitter:card en la plantilla base.');
+
+expect(/Sitemap:\s*https:\/\/reveta\.es\/sitemap\.xml/.test(robots), 'robots.txt debe declarar el sitemap absoluto.');
+expect(/Disallow:\s*\/search/.test(robots), 'robots.txt debe bloquear los filtros de búsqueda.');
+expect(/Disallow:\s*\/admin/.test(robots), 'robots.txt debe bloquear administración.');
+expect(/Allow:\s*\/producto\//.test(robots), 'robots.txt debe permitir productos canónicos.');
+
+expect(/<urlset\s+xmlns=["']http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9["']>/.test(sitemap), 'sitemap.xml no tiene un urlset válido.');
+expect(/<loc>https:\/\/reveta\.es\/<\/loc>/.test(sitemap), 'El sitemap debe incluir la portada canónica.');
+expect(!/[?&](utm_|page=|sort=|filter=)/i.test(sitemap), 'El sitemap contiene parámetros o filtros que pueden generar duplicados.');
+
+let vercel;
+try {
+  vercel = JSON.parse(vercelRaw);
+} catch (error) {
+  failures.push(`vercel.json no es JSON válido: ${error.message}`);
+}
+
+if (vercel) {
+  const serializedHeaders = JSON.stringify(vercel.headers || []);
+  expect(serializedHeaders.includes('X-Robots-Tag'), 'Vercel debe enviar X-Robots-Tag en rutas privadas.');
+  expect(serializedHeaders.includes('/search/:path*'), 'Vercel debe marcar /search como noindex.');
+  expect(serializedHeaders.includes('/sitemap.xml'), 'Vercel debe definir cabeceras para sitemap.xml.');
+  expect(serializedHeaders.includes('immutable'), 'Los assets versionados deben tener caché immutable.');
+}
+
+expect(/<HelmetProvider>/.test(app), 'La aplicación debe mantener HelmetProvider.');
+expect(/GlobalJsonLd/.test(app), 'La aplicación debe mantener los datos estructurados globales.');
+expect(/\/producto\/:id\/:slug/.test(app), 'Falta la ruta canónica de producto con slug.');
+expect(/\/segunda-mano\/:city\/:category/.test(app), 'Falta la landing SEO de ciudad y categoría.');
+
+expect(/@type['"]?:\s*['"]Product['"]/.test(productDetail), 'ProductDetail debe publicar JSON-LD Product.');
+expect(/BreadcrumbList/.test(productDetail), 'ProductDetail debe publicar breadcrumbs estructurados.');
+expect(/name=["']robots["']/.test(productDetail), 'ProductDetail debe controlar index/noindex según disponibilidad.');
+expect(/rel=["']canonical["']/.test(productDetail), 'ProductDetail debe publicar canonical.');
+
+expect(/FAQPage/.test(seoLanding), 'SeoLanding debe publicar FAQPage.');
+expect(/CollectionPage/.test(seoLanding), 'SeoLanding debe publicar CollectionPage.');
+expect(/BreadcrumbList/.test(seoLanding), 'SeoLanding debe publicar BreadcrumbList.');
+expect(/shouldIndex/.test(seoLanding), 'SeoLanding debe impedir indexar ciudades o categorías no aprobadas.');
+
+warn(/og:image:type[^\n]+image\/svg\+xml/.test(indexHtml), 'La imagen social base sigue siendo SVG; conviene sustituirla por PNG o WebP 1200x630 para máxima compatibilidad.');
+warn(/meta\s+name=["']keywords["']/.test(seoLanding), 'La etiqueta meta keywords no ayuda al posicionamiento y puede eliminarse en una limpieza futura.');
+
+for (const message of warnings) console.warn(`SEO warning: ${message}`);
+
+if (failures.length) {
+  for (const message of failures) console.error(`SEO error: ${message}`);
+  console.error(`\nSEO check failed with ${failures.length} error(s).`);
+  process.exit(1);
+}
+
+console.log(`SEO check passed${warnings.length ? ` with ${warnings.length} warning(s)` : ''}.`);
