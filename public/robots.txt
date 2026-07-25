@@ -1,7 +1,14 @@
 User-agent: *
 Allow: /
 
-# Private and account pages
+# Public SEO areas
+Allow: /segunda-mano
+Allow: /segunda-mano/
+Allow: /producto/
+Allow: /usuario/
+Allow: /seguridad
+
+# Private account and administration pages
 Disallow: /admin
 Disallow: /admin/
 Disallow: /admin/*
@@ -11,11 +18,17 @@ Disallow: /profile/*
 Disallow: /settings
 Disallow: /settings/
 Disallow: /settings/*
+Disallow: /seller-dashboard
+Disallow: /seller-dashboard/
+Disallow: /comprador
+Disallow: /comprador/
 Disallow: /saved-searches
 Disallow: /saved-searches/
 Disallow: /saved-searches/*
+Disallow: /comparar
+Disallow: /comparar/
 
-# Auth and password flows
+# Authentication and password flows
 Disallow: /auth
 Disallow: /auth/
 Disallow: /auth/*
@@ -24,7 +37,7 @@ Disallow: /reset-password/
 Disallow: /forgot-password
 Disallow: /forgot-password/
 
-# Messages, transactions and checkout flows
+# Messages, transactions, calls and checkout
 Disallow: /messages
 Disallow: /messages/
 Disallow: /messages/*
@@ -41,15 +54,17 @@ Disallow: /call
 Disallow: /call/
 Disallow: /call/*
 
-# Publishing and API routes
+# Publishing, internal APIs and filter combinations
 Disallow: /upload
 Disallow: /upload/
 Disallow: /upload/*
 Disallow: /api
 Disallow: /api/
 Disallow: /api/*
+Disallow: /search
+Disallow: /search?
 
-# Filter/search URLs are crawlable through links but not intended for indexing.
-# The /search page also sends noindex via meta and X-Robots-Tag.
+# Legacy product URLs redirect to the canonical Spanish route.
+Disallow: /product/
 
 Sitemap: https://reveta.es/sitemap.xml
