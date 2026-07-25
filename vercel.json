@@ -9,6 +9,16 @@
       "source": "/product/:id",
       "destination": "/producto/:id/producto",
       "permanent": true
+    },
+    {
+      "source": "/segunda",
+      "destination": "/segunda-mano",
+      "permanent": true
+    },
+    {
+      "source": "/segunda-ma",
+      "destination": "/segunda-mano",
+      "permanent": true
     }
   ],
   "headers": [
@@ -38,6 +48,41 @@
       ]
     },
     {
+      "source": "/assets/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/sitemap.xml",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/xml; charset=utf-8"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400"
+        }
+      ]
+    },
+    {
+      "source": "/robots.txt",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600, s-maxage=3600"
+        }
+      ]
+    },
+    {
       "source": "/admin/:path*",
       "headers": [
         {
@@ -48,6 +93,51 @@
     },
     {
       "source": "/profile/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        }
+      ]
+    },
+    {
+      "source": "/seller-dashboard/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        }
+      ]
+    },
+    {
+      "source": "/comprador/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        }
+      ]
+    },
+    {
+      "source": "/comparar/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        }
+      ]
+    },
+    {
+      "source": "/saved-searches/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        }
+      ]
+    },
+    {
+      "source": "/upload/:path*",
       "headers": [
         {
           "key": "X-Robots-Tag",
@@ -110,7 +200,7 @@
       ]
     },
     {
-      "source": "/auth",
+      "source": "/auth/:path*",
       "headers": [
         {
           "key": "X-Robots-Tag",
@@ -119,7 +209,25 @@
       ]
     },
     {
-      "source": "/search",
+      "source": "/forgot-password/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        }
+      ]
+    },
+    {
+      "source": "/reset-password/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
+        }
+      ]
+    },
+    {
+      "source": "/search/:path*",
       "headers": [
         {
           "key": "X-Robots-Tag",
