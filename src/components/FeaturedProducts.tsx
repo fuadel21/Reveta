@@ -19,6 +19,15 @@ interface Favorite {
   product_id: string;
 }
 
+const createProductSlug = (title: string) =>
+  title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'producto';
+
 const productIsFeatured = (product: Product) => {
   return !!product.boosted_until && new Date(product.boosted_until).getTime() > Date.now();
 };
@@ -51,7 +60,7 @@ const FeaturedProducts = () => {
   const fetchProducts = async () => {
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select('id,title,price,images,location,created_at,condition,boosted_until')
       .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(24);
@@ -152,7 +161,7 @@ const FeaturedProducts = () => {
               key={product.id}
               className="animate-fade-in-up cursor-pointer"
               style={{ animationDelay: `${index * 0.08}s` }}
-              onClick={() => navigate(`/product/${product.id}`)}
+              onClick={() => navigate(`/producto/${product.id}/${createProductSlug(product.title)}`)}
             >
               <ProductCard
                 id={product.id}
@@ -164,6 +173,7 @@ const FeaturedProducts = () => {
                 isNew={product.condition === 'Nuevo'}
                 isFavorite={favorites.has(product.id)}
                 isFeatured={productIsFeatured(product)}
+                imagePriority={index < 2}
               />
             </div>
           ))}
