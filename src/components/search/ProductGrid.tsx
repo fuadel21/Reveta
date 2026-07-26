@@ -65,6 +65,12 @@ export const ProductGrid = ({ products, favorites, useGeoFilter, formatDistance,
     navigate(`/producto/${product.id}/${createProductSlug(product.title)}`);
   };
 
+  const handleProductKeyDown = (event: React.KeyboardEvent, product: Product) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    handleProductClick(product);
+  };
+
   const handleCompare = (event: React.MouseEvent, productId: string) => {
     event.stopPropagation();
     const result = toggleComparedProduct(productId);
@@ -77,11 +83,34 @@ export const ProductGrid = ({ products, favorites, useGeoFilter, formatDistance,
     <div className={cn('grid gap-4', compact ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4', className)}>
       {products.map((product, index) => {
         const isCompared = comparedIds.includes(product.id);
-        return <div key={product.id} onClick={() => handleProductClick(product)} onMouseEnter={() => onProductHover?.(product.id)} onMouseLeave={() => onProductHover?.(null)} className={cn('relative cursor-pointer transition-all duration-300 animate-fade-in-up', selectedProductId === product.id && 'ring-2 ring-primary rounded-xl')} style={{ animationDelay: `${index * 50}ms` }}>
-          <button onClick={(event) => handleCompare(event, product.id)} className={cn('absolute right-2 top-2 z-20 flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium shadow backdrop-blur', isCompared ? 'bg-primary text-primary-foreground' : 'bg-background/90 text-foreground')} aria-label={isCompared ? 'Quitar del comparador' : 'Añadir al comparador'}>
+        const productLabel = `Ver ${product.title}, ${product.price.toLocaleString('es-ES')} €`;
+        return <div
+          key={product.id}
+          role="link"
+          tabIndex={0}
+          aria-label={productLabel}
+          onClick={() => handleProductClick(product)}
+          onKeyDown={(event) => handleProductKeyDown(event, product)}
+          onMouseEnter={() => onProductHover?.(product.id)}
+          onMouseLeave={() => onProductHover?.(null)}
+          className={cn('relative cursor-pointer rounded-xl transition-all duration-300 animate-fade-in-up focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2', selectedProductId === product.id && 'ring-2 ring-primary')}
+          style={{ animationDelay: `${Math.min(index, 8) * 50}ms` }}
+        >
+          <button onClick={(event) => handleCompare(event, product.id)} className={cn('absolute right-2 top-2 z-20 flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium shadow backdrop-blur', isCompared ? 'bg-primary text-primary-foreground' : 'bg-background/90 text-foreground')} aria-label={isCompared ? `Quitar ${product.title} del comparador` : `Añadir ${product.title} al comparador`}>
             <Scale className="h-3.5 w-3.5" /><span className="hidden sm:inline">{isCompared ? 'Añadido' : 'Comparar'}</span>
           </button>
-          <ProductCard id={product.id} title={product.title} price={product.price} image={product.images?.[0] || '/placeholder.svg'} location={useGeoFilter && product.distance_km !== undefined ? `${formatDistance(product.distance_km)} · ${product.location || ''}`.replace(/ · $/, '') : product.location || 'Sin ubicación'} time={formatDate(product.created_at)} isNew={product.condition === 'Nuevo'} isFavorite={favorites.has(product.id)} isFeatured={isFeaturedProduct(product.boosted_until)} />
+          <ProductCard
+            id={product.id}
+            title={product.title}
+            price={product.price}
+            image={product.images?.[0] || '/placeholder.svg'}
+            location={useGeoFilter && product.distance_km !== undefined ? `${formatDistance(product.distance_km)} · ${product.location || ''}`.replace(/ · $/, '') : product.location || 'Sin ubicación'}
+            time={formatDate(product.created_at)}
+            isNew={product.condition === 'Nuevo'}
+            isFavorite={favorites.has(product.id)}
+            isFeatured={isFeaturedProduct(product.boosted_until)}
+            imagePriority={!compact && index < 2}
+          />
         </div>;
       })}
     </div>
