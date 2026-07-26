@@ -13,13 +13,8 @@ const read = (path) => {
   return readFileSync(absolutePath, 'utf8');
 };
 
-const expect = (condition, message) => {
-  if (!condition) failures.push(message);
-};
-
-const warn = (condition, message) => {
-  if (!condition) warnings.push(message);
-};
+const expect = (condition, message) => { if (!condition) failures.push(message); };
+const warn = (condition, message) => { if (!condition) warnings.push(message); };
 
 const indexHtml = read('index.html');
 const robots = read('public/robots.txt');
@@ -32,6 +27,7 @@ const searchProductGrid = read('src/components/search/ProductGrid.tsx');
 const globalJsonLd = read('src/components/seo/GlobalJsonLd.tsx');
 const productDetail = read('src/pages/ProductDetail.tsx');
 const publicSellerProfile = read('src/pages/PublicSellerProfile.tsx');
+const seoIndex = read('src/pages/SeoIndex.tsx');
 const seoLanding = read('src/pages/SeoLanding.tsx');
 const sitemapGenerator = read('scripts/generate-sitemap.mjs');
 
@@ -59,12 +55,7 @@ expect(!/[?&](utm_|page=|sort=|filter=)/i.test(sitemap), 'El sitemap contiene pa
 expect(!/<loc>https:\/\/reveta\.es\/search/i.test(sitemap), 'El sitemap no debe incluir búsquedas internas.');
 
 let vercel;
-try {
-  vercel = JSON.parse(vercelRaw);
-} catch (error) {
-  failures.push(`vercel.json no es JSON válido: ${error.message}`);
-}
-
+try { vercel = JSON.parse(vercelRaw); } catch (error) { failures.push(`vercel.json no es JSON válido: ${error.message}`); }
 if (vercel) {
   const serializedHeaders = JSON.stringify(vercel.headers || []);
   const serializedRedirects = JSON.stringify(vercel.redirects || []);
@@ -112,6 +103,14 @@ expect(/profile\.username\s*\|\|\s*profile\.id/.test(sitemapGenerator), 'El site
 expect(/sellerPriority/.test(sitemapGenerator), 'El sitemap debe priorizar perfiles según inventario activo.');
 expect(/productPriority/.test(sitemapGenerator), 'El sitemap debe priorizar productos según actualidad.');
 
+expect(/CollectionPage/.test(seoIndex), 'SeoIndex debe publicar CollectionPage.');
+expect(/BreadcrumbList/.test(seoIndex), 'SeoIndex debe publicar BreadcrumbList.');
+expect(/ItemList/.test(seoIndex), 'SeoIndex debe publicar un ItemList de descubrimiento.');
+expect(/og-image\.png/.test(seoIndex) && /image\/png/.test(seoIndex), 'SeoIndex debe usar la imagen social PNG.');
+expect(/og:image:alt/.test(seoIndex) && /twitter:image:alt/.test(seoIndex), 'SeoIndex debe describir la imagen social.');
+expect(/Categorías de segunda mano en Barcelona/.test(seoIndex), 'SeoIndex debe indicar claramente la ciudad de sus enlaces de categoría.');
+expect(/categoryLinks/.test(seoIndex) && /discoveryItems/.test(seoIndex), 'SeoIndex debe incluir categorías y hubs en el grafo de descubrimiento.');
+
 expect(/FAQPage/.test(seoLanding), 'SeoLanding debe publicar FAQPage.');
 expect(/CollectionPage/.test(seoLanding), 'SeoLanding debe publicar CollectionPage.');
 expect(/BreadcrumbList/.test(seoLanding), 'SeoLanding debe publicar BreadcrumbList.');
@@ -122,15 +121,12 @@ expect(/rel=["']canonical["']/.test(seoLanding), 'SeoLanding debe publicar canon
 expect(/priceCurrency:\s*['"]EUR['"]/.test(seoLanding), 'SeoLanding debe declarar precios en EUR.');
 expect(/name=["']robots["']/.test(seoLanding) && /noindex,follow/.test(seoLanding), 'SeoLanding debe mantener noindex,follow cuando no haya inventario.');
 expect(!/meta\s+name=["']keywords["']/.test(seoLanding), 'SeoLanding no debe incluir meta keywords.');
-
 warn(!/og-image\.svg/.test(seoLanding), 'SeoLanding todavía usa SVG como imagen social de reserva; conviene migrarla al PNG 1200x630.');
 
 for (const message of warnings) console.warn(`SEO warning: ${message}`);
-
 if (failures.length) {
   for (const message of failures) console.error(`SEO error: ${message}`);
   console.error(`\nSEO check failed with ${failures.length} error(s).`);
   process.exit(1);
 }
-
 console.log(`SEO check passed${warnings.length ? ` with ${warnings.length} warning(s)` : ''}.`);
