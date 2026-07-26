@@ -37,6 +37,11 @@ expect(/rel=["']canonical["']/.test(indexHtml), 'Falta la canonical base.');
 expect(/google-site-verification/.test(indexHtml), 'Falta la verificación de Google Search Console.');
 expect(/property=["']og:title["']/.test(indexHtml), 'Falta og:title en la plantilla base.');
 expect(/name=["']twitter:card["']/.test(indexHtml), 'Falta twitter:card en la plantilla base.');
+expect(/https:\/\/reveta\.es\/og-image\.png/.test(indexHtml), 'La plantilla base debe usar la imagen social PNG.');
+expect(/property=["']og:image:type["'][^>]+image\/png/.test(indexHtml), 'La plantilla base debe declarar og:image:type image/png.');
+expect(/property=["']og:image:width["'][^>]+1200/.test(indexHtml), 'La imagen social debe declarar 1200 px de ancho.');
+expect(/property=["']og:image:height["'][^>]+630/.test(indexHtml), 'La imagen social debe declarar 630 px de alto.');
+expect(existsSync(resolve('public/og-image.png')), 'Falta public/og-image.png.');
 
 expect(/Sitemap:\s*https:\/\/reveta\.es\/sitemap\.xml/.test(robots), 'robots.txt debe declarar el sitemap absoluto.');
 expect(/Disallow:\s*\/search/.test(robots), 'robots.txt debe bloquear los filtros de búsqueda.');
@@ -57,10 +62,12 @@ try {
 
 if (vercel) {
   const serializedHeaders = JSON.stringify(vercel.headers || []);
+  const serializedRedirects = JSON.stringify(vercel.redirects || []);
   expect(serializedHeaders.includes('X-Robots-Tag'), 'Vercel debe enviar X-Robots-Tag en rutas privadas.');
   expect(serializedHeaders.includes('/search/:path*'), 'Vercel debe marcar /search como noindex.');
   expect(serializedHeaders.includes('/sitemap.xml'), 'Vercel debe definir cabeceras para sitemap.xml.');
   expect(serializedHeaders.includes('immutable'), 'Los assets versionados deben tener caché immutable.');
+  expect(!serializedRedirects.includes('og-image.png'), 'Vercel no debe redirigir la imagen social PNG al SVG antiguo.');
 }
 
 expect(/<HelmetProvider>/.test(app), 'La aplicación debe mantener HelmetProvider.');
@@ -88,7 +95,6 @@ expect(/CollectionPage/.test(seoLanding), 'SeoLanding debe publicar CollectionPa
 expect(/BreadcrumbList/.test(seoLanding), 'SeoLanding debe publicar BreadcrumbList.');
 expect(/shouldIndex/.test(seoLanding), 'SeoLanding debe impedir indexar ciudades o categorías no aprobadas.');
 
-warn(/og:image:type[^\n]+image\/svg\+xml/.test(indexHtml), 'La imagen social base sigue siendo SVG; conviene sustituirla por PNG o WebP 1200x630 para máxima compatibilidad.');
 warn(/meta\s+name=["']keywords["']/.test(seoLanding), 'La etiqueta meta keywords no ayuda al posicionamiento y puede eliminarse en una limpieza futura.');
 
 for (const message of warnings) console.warn(`SEO warning: ${message}`);
