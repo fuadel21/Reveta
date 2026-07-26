@@ -1,5 +1,5 @@
 // Runs before `vite dev` and `vite build` (predev/prebuild hooks); writes public/sitemap.xml.
-// Keeps SEO landing pages, active products and active seller profiles discoverable by crawlers.
+// Keeps SEO landing pages, active products and useful seller profiles discoverable by crawlers.
 
 import { writeFileSync } from "fs";
 import { resolve } from "path";
@@ -8,93 +8,35 @@ import { createClient } from "@supabase/supabase-js";
 const BASE_URL = "https://reveta.es";
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const MAX_PRODUCTS = 2000;
+const MAX_SELLERS = 1000;
 
 const citySlugs = [
-  "barcelona",
-  "madrid",
-  "valencia",
-  "sevilla",
-  "malaga",
-  "zaragoza",
-  "bilbao",
-  "alicante",
-  "murcia",
-  "granada",
-  "girona",
-  "tarragona",
-  "lleida",
-  "reus",
-  "badalona",
-  "hospitalet-de-llobregat",
-  "sabadell",
-  "terrassa",
-  "mataro",
-  "santa-coloma-de-gramenet",
-  "pineda-de-mar",
-  "lloret-de-mar",
-  "blanes",
-  "malgrat-de-mar",
-  "figueres",
-  "granollers",
-  "vic",
+  "barcelona", "madrid", "valencia", "sevilla", "malaga", "zaragoza", "bilbao", "alicante", "murcia", "granada",
+  "girona", "tarragona", "lleida", "reus", "badalona", "hospitalet-de-llobregat", "sabadell", "terrassa", "mataro",
+  "santa-coloma-de-gramenet", "pineda-de-mar", "lloret-de-mar", "blanes", "malgrat-de-mar", "figueres", "granollers", "vic",
 ];
 
 const priorityCitySlugs = new Set([
-  "barcelona",
-  "madrid",
-  "valencia",
-  "girona",
-  "tarragona",
-  "lleida",
-  "reus",
-  "badalona",
-  "sabadell",
-  "terrassa",
-  "mataro",
-  "pineda-de-mar",
-  "lloret-de-mar",
-  "blanes",
-  "malgrat-de-mar",
+  "barcelona", "madrid", "valencia", "girona", "tarragona", "lleida", "reus", "badalona", "sabadell", "terrassa",
+  "mataro", "pineda-de-mar", "lloret-de-mar", "blanes", "malgrat-de-mar",
 ]);
 
 const mainCategories = ["electronica", "iphone", "muebles", "motor", "bicicletas", "hogar", "moda"];
 const secondaryCategories = ["juegos", "libros", "deportes"];
 const coreCities = ["barcelona", "madrid", "valencia"];
 const cataloniaCities = [
-  "girona",
-  "tarragona",
-  "lleida",
-  "reus",
-  "badalona",
-  "hospitalet-de-llobregat",
-  "sabadell",
-  "terrassa",
-  "mataro",
-  "pineda-de-mar",
-  "lloret-de-mar",
-  "blanes",
-  "malgrat-de-mar",
-  "figueres",
-  "granollers",
-  "vic",
+  "girona", "tarragona", "lleida", "reus", "badalona", "hospitalet-de-llobregat", "sabadell", "terrassa", "mataro",
+  "pineda-de-mar", "lloret-de-mar", "blanes", "malgrat-de-mar", "figueres", "granollers", "vic",
 ];
 
 const cityCategoryPairs = [
   ...coreCities.flatMap((city) => [...mainCategories, ...secondaryCategories].map((category) => [city, category])),
   ...cataloniaCities.flatMap((city) => mainCategories.map((category) => [city, category])),
-  ["sevilla", "electronica"],
-  ["sevilla", "muebles"],
-  ["sevilla", "motor"],
-  ["malaga", "electronica"],
-  ["malaga", "muebles"],
-  ["malaga", "motor"],
-  ["zaragoza", "electronica"],
-  ["zaragoza", "muebles"],
-  ["bilbao", "electronica"],
-  ["bilbao", "muebles"],
-  ["alicante", "electronica"],
-  ["murcia", "electronica"],
-  ["granada", "electronica"],
+  ["sevilla", "electronica"], ["sevilla", "muebles"], ["sevilla", "motor"],
+  ["malaga", "electronica"], ["malaga", "muebles"], ["malaga", "motor"],
+  ["zaragoza", "electronica"], ["zaragoza", "muebles"], ["bilbao", "electronica"], ["bilbao", "muebles"],
+  ["alicante", "electronica"], ["murcia", "electronica"], ["granada", "electronica"],
 ];
 
 const staticEntries = [
@@ -154,6 +96,20 @@ function dedupe(entries) {
   });
 }
 
+function productPriority(createdAt) {
+  if (!createdAt) return "0.72";
+  const ageDays = (Date.now() - new Date(createdAt).getTime()) / 86_400_000;
+  if (ageDays <= 7) return "0.80";
+  if (ageDays <= 30) return "0.76";
+  return "0.72";
+}
+
+function sellerPriority(activeCount) {
+  if (activeCount >= 10) return "0.76";
+  if (activeCount >= 4) return "0.71";
+  return "0.66";
+}
+
 async function fetchDynamicEntries() {
   const entries = [];
 
@@ -164,10 +120,7 @@ async function fetchDynamicEntries() {
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
+      auth: { persistSession: false, autoRefreshToken: false },
     });
 
     const { data: products, error: productsError } = await supabase
@@ -175,24 +128,31 @@ async function fetchDynamicEntries() {
       .select("id,title,updated_at,created_at,user_id")
       .eq("status", "active")
       .order("updated_at", { ascending: false })
-      .limit(2000);
+      .limit(MAX_PRODUCTS);
 
     if (productsError) throw productsError;
 
-    const activeSellerIds = new Set();
+    const sellerStats = new Map();
 
     for (const product of products || []) {
-      if (product.user_id) activeSellerIds.add(product.user_id);
+      if (product.user_id) {
+        const current = sellerStats.get(product.user_id) || { count: 0, lastmod: null };
+        current.count += 1;
+        const candidate = product.updated_at || product.created_at;
+        if (!current.lastmod || new Date(candidate) > new Date(current.lastmod)) current.lastmod = candidate;
+        sellerStats.set(product.user_id, current);
+      }
+
       entries.push({
         path: `/producto/${product.id}/${createSlug(product.title)}`,
         lastmod: toLastmod(product.updated_at || product.created_at),
         changefreq: "weekly",
-        priority: "0.72",
+        priority: productPriority(product.created_at),
       });
     }
 
-    if (activeSellerIds.size > 0) {
-      const sellerIds = [...activeSellerIds].slice(0, 1000);
+    if (sellerStats.size > 0) {
+      const sellerIds = [...sellerStats.keys()].slice(0, MAX_SELLERS);
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("id,username,updated_at,created_at")
@@ -200,11 +160,15 @@ async function fetchDynamicEntries() {
 
       if (!profilesError && profiles) {
         for (const profile of profiles) {
+          const stats = sellerStats.get(profile.id);
+          if (!stats?.count) continue;
+
+          const canonicalIdentifier = profile.username?.trim().toLowerCase() || profile.id;
           entries.push({
-            path: `/usuario/${profile.username || profile.id}`,
-            lastmod: toLastmod(profile.updated_at || profile.created_at),
-            changefreq: "weekly",
-            priority: "0.65",
+            path: `/usuario/${encodeURIComponent(canonicalIdentifier)}`,
+            lastmod: toLastmod(stats.lastmod || profile.updated_at || profile.created_at),
+            changefreq: stats.count >= 4 ? "daily" : "weekly",
+            priority: sellerPriority(stats.count),
           });
         }
       }
@@ -226,9 +190,7 @@ function generateSitemap(entries) {
       entry.changefreq ? `    <changefreq>${entry.changefreq}</changefreq>` : null,
       entry.priority ? `    <priority>${entry.priority}</priority>` : null,
       "  </url>",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    ].filter(Boolean).join("\n");
   });
 
   return [

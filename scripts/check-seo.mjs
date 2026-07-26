@@ -27,7 +27,9 @@ const sitemap = read('public/sitemap.xml');
 const vercelRaw = read('vercel.json');
 const app = read('src/App.tsx');
 const productDetail = read('src/pages/ProductDetail.tsx');
+const publicSellerProfile = read('src/pages/PublicSellerProfile.tsx');
 const seoLanding = read('src/pages/SeoLanding.tsx');
+const sitemapGenerator = read('scripts/generate-sitemap.mjs');
 
 expect(/<html\s+lang=["']es["']/.test(indexHtml), 'index.html debe declarar lang="es".');
 expect(/name=["']description["']/.test(indexHtml), 'Falta la meta description base.');
@@ -40,6 +42,7 @@ expect(/Sitemap:\s*https:\/\/reveta\.es\/sitemap\.xml/.test(robots), 'robots.txt
 expect(/Disallow:\s*\/search/.test(robots), 'robots.txt debe bloquear los filtros de búsqueda.');
 expect(/Disallow:\s*\/admin/.test(robots), 'robots.txt debe bloquear administración.');
 expect(/Allow:\s*\/producto\//.test(robots), 'robots.txt debe permitir productos canónicos.');
+expect(/Allow:\s*\/usuario\//.test(robots), 'robots.txt debe permitir perfiles públicos de vendedor.');
 
 expect(/<urlset\s+xmlns=["']http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9["']>/.test(sitemap), 'sitemap.xml no tiene un urlset válido.');
 expect(/<loc>https:\/\/reveta\.es\/<\/loc>/.test(sitemap), 'El sitemap debe incluir la portada canónica.');
@@ -63,12 +66,22 @@ if (vercel) {
 expect(/<HelmetProvider>/.test(app), 'La aplicación debe mantener HelmetProvider.');
 expect(/GlobalJsonLd/.test(app), 'La aplicación debe mantener los datos estructurados globales.');
 expect(/\/producto\/:id\/:slug/.test(app), 'Falta la ruta canónica de producto con slug.');
+expect(/\/usuario\/:id/.test(app), 'Falta la ruta pública de vendedor.');
 expect(/\/segunda-mano\/:city\/:category/.test(app), 'Falta la landing SEO de ciudad y categoría.');
 
 expect(/@type['"]?:\s*['"]Product['"]/.test(productDetail), 'ProductDetail debe publicar JSON-LD Product.');
 expect(/BreadcrumbList/.test(productDetail), 'ProductDetail debe publicar breadcrumbs estructurados.');
 expect(/name=["']robots["']/.test(productDetail), 'ProductDetail debe controlar index/noindex según disponibilidad.');
 expect(/rel=["']canonical["']/.test(productDetail), 'ProductDetail debe publicar canonical.');
+expect(/priceCurrency:\s*['"]EUR['"]/.test(productDetail), 'ProductDetail debe declarar el precio en EUR.');
+
+expect(/@type['"]?:\s*['"]Person['"]/.test(publicSellerProfile), 'PublicSellerProfile debe publicar JSON-LD Person.');
+expect(/ItemList/.test(publicSellerProfile), 'PublicSellerProfile debe publicar los anuncios activos como ItemList.');
+expect(/shouldIndexProfile/.test(publicSellerProfile), 'PublicSellerProfile debe evitar indexar perfiles sin inventario.');
+expect(/rel=["']canonical["']/.test(publicSellerProfile), 'PublicSellerProfile debe publicar canonical.');
+expect(/profile\.username\s*\|\|\s*profile\.id/.test(sitemapGenerator), 'El sitemap debe usar username y recurrir al ID solo cuando no exista.');
+expect(/sellerPriority/.test(sitemapGenerator), 'El sitemap debe priorizar perfiles según inventario activo.');
+expect(/productPriority/.test(sitemapGenerator), 'El sitemap debe priorizar productos según actualidad.');
 
 expect(/FAQPage/.test(seoLanding), 'SeoLanding debe publicar FAQPage.');
 expect(/CollectionPage/.test(seoLanding), 'SeoLanding debe publicar CollectionPage.');
