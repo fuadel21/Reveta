@@ -115,9 +115,15 @@ expect(/productPriority/.test(sitemapGenerator), 'El sitemap debe priorizar prod
 expect(/FAQPage/.test(seoLanding), 'SeoLanding debe publicar FAQPage.');
 expect(/CollectionPage/.test(seoLanding), 'SeoLanding debe publicar CollectionPage.');
 expect(/BreadcrumbList/.test(seoLanding), 'SeoLanding debe publicar BreadcrumbList.');
-expect(/shouldIndex/.test(seoLanding), 'SeoLanding debe impedir indexar ciudades o categorías no aprobadas.');
+expect(/ItemList/.test(seoLanding), 'SeoLanding debe publicar ItemList cuando exista inventario.');
+expect(/shouldIndex\s*=\s*isKnownCity\s*&&\s*isKnownCategory\s*&&\s*!inventoryError/.test(seoLanding), 'SeoLanding debe impedir indexar rutas inválidas o con error de inventario.');
+expect(/products\.length\s*>\s*0/.test(seoLanding), 'SeoLanding debe exigir inventario real antes de indexar.');
+expect(/rel=["']canonical["']/.test(seoLanding), 'SeoLanding debe publicar canonical.');
+expect(/priceCurrency:\s*['"]EUR['"]/.test(seoLanding), 'SeoLanding debe declarar precios en EUR.');
+expect(/name=["']robots["']/.test(seoLanding) && /noindex,follow/.test(seoLanding), 'SeoLanding debe mantener noindex,follow cuando no haya inventario.');
+expect(!/meta\s+name=["']keywords["']/.test(seoLanding), 'SeoLanding no debe incluir meta keywords.');
 
-warn(/meta\s+name=["']keywords["']/.test(seoLanding), 'La etiqueta meta keywords no ayuda al posicionamiento y puede eliminarse en una limpieza futura.');
+warn(!/og-image\.svg/.test(seoLanding), 'SeoLanding todavía usa SVG como imagen social de reserva; conviene migrarla al PNG 1200x630.');
 
 for (const message of warnings) console.warn(`SEO warning: ${message}`);
 
