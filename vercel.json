@@ -5,11 +5,6 @@
   },
   "redirects": [
     {
-      "source": "/og-image.png",
-      "destination": "/og-image.svg",
-      "permanent": false
-    },
-    {
       "source": "/product/:id",
       "destination": "/producto/:id/producto",
       "permanent": true
