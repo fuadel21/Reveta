@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,45 +10,52 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import NoIndex from "@/components/seo/NoIndex";
 import GlobalJsonLd from "@/components/seo/GlobalJsonLd";
 import Index from "./pages/Index";
-import Auth from "./pages/Auth";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import Profile from "./pages/Profile";
-import SellerDashboard from "./pages/SellerDashboard";
-import BuyerCenter from "./pages/BuyerCenter";
-import PublicSellerProfile from "./pages/PublicSellerProfile";
-import Upload from "./pages/Upload";
-import Messages from "./pages/Messages";
-import ProductDetail from "./pages/ProductDetail";
-import ProductComparison from "./pages/ProductComparison";
-import Search from "./pages/Search";
-import SeoIndex from "./pages/SeoIndex";
-import SeoLanding from "./pages/SeoLanding";
-import Safety from "./pages/Safety";
-import Admin from "./pages/Admin";
-import AdminSafety from "./pages/AdminSafety";
-import AdminGrowth from "./pages/AdminGrowth";
-import AdminDisputeDetail from "./pages/AdminDisputeDetail";
-import Transactions from "./pages/Transactions";
-import Settings from "./pages/Settings";
-import SavedSearches from "./pages/SavedSearches";
-import Terms from "./pages/Terms";
-import Privacy from "./pages/Privacy";
-import Cookies from "./pages/Cookies";
-import NotFound from "./pages/NotFound";
-import Checkout from "./pages/Checkout";
-import CallRoom from "./pages/CallRoom";
-import BoostProduct from "./pages/BoostProduct";
 import MobileSellButton from "@/components/MobileSellButton";
 import ScrollToTop from "@/components/ScrollToTop";
+
+const Auth = lazy(() => import("./pages/Auth"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const Profile = lazy(() => import("./pages/Profile"));
+const SellerDashboard = lazy(() => import("./pages/SellerDashboard"));
+const BuyerCenter = lazy(() => import("./pages/BuyerCenter"));
+const PublicSellerProfile = lazy(() => import("./pages/PublicSellerProfile"));
+const Upload = lazy(() => import("./pages/Upload"));
+const Messages = lazy(() => import("./pages/Messages"));
+const ProductDetail = lazy(() => import("./pages/ProductDetail"));
+const ProductComparison = lazy(() => import("./pages/ProductComparison"));
+const Search = lazy(() => import("./pages/Search"));
+const SeoIndex = lazy(() => import("./pages/SeoIndex"));
+const SeoLanding = lazy(() => import("./pages/SeoLanding"));
+const Safety = lazy(() => import("./pages/Safety"));
+const Admin = lazy(() => import("./pages/Admin"));
+const AdminSafety = lazy(() => import("./pages/AdminSafety"));
+const AdminGrowth = lazy(() => import("./pages/AdminGrowth"));
+const AdminDisputeDetail = lazy(() => import("./pages/AdminDisputeDetail"));
+const Transactions = lazy(() => import("./pages/Transactions"));
+const Settings = lazy(() => import("./pages/Settings"));
+const SavedSearches = lazy(() => import("./pages/SavedSearches"));
+const Terms = lazy(() => import("./pages/Terms"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Cookies = lazy(() => import("./pages/Cookies"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Checkout = lazy(() => import("./pages/Checkout"));
+const CallRoom = lazy(() => import("./pages/CallRoom"));
+const BoostProduct = lazy(() => import("./pages/BoostProduct"));
 
 const queryClient = new QueryClient();
 const privatePage = (title: string, element: JSX.Element) => <><NoIndex title={title} />{element}</>;
 
+const RouteFallback = () => (
+  <div className="min-h-[50vh] flex items-center justify-center bg-background" role="status" aria-live="polite">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" aria-label="Cargando página" />
+  </div>
+);
+
 const App = () => (
   <HelmetProvider><QueryClientProvider client={queryClient}><ThemeProvider defaultTheme="system" storageKey="marketplace-theme"><AuthProvider><TooltipProvider>
     <Toaster /><Sonner /><GlobalJsonLd />
-    <BrowserRouter><ScrollToTop /><MobileSellButton /><Routes>
+    <BrowserRouter><ScrollToTop /><MobileSellButton /><Suspense fallback={<RouteFallback />}><Routes>
       <Route path="/" element={<Index />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/forgot-password" element={privatePage("Recuperar contraseña | Reveta", <ForgotPassword />)} />
@@ -80,7 +88,7 @@ const App = () => (
       <Route path="/saved-searches" element={privatePage("Búsquedas guardadas | Reveta", <SavedSearches />)} />
       <Route path="/terms" element={<Terms />} /><Route path="/privacy" element={<Privacy />} /><Route path="/cookies" element={<Cookies />} />
       <Route path="*" element={privatePage("Página no encontrada | Reveta", <NotFound />)} />
-    </Routes></BrowserRouter>
+    </Routes></Suspense></BrowserRouter>
   </TooltipProvider></AuthProvider></ThemeProvider></QueryClientProvider></HelmetProvider>
 );
 
