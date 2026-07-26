@@ -285,19 +285,26 @@ const ProductDetail = () => {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" /></div>;
   if (!product) return null;
 
-  const images = Array.isArray(product.images) ? product.images : [];
-  const productImage = images[currentImageIndex];
+  const images = Array.isArray(product.images) ? product.images.filter(Boolean) : [];
+  const productImage = images[currentImageIndex] || images[0];
+  const productImageUrl = absoluteUrl(productImage);
+  const structuredImages = [...new Set(images.map((image) => absoluteUrl(image)))];
+  const imageUrls = structuredImages.length > 0 ? structuredImages : [productImageUrl];
   const canonicalUrl = `https://reveta.es/producto/${product.id}/${createProductSlug(product.title)}`;
   const isProductAvailable = product.status === 'active';
   const isOwner = product.user_id === user?.id;
   const shouldIndexProduct = isProductAvailable;
+  const metaDescription = (product.description || `${product.title} en venta en Reveta`).slice(0, 155);
+  const imageAlt = `${product.title}${product.location ? ` en ${product.location}` : ''} - segunda mano en Reveta`;
+
   const productJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
     '@id': `${canonicalUrl}#product`,
+    sku: product.id,
     name: product.title,
     description: product.description || `${product.title} en venta en Reveta`,
-    image: images.length ? images.map((image) => absoluteUrl(image)) : [absoluteUrl(productImage)],
+    image: imageUrls,
     category: category?.name,
     itemCondition: schemaCondition(product.condition),
     url: canonicalUrl,
@@ -328,13 +335,23 @@ const ProductDetail = () => {
     <>
       <Helmet>
         <title>{product.title} | Reveta</title>
-        <meta name="description" content={(product.description || `${product.title} en venta en Reveta`).slice(0, 155)} />
+        <meta name="description" content={metaDescription} />
         <meta name="robots" content={shouldIndexProduct ? 'index,follow,max-image-preview:large' : 'noindex,follow'} />
         <link rel="canonical" href={canonicalUrl} />
         <meta property="og:title" content={`${product.title} | Reveta`} />
-        <meta property="og:description" content={(product.description || `${product.title} en venta en Reveta`).slice(0, 155)} />
-        <meta property="og:image" content={absoluteUrl(productImage)} />
+        <meta property="og:description" content={metaDescription} />
+        <meta property="og:type" content="product" />
         <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:site_name" content="Reveta" />
+        <meta property="og:locale" content="es_ES" />
+        <meta property="og:image" content={productImageUrl} />
+        <meta property="og:image:secure_url" content={productImageUrl} />
+        <meta property="og:image:alt" content={imageAlt} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={`${product.title} | Reveta`} />
+        <meta name="twitter:description" content={metaDescription} />
+        <meta name="twitter:image" content={productImageUrl} />
+        <meta name="twitter:image:alt" content={imageAlt} />
         <script type="application/ld+json">{JSON.stringify(productJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
       </Helmet>
@@ -347,10 +364,47 @@ const ProductDetail = () => {
           <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
             <div className="space-y-4">
               <div className="relative aspect-square rounded-xl overflow-hidden bg-muted">
-                {productImage ? <img src={productImage} alt={product.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-muted-foreground">Sin imagen</div>}
-                {images.length > 1 && <><Button size="icon" variant="secondary" className="absolute left-2 top-1/2 -translate-y-1/2" onClick={() => setCurrentImageIndex((i) => Math.max(0, i - 1))}><ChevronLeft /></Button><Button size="icon" variant="secondary" className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setCurrentImageIndex((i) => Math.min(images.length - 1, i + 1))}><ChevronRight /></Button></>}
+                {productImage ? (
+                  <img
+                    src={productImage}
+                    alt={imageAlt}
+                    width={1200}
+                    height={1200}
+                    sizes="(max-width: 1024px) 100vw, 760px"
+                    fetchPriority="high"
+                    loading="eager"
+                    decoding="async"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-muted-foreground">Sin imagen</div>
+                )}
+                {images.length > 1 && <><Button size="icon" variant="secondary" aria-label="Mostrar imagen anterior" className="absolute left-2 top-1/2 -translate-y-1/2" onClick={() => setCurrentImageIndex((i) => Math.max(0, i - 1))}><ChevronLeft /></Button><Button size="icon" variant="secondary" aria-label="Mostrar imagen siguiente" className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setCurrentImageIndex((i) => Math.min(images.length - 1, i + 1))}><ChevronRight /></Button></>}
               </div>
-              <div className="flex gap-2 overflow-x-auto">{images.map((image, index) => <button key={`${image}-${index}`} onClick={() => setCurrentImageIndex(index)} className={`h-20 w-20 rounded-lg overflow-hidden border-2 ${index === currentImageIndex ? 'border-primary' : 'border-transparent'}`}><img src={image} alt="" className="w-full h-full object-cover" /></button>)}</div>
+              {images.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto" aria-label={`Galería de imágenes de ${product.title}`}>
+                  {images.map((image, index) => (
+                    <button
+                      key={`${image}-${index}`}
+                      type="button"
+                      onClick={() => setCurrentImageIndex(index)}
+                      aria-label={`Mostrar imagen ${index + 1} de ${images.length}: ${product.title}`}
+                      aria-current={index === currentImageIndex ? 'true' : undefined}
+                      className={`h-20 w-20 shrink-0 rounded-lg overflow-hidden border-2 ${index === currentImageIndex ? 'border-primary' : 'border-transparent'}`}
+                    >
+                      <img
+                        src={image}
+                        alt={`${product.title}, imagen ${index + 1} de ${images.length}`}
+                        width={160}
+                        height={160}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <aside className="space-y-5">
@@ -358,7 +412,7 @@ const ProductDetail = () => {
                 <div className="flex items-start justify-between gap-3"><h1 className="text-2xl font-bold">{product.title}</h1><ProductStatusBadge status={product.status || 'active'} /></div>
                 <p className="text-3xl font-bold text-primary mt-3">{product.price.toLocaleString('es-ES')} €</p>
                 <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mt-3">{product.location && <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{product.location}</span>}<span className="flex items-center gap-1"><Eye className="h-4 w-4" />{product.views || 0} vistas</span><span className="flex items-center gap-1"><Clock className="h-4 w-4" />{new Date(product.created_at).toLocaleDateString('es-ES')}</span></div>
-                <div className="mt-5 flex gap-2"><Button className="flex-1" onClick={handleContactSeller} disabled={!isProductAvailable || isOwner}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button><Button variant="outline" onClick={toggleFavorite} disabled={isOwner}><Heart className={`h-4 w-4 ${isFavorite ? 'fill-current text-red-500' : ''}`} /></Button></div>
+                <div className="mt-5 flex gap-2"><Button className="flex-1" onClick={handleContactSeller} disabled={!isProductAvailable || isOwner}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button><Button variant="outline" onClick={toggleFavorite} disabled={isOwner} aria-label={isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}><Heart className={`h-4 w-4 ${isFavorite ? 'fill-current text-red-500' : ''}`} /></Button></div>
                 <Button variant="secondary" className="w-full mt-2" onClick={handleRequestPrivateCall} disabled={requestingCall || !user || isOwner || !isProductAvailable}><Phone className="h-4 w-4 mr-2" />Llamada privada</Button>
               </div>
 
