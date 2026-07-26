@@ -27,6 +27,8 @@ const sitemap = read('public/sitemap.xml');
 const vercelRaw = read('vercel.json');
 const app = read('src/App.tsx');
 const homepage = read('src/pages/Index.tsx');
+const searchPage = read('src/pages/Search.tsx');
+const searchProductGrid = read('src/components/search/ProductGrid.tsx');
 const globalJsonLd = read('src/components/seo/GlobalJsonLd.tsx');
 const productDetail = read('src/pages/ProductDetail.tsx');
 const publicSellerProfile = read('src/pages/PublicSellerProfile.tsx');
@@ -54,6 +56,7 @@ expect(/Allow:\s*\/usuario\//.test(robots), 'robots.txt debe permitir perfiles p
 expect(/<urlset\s+xmlns=["']http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9["']>/.test(sitemap), 'sitemap.xml no tiene un urlset válido.');
 expect(/<loc>https:\/\/reveta\.es\/<\/loc>/.test(sitemap), 'El sitemap debe incluir la portada canónica.');
 expect(!/[?&](utm_|page=|sort=|filter=)/i.test(sitemap), 'El sitemap contiene parámetros o filtros que pueden generar duplicados.');
+expect(!/<loc>https:\/\/reveta\.es\/search/i.test(sitemap), 'El sitemap no debe incluir búsquedas internas.');
 
 let vercel;
 try {
@@ -86,6 +89,14 @@ expect(/og:image:type[^\n]+image\/png/.test(homepage), 'La portada debe declarar
 expect(!/meta\s+name=["']keywords["']/.test(homepage), 'La portada no debe incluir meta keywords.');
 expect(!/const\s+organizationJsonLd/.test(homepage), 'La portada no debe duplicar Organization; debe usar GlobalJsonLd.');
 expect(!/const\s+websiteJsonLd/.test(homepage), 'La portada no debe duplicar WebSite; debe usar GlobalJsonLd.');
+
+expect(/name=["']robots["']\s+content=["']noindex,follow/.test(searchPage), 'Search debe mantener noindex,follow.');
+expect(/rel=["']canonical["']/.test(searchPage) && /https:\/\/reveta\.es\/search/.test(searchPage), 'Search debe mantener canonical limpia sin parámetros.');
+expect(/og-image\.png/.test(searchPage), 'Search debe usar la imagen social PNG.');
+expect(/imagePriority=\{!compact\s*&&\s*index\s*<\s*2\}/.test(searchProductGrid), 'ProductGrid debe priorizar solo las primeras imágenes visibles.');
+expect(/role=["']link["']/.test(searchProductGrid) && /tabIndex=\{0\}/.test(searchProductGrid), 'ProductGrid debe permitir abrir productos con teclado.');
+expect(/toLocaleString\(["']es-ES["']\)/.test(searchProductGrid), 'ProductGrid debe anunciar precios con formato español.');
+warn(!/from\(["']products["']\)\.select\(["']\*["']/.test(searchPage), 'Search todavía usa select("*") y conviene limitar las columnas en un bloque posterior con pruebas del mapa y filtros.');
 
 expect(/@type['"]?:\s*['"]Product['"]/.test(productDetail), 'ProductDetail debe publicar JSON-LD Product.');
 expect(/BreadcrumbList/.test(productDetail), 'ProductDetail debe publicar breadcrumbs estructurados.');
