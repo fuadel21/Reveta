@@ -19,7 +19,7 @@ const POPULAR_CITIES = [
   ['girona', 'Girona'],
   ['lloret-de-mar', 'Lloret de Mar'],
   ['blanes', 'Blanes'],
-];
+] as const;
 
 const POPULAR_CATEGORIES = [
   ['electronica', 'Electrónica'],
@@ -32,7 +32,22 @@ const POPULAR_CATEGORIES = [
   ['juegos', 'Juegos'],
   ['libros', 'Libros'],
   ['deportes', 'Deportes'],
-];
+] as const;
+
+const CATEGORY_HUBS = [
+  { city: 'barcelona', cityLabel: 'Barcelona', category: 'electronica', categoryLabel: 'Electrónica' },
+  { city: 'barcelona', cityLabel: 'Barcelona', category: 'muebles', categoryLabel: 'Muebles' },
+  { city: 'barcelona', cityLabel: 'Barcelona', category: 'motor', categoryLabel: 'Motor' },
+  { city: 'madrid', cityLabel: 'Madrid', category: 'electronica', categoryLabel: 'Electrónica' },
+  { city: 'madrid', cityLabel: 'Madrid', category: 'motor', categoryLabel: 'Motor' },
+  { city: 'valencia', cityLabel: 'Valencia', category: 'iphone', categoryLabel: 'iPhone' },
+  { city: 'valencia', cityLabel: 'Valencia', category: 'muebles', categoryLabel: 'Muebles' },
+  { city: 'girona', cityLabel: 'Girona', category: 'electronica', categoryLabel: 'Electrónica' },
+  { city: 'tarragona', cityLabel: 'Tarragona', category: 'muebles', categoryLabel: 'Muebles' },
+  { city: 'pineda-de-mar', cityLabel: 'Pineda de Mar', category: 'electronica', categoryLabel: 'Electrónica' },
+  { city: 'blanes', cityLabel: 'Blanes', category: 'hogar', categoryLabel: 'Hogar' },
+  { city: 'mataro', cityLabel: 'Mataró', category: 'bicicletas', categoryLabel: 'Bicicletas' },
+] as const;
 
 const title = 'Segunda mano cerca de ti | Comprar y vender usado en Reveta';
 const description = 'Encuentra productos de segunda mano por ciudad y categoría en Reveta. Compra, vende, negocia por chat y publica anuncios gratis cerca de ti.';
@@ -74,6 +89,27 @@ const SeoIndex = () => {
     ],
   };
 
+  const hubItemListJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'Principales páginas de segunda mano en Reveta',
+    numberOfItems: POPULAR_CITIES.length + CATEGORY_HUBS.length,
+    itemListElement: [
+      ...POPULAR_CITIES.map(([slug, label], index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        name: `Segunda mano en ${label}`,
+        url: `https://reveta.es/segunda-mano/${slug}`,
+      })),
+      ...CATEGORY_HUBS.map((hub, index) => ({
+        '@type': 'ListItem',
+        position: POPULAR_CITIES.length + index + 1,
+        name: `${hub.categoryLabel} de segunda mano en ${hub.cityLabel}`,
+        url: `https://reveta.es/segunda-mano/${hub.city}/${hub.category}`,
+      })),
+    ],
+  };
+
   return (
     <>
       <Helmet>
@@ -98,6 +134,7 @@ const SeoIndex = () => {
         <meta name="twitter:image" content={ogImage} />
         <script type="application/ld+json">{JSON.stringify(collectionPageJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
+        <script type="application/ld+json">{JSON.stringify(hubItemListJsonLd)}</script>
       </Helmet>
 
       <div className="min-h-screen flex flex-col bg-background">
@@ -158,6 +195,7 @@ const SeoIndex = () => {
           <section className="container py-10">
             <div className="mx-auto max-w-4xl">
               <h2 className="text-2xl font-bold">Ciudades populares</h2>
+              <p className="mt-2 text-muted-foreground">Explora anuncios activos y vendedores de segunda mano en las zonas con más búsquedas dentro de Reveta.</p>
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {POPULAR_CITIES.map(([slug, label]) => (
                   <Link key={slug} to={`/segunda-mano/${slug}`} className="rounded-xl border bg-card p-4 font-medium transition hover:border-primary hover:text-primary">
@@ -170,13 +208,42 @@ const SeoIndex = () => {
 
           <section className="container pb-12">
             <div className="mx-auto max-w-4xl">
-              <h2 className="text-2xl font-bold">Categorías destacadas en Barcelona</h2>
+              <h2 className="text-2xl font-bold">Categorías de segunda mano</h2>
+              <p className="mt-2 text-muted-foreground">Accede a las categorías más consultadas y después filtra por ciudad, precio, estado y cercanía.</p>
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {POPULAR_CATEGORIES.map(([slug, label]) => (
                   <Link key={slug} to={`/segunda-mano/barcelona/${slug}`} className="rounded-xl border bg-card p-4 font-medium transition hover:border-primary hover:text-primary">
                     {label} de segunda mano
                   </Link>
                 ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="container pb-12">
+            <div className="mx-auto max-w-4xl">
+              <h2 className="text-2xl font-bold">Búsquedas locales destacadas</h2>
+              <p className="mt-2 text-muted-foreground">Combinaciones de ciudad y categoría con intención clara de compra y venta local.</p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {CATEGORY_HUBS.map((hub) => (
+                  <Link
+                    key={`${hub.city}-${hub.category}`}
+                    to={`/segunda-mano/${hub.city}/${hub.category}`}
+                    className="rounded-xl border bg-card p-4 font-medium transition hover:border-primary hover:text-primary"
+                  >
+                    {hub.categoryLabel} en {hub.cityLabel}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="container pb-16">
+            <div className="mx-auto max-w-4xl rounded-2xl border bg-card p-6 md:p-8">
+              <h2 className="text-2xl font-bold">Comprar y vender productos usados cerca de ti</h2>
+              <div className="mt-4 space-y-3 text-muted-foreground">
+                <p>Reveta organiza los anuncios por ciudad y categoría para que puedas encontrar productos relevantes sin navegar entre filtros interminables.</p>
+                <p>Consulta el estado, precio, ubicación y perfil del vendedor, habla por chat y compara alternativas antes de cerrar una operación.</p>
               </div>
             </div>
           </section>
