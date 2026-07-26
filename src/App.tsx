@@ -9,6 +9,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import NoIndex from "@/components/seo/NoIndex";
 import GlobalJsonLd from "@/components/seo/GlobalJsonLd";
+import PublicResourceGate from "@/components/seo/PublicResourceGate";
 import Index from "./pages/Index";
 import MobileSellButton from "@/components/MobileSellButton";
 import ScrollToTop from "@/components/ScrollToTop";
@@ -63,11 +64,11 @@ const App = () => (
       <Route path="/profile" element={privatePage("Mi perfil | Reveta", <Profile />)} />
       <Route path="/seller-dashboard" element={privatePage("Panel del vendedor | Reveta", <SellerDashboard />)} />
       <Route path="/comprador" element={privatePage("Centro del comprador | Reveta", <BuyerCenter />)} />
-      <Route path="/usuario/:id" element={<PublicSellerProfile />} />
+      <Route path="/usuario/:id" element={<PublicResourceGate type="seller"><PublicSellerProfile /></PublicResourceGate>} />
       <Route path="/upload" element={privatePage("Publicar producto | Reveta", <Upload />)} />
       <Route path="/messages" element={privatePage("Mensajes | Reveta", <Messages />)} />
-      <Route path="/product/:id" element={<ProductDetail />} />
-      <Route path="/producto/:id/:slug" element={<ProductDetail />} />
+      <Route path="/product/:id" element={<PublicResourceGate type="product"><ProductDetail /></PublicResourceGate>} />
+      <Route path="/producto/:id/:slug" element={<PublicResourceGate type="product"><ProductDetail /></PublicResourceGate>} />
       <Route path="/comparar" element={privatePage("Comparar productos | Reveta", <ProductComparison />)} />
       <Route path="/checkout/:productId" element={privatePage("Checkout | Reveta", <Checkout />)} />
       <Route path="/boost/:productId" element={privatePage("Destacar producto | Reveta", <BoostProduct />)} />
