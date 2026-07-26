@@ -29,6 +29,7 @@ const productDetail = read('src/pages/ProductDetail.tsx');
 const publicSellerProfile = read('src/pages/PublicSellerProfile.tsx');
 const seoIndex = read('src/pages/SeoIndex.tsx');
 const seoLanding = read('src/pages/SeoLanding.tsx');
+const notFound = read('src/pages/NotFound.tsx');
 const sitemapGenerator = read('scripts/generate-sitemap.mjs');
 
 expect(/<html\s+lang=["']es["']/.test(indexHtml), 'index.html debe declarar lang="es".');
@@ -122,6 +123,11 @@ expect(/priceCurrency:\s*['"]EUR['"]/.test(seoLanding), 'SeoLanding debe declara
 expect(/name=["']robots["']/.test(seoLanding) && /noindex,follow/.test(seoLanding), 'SeoLanding debe mantener noindex,follow cuando no haya inventario.');
 expect(!/meta\s+name=["']keywords["']/.test(seoLanding), 'SeoLanding no debe incluir meta keywords.');
 warn(!/og-image\.svg/.test(seoLanding), 'SeoLanding todavía usa SVG como imagen social de reserva; conviene migrarla al PNG 1200x630.');
+
+expect(/robots=["']noindex,follow,noarchive["']/.test(notFound), 'La página 404 debe permanecer en noindex,follow,noarchive.');
+expect(/to=["']\/["']/.test(notFound) && /to=["']\/search["']/.test(notFound) && /to=["']\/segunda-mano["']/.test(notFound), 'La página 404 debe ofrecer rutas de recuperación internas.');
+expect(/<main/.test(notFound) && /aria-labelledby=["']not-found-title["']/.test(notFound), 'La página 404 debe mantener una estructura principal accesible.');
+expect(!/console\.error/.test(notFound), 'La página 404 no debe registrar navegación esperable como error.');
 
 for (const message of warnings) console.warn(`SEO warning: ${message}`);
 if (failures.length) {
