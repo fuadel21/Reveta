@@ -20,6 +20,7 @@ interface ProductCardProps {
   isNegotiable?: boolean;
   isFeatured?: boolean;
   discount?: number;
+  imagePriority?: boolean;
 }
 
 const ProductCard = ({
@@ -34,6 +35,7 @@ const ProductCard = ({
   isNegotiable = false,
   isFeatured = false,
   discount = 0,
+  imagePriority = false,
 }: ProductCardProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -44,7 +46,7 @@ const ProductCard = ({
 
   const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     if (!user) {
       navigate('/auth');
       return;
@@ -90,37 +92,39 @@ const ProductCard = ({
 
   return (
     <article className="group relative overflow-hidden rounded-2xl bg-card shadow-card transition-all duration-300 hover:shadow-card-hover hover:-translate-y-2">
-      {/* Gradient border on hover */}
       <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-sm" />
-      
+
       <div className="relative aspect-square overflow-hidden rounded-t-2xl">
         <img
           src={imageSrc}
           alt={title}
+          width={640}
+          height={640}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-          loading="lazy"
+          loading={imagePriority ? 'eager' : 'lazy'}
+          fetchPriority={imagePriority ? 'high' : 'auto'}
           decoding="async"
           onError={() => setImageSrc('/placeholder.svg')}
         />
-        
-        {/* Overlay gradient */}
+
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        
+
         <Button
           variant="ghost"
           size="icon"
           onClick={handleFavoriteClick}
           disabled={isToggling}
+          aria-label={favorite ? `Eliminar ${title} de favoritos` : `Añadir ${title} a favoritos`}
           className="absolute right-3 top-3 h-10 w-10 rounded-full bg-card/90 backdrop-blur-md hover:bg-card text-muted-foreground hover:text-destructive transition-all duration-300 hover:scale-110 shadow-lg"
         >
           <Heart className={`h-5 w-5 transition-all duration-300 ${favorite ? "fill-destructive text-destructive scale-110" : ""}`} />
         </Button>
-        
+
         <div className="absolute left-3 top-3 flex flex-col gap-2">
-          <ProductBadge 
-            isFeatured={isFeatured} 
-            isNew={isNew} 
-            discount={discount} 
+          <ProductBadge
+            isFeatured={isFeatured}
+            isNew={isNew}
+            discount={discount}
           />
           {isNegotiable && (
             <Badge variant="secondary" className="bg-card/90 backdrop-blur-md text-foreground border-0 shadow-lg">
@@ -129,7 +133,7 @@ const ProductCard = ({
           )}
         </div>
       </div>
-      
+
       <div className="p-4">
         <div className="mb-2 flex items-baseline gap-1">
           <span className="text-2xl font-bold text-foreground group-hover:text-primary transition-colors">{price.toLocaleString('es-ES')}</span>
