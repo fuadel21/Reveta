@@ -26,6 +26,8 @@ const robots = read('public/robots.txt');
 const sitemap = read('public/sitemap.xml');
 const vercelRaw = read('vercel.json');
 const app = read('src/App.tsx');
+const homepage = read('src/pages/Index.tsx');
+const globalJsonLd = read('src/components/seo/GlobalJsonLd.tsx');
 const productDetail = read('src/pages/ProductDetail.tsx');
 const publicSellerProfile = read('src/pages/PublicSellerProfile.tsx');
 const seoLanding = read('src/pages/SeoLanding.tsx');
@@ -67,7 +69,7 @@ if (vercel) {
   expect(serializedHeaders.includes('/search/:path*'), 'Vercel debe marcar /search como noindex.');
   expect(serializedHeaders.includes('/sitemap.xml'), 'Vercel debe definir cabeceras para sitemap.xml.');
   expect(serializedHeaders.includes('immutable'), 'Los assets versionados deben tener caché immutable.');
-  expect(!serializedRedirects.includes('og-image.png'), 'Vercel no debe redirigir la imagen social PNG al SVG antiguo.');
+  expect(!serializedRedirects.includes('og-image.png'), 'Vercel no debe redirigir la imagen social PNG.');
 }
 
 expect(/<HelmetProvider>/.test(app), 'La aplicación debe mantener HelmetProvider.');
@@ -75,6 +77,15 @@ expect(/GlobalJsonLd/.test(app), 'La aplicación debe mantener los datos estruct
 expect(/\/producto\/:id\/:slug/.test(app), 'Falta la ruta canónica de producto con slug.');
 expect(/\/usuario\/:id/.test(app), 'Falta la ruta pública de vendedor.');
 expect(/\/segunda-mano\/:city\/:category/.test(app), 'Falta la landing SEO de ciudad y categoría.');
+
+expect(/@graph/.test(globalJsonLd), 'GlobalJsonLd debe publicar Organization y WebSite dentro de un único @graph.');
+expect(/SearchAction/.test(globalJsonLd) && /urlTemplate/.test(globalJsonLd), 'GlobalJsonLd debe conectar el buscador real mediante SearchAction y EntryPoint.');
+expect(/og-image\.png/.test(globalJsonLd), 'La identidad global debe usar la imagen social PNG.');
+expect(/og-image\.png/.test(homepage), 'La portada debe usar la imagen social PNG.');
+expect(/og:image:type[^\n]+image\/png/.test(homepage), 'La portada debe declarar image/png para Open Graph.');
+expect(!/meta\s+name=["']keywords["']/.test(homepage), 'La portada no debe incluir meta keywords.');
+expect(!/const\s+organizationJsonLd/.test(homepage), 'La portada no debe duplicar Organization; debe usar GlobalJsonLd.');
+expect(!/const\s+websiteJsonLd/.test(homepage), 'La portada no debe duplicar WebSite; debe usar GlobalJsonLd.');
 
 expect(/@type['"]?:\s*['"]Product['"]/.test(productDetail), 'ProductDetail debe publicar JSON-LD Product.');
 expect(/BreadcrumbList/.test(productDetail), 'ProductDetail debe publicar breadcrumbs estructurados.');
