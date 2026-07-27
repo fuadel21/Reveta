@@ -22,8 +22,8 @@ const PublicResourceGate = ({ type, children }: PublicResourceGateProps) => {
   const [state, setState] = useState<ResourceState>('loading');
 
   const validateResource = useCallback(async () => {
-    const identifier = decodeURIComponent(id).trim();
-    if (!identifier) {
+    const identifier = id.trim();
+    if (!identifier || (type === 'product' && !isUuid(identifier))) {
       setState('missing');
       return;
     }
@@ -93,13 +93,13 @@ const PublicResourceGate = ({ type, children }: PublicResourceGateProps) => {
       <Helmet>
         <title>{title}</title>
         <meta name="description" content={description} />
-        <meta name="robots" content="noindex,follow,noarchive" />
+        {isMissing && <meta name="robots" content="noindex,follow,noarchive" />}
       </Helmet>
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <main className="container flex flex-1 items-center justify-center py-12 md:py-20">
           <section className="w-full max-w-2xl rounded-3xl border bg-card p-8 text-center shadow-sm md:p-12">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary" aria-hidden="true">
               {type === 'product' ? <PackageSearch className="h-8 w-8" /> : <Store className="h-8 w-8" />}
             </div>
             <p className="mt-6 text-sm font-semibold uppercase tracking-wide text-primary">
@@ -110,13 +110,13 @@ const PublicResourceGate = ({ type, children }: PublicResourceGateProps) => {
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
               {!isMissing && (
                 <Button type="button" onClick={() => void validateResource()}>
-                  <RefreshCw className="mr-2 h-4 w-4" />
+                  <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
                   Reintentar
                 </Button>
               )}
               <Button asChild variant={isMissing ? 'default' : 'outline'}>
                 <Link to="/segunda-mano">
-                  <Search className="mr-2 h-4 w-4" />
+                  <Search className="mr-2 h-4 w-4" aria-hidden="true" />
                   Explorar segunda mano
                 </Link>
               </Button>
