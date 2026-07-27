@@ -161,12 +161,12 @@ const SearchPage = () => {
   };
 
   const fetchCategories = async () => {
-    const { data } = await supabase.from('categories').select('*').order('name');
+    const { data } = await supabase.from('categories').select('id, name').order('name');
     if (data) setCategories(data);
   };
 
   const fetchSubcategories = async (categoryId: string) => {
-    const { data } = await supabase.from('subcategories').select('*').eq('category_id', categoryId).order('name');
+    const { data } = await supabase.from('subcategories').select('id, category_id, name').eq('category_id', categoryId).order('name');
     setSubcategories(data || []);
   };
 
@@ -199,7 +199,10 @@ const SearchPage = () => {
         setTotalCount(filteredData.length);
       }
     } else {
-      let query = supabase.from('products').select('*', { count: 'exact' }).eq('status', 'active');
+      let query = supabase
+        .from('products')
+        .select('id, title, price, images, location, created_at, condition, latitude, longitude, subcategory_id, boosted_until', { count: 'exact' })
+        .eq('status', 'active');
       const q = searchParams.get('q');
       if (q) query = query.ilike('title', `%${q}%`);
       const cat = searchParams.get('category');
