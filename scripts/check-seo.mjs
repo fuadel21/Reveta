@@ -25,6 +25,7 @@ const homepage = read('src/pages/Index.tsx');
 const searchPage = read('src/pages/Search.tsx');
 const searchProductGrid = read('src/components/search/ProductGrid.tsx');
 const globalJsonLd = read('src/components/seo/GlobalJsonLd.tsx');
+const publicResourceGate = read('src/components/seo/PublicResourceGate.tsx');
 const productDetail = read('src/pages/ProductDetail.tsx');
 const publicSellerProfile = read('src/pages/PublicSellerProfile.tsx');
 const seoIndex = read('src/pages/SeoIndex.tsx');
@@ -92,6 +93,11 @@ expect(!/from\(["']products["']\)\s*\.select\(["']\*["']/.test(searchPage), 'Sea
 expect(/from\(["']products["']\)[\s\S]*?select\(["']id, title, price, images, location, created_at, condition, latitude, longitude, subcategory_id, boosted_until["']/.test(searchPage), 'Search debe seleccionar explícitamente las columnas usadas de products.');
 expect(/from\(["']categories["']\)\.select\(["']id, name["']\)/.test(searchPage), 'Search debe limitar categories a id y name.');
 expect(/from\(["']subcategories["']\)\.select\(["']id, category_id, name["']\)/.test(searchPage), 'Search debe limitar subcategories a sus campos usados.');
+
+expect(!/decodeURIComponent\(id\)/.test(publicResourceGate), 'PublicResourceGate no debe volver a decodificar parámetros ya procesados por React Router.');
+expect(/type\s*===\s*["']product["']\s*&&\s*!isUuid\(identifier\)/.test(publicResourceGate), 'PublicResourceGate debe tratar IDs de producto malformados como inexistentes.');
+expect(/isMissing\s*&&\s*<meta\s+name=["']robots["']\s+content=["']noindex,follow,noarchive["']/.test(publicResourceGate), 'PublicResourceGate solo debe emitir noindex cuando el recurso esté confirmado como inexistente.');
+expect(!/<meta\s+name=["']robots["']\s+content=["']noindex,follow,noarchive["']\s*\/>/.test(publicResourceGate.replace(/\{isMissing\s*&&[\s\S]*?\}/, '')), 'PublicResourceGate no debe aplicar noindex de forma incondicional.');
 
 expect(/@type["']?:\s*["']Product["']/.test(productDetail), 'ProductDetail debe publicar JSON-LD Product.');
 expect(/BreadcrumbList/.test(productDetail), 'ProductDetail debe publicar breadcrumbs estructurados.');
