@@ -88,7 +88,10 @@ expect(/og-image\.png/.test(searchPage), 'Search debe usar la imagen social PNG.
 expect(/imagePriority=\{!compact\s*&&\s*index\s*<\s*2\}/.test(searchProductGrid), 'ProductGrid debe priorizar solo las primeras imágenes visibles.');
 expect(/role=["']link["']/.test(searchProductGrid) && /tabIndex=\{0\}/.test(searchProductGrid), 'ProductGrid debe permitir abrir productos con teclado.');
 expect(/toLocaleString\(["']es-ES["']\)/.test(searchProductGrid), 'ProductGrid debe anunciar precios con formato español.');
-warn(!/from\(["']products["']\)\.select\(["']\*["']/.test(searchPage), 'Search todavía usa select("*") y conviene limitar las columnas en un bloque posterior con pruebas del mapa y filtros.');
+expect(!/from\(["']products["']\)\s*\.select\(["']\*["']/.test(searchPage), 'Search no debe descargar todas las columnas de products.');
+expect(/from\(["']products["']\)[\s\S]*?select\(["']id, title, price, images, location, created_at, condition, latitude, longitude, subcategory_id, boosted_until["']/.test(searchPage), 'Search debe seleccionar explícitamente las columnas usadas de products.');
+expect(/from\(["']categories["']\)\.select\(["']id, name["']\)/.test(searchPage), 'Search debe limitar categories a id y name.');
+expect(/from\(["']subcategories["']\)\.select\(["']id, category_id, name["']\)/.test(searchPage), 'Search debe limitar subcategories a sus campos usados.');
 
 expect(/@type["']?:\s*["']Product["']/.test(productDetail), 'ProductDetail debe publicar JSON-LD Product.');
 expect(/BreadcrumbList/.test(productDetail), 'ProductDetail debe publicar breadcrumbs estructurados.');
