@@ -90,13 +90,13 @@ expect(/role=["']link["']/.test(searchProductGrid) && /tabIndex=\{0\}/.test(sear
 expect(/toLocaleString\(["']es-ES["']\)/.test(searchProductGrid), 'ProductGrid debe anunciar precios con formato español.');
 warn(!/from\(["']products["']\)\.select\(["']\*["']/.test(searchPage), 'Search todavía usa select("*") y conviene limitar las columnas en un bloque posterior con pruebas del mapa y filtros.');
 
-expect(/@type['"]?:\s*['"]Product['"]/.test(productDetail), 'ProductDetail debe publicar JSON-LD Product.');
+expect(/@type["']?:\s*["']Product["']/.test(productDetail), 'ProductDetail debe publicar JSON-LD Product.');
 expect(/BreadcrumbList/.test(productDetail), 'ProductDetail debe publicar breadcrumbs estructurados.');
 expect(/name=["']robots["']/.test(productDetail), 'ProductDetail debe controlar index/noindex según disponibilidad.');
 expect(/rel=["']canonical["']/.test(productDetail), 'ProductDetail debe publicar canonical.');
-expect(/priceCurrency:\s*['"]EUR['"]/.test(productDetail), 'ProductDetail debe declarar el precio en EUR.');
+expect(/priceCurrency:\s*["']EUR["']/.test(productDetail), 'ProductDetail debe declarar el precio en EUR.');
 
-expect(/@type['"]?:\s*['"]Person['"]/.test(publicSellerProfile), 'PublicSellerProfile debe publicar JSON-LD Person.');
+expect(/@type["']?:\s*["']Person["']/.test(publicSellerProfile), 'PublicSellerProfile debe publicar JSON-LD Person.');
 expect(/ItemList/.test(publicSellerProfile), 'PublicSellerProfile debe publicar los anuncios activos como ItemList.');
 expect(/shouldIndexProfile/.test(publicSellerProfile), 'PublicSellerProfile debe evitar indexar perfiles sin inventario.');
 expect(/rel=["']canonical["']/.test(publicSellerProfile), 'PublicSellerProfile debe publicar canonical.');
@@ -116,13 +116,17 @@ expect(/FAQPage/.test(seoLanding), 'SeoLanding debe publicar FAQPage.');
 expect(/CollectionPage/.test(seoLanding), 'SeoLanding debe publicar CollectionPage.');
 expect(/BreadcrumbList/.test(seoLanding), 'SeoLanding debe publicar BreadcrumbList.');
 expect(/ItemList/.test(seoLanding), 'SeoLanding debe publicar ItemList cuando exista inventario.');
-expect(/shouldIndex\s*=\s*isKnownCity\s*&&\s*isKnownCategory\s*&&\s*!inventoryError/.test(seoLanding), 'SeoLanding debe impedir indexar rutas inválidas o con error de inventario.');
-expect(/products\.length\s*>\s*0/.test(seoLanding), 'SeoLanding debe exigir inventario real antes de indexar.');
+expect(/shouldIndex\s*=\s*isKnownCity\s*&&\s*isKnownCategory\s*&&\s*!loadingProducts\s*&&\s*!inventoryError\s*&&\s*products\.length\s*>\s*0/.test(seoLanding), 'SeoLanding solo debe indexarse después de confirmar inventario real.');
+expect(!/loadingProducts\s*\|\|\s*products\.length\s*>\s*0/.test(seoLanding), 'SeoLanding no debe indexarse mientras carga el inventario.');
 expect(/rel=["']canonical["']/.test(seoLanding), 'SeoLanding debe publicar canonical.');
-expect(/priceCurrency:\s*['"]EUR['"]/.test(seoLanding), 'SeoLanding debe declarar precios en EUR.');
+expect(/priceCurrency:\s*["']EUR["']/.test(seoLanding), 'SeoLanding debe declarar precios en EUR.');
 expect(/name=["']robots["']/.test(seoLanding) && /noindex,follow/.test(seoLanding), 'SeoLanding debe mantener noindex,follow cuando no haya inventario.');
 expect(!/meta\s+name=["']keywords["']/.test(seoLanding), 'SeoLanding no debe incluir meta keywords.');
-warn(!/og-image\.svg/.test(seoLanding), 'SeoLanding todavía usa SVG como imagen social de reserva; conviene migrarla al PNG 1200x630.');
+expect(/DEFAULT_SOCIAL_IMAGE\s*=\s*["']https:\/\/reveta\.es\/og-image\.png/.test(seoLanding), 'SeoLanding debe usar el PNG 1200x630 como imagen social de reserva.');
+expect(!/og-image\.svg/.test(seoLanding), 'SeoLanding no debe volver a usar el SVG social antiguo.');
+expect(/og:image:secure_url/.test(seoLanding) && /og:image:alt/.test(seoLanding), 'SeoLanding debe completar los metadatos Open Graph de imagen.');
+expect(/twitter:image:alt/.test(seoLanding), 'SeoLanding debe describir la imagen de Twitter.');
+expect(/primaryImageOfPage/.test(seoLanding), 'SeoLanding debe conectar su imagen principal con CollectionPage.');
 
 expect(/robots=["']noindex,follow,noarchive["']/.test(notFound), 'La página 404 debe permanecer en noindex,follow,noarchive.');
 expect(/to=["']\/["']/.test(notFound) && /to=["']\/search["']/.test(notFound) && /to=["']\/segunda-mano["']/.test(notFound), 'La página 404 debe ofrecer rutas de recuperación internas.');
