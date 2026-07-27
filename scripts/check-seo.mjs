@@ -109,6 +109,9 @@ expect(/@type["']?:\s*["']Person["']/.test(publicSellerProfile), 'PublicSellerPr
 expect(/ItemList/.test(publicSellerProfile), 'PublicSellerProfile debe publicar los anuncios activos como ItemList.');
 expect(/shouldIndexProfile/.test(publicSellerProfile), 'PublicSellerProfile debe evitar indexar perfiles sin inventario.');
 expect(/rel=["']canonical["']/.test(publicSellerProfile), 'PublicSellerProfile debe publicar canonical.');
+expect(!/decodeURIComponent\(id\)/.test(publicSellerProfile), 'PublicSellerProfile no debe volver a decodificar parámetros de React Router.');
+expect(/profilePath\s*=\s*encodeURIComponent\(seller\?\.username\s*\|\|\s*seller\?\.id\s*\|\|\s*["']["']\)/.test(publicSellerProfile), 'PublicSellerProfile debe codificar el segmento de su URL canónica.');
+expect(/https:\/\/reveta\.es\/og-image\.png/.test(publicSellerProfile) && !/og-image\.svg/.test(publicSellerProfile), 'PublicSellerProfile debe usar el PNG social como reserva.');
 expect(/profile\.username\s*\|\|\s*profile\.id/.test(sitemapGenerator), 'El sitemap debe usar username y recurrir al ID solo cuando no exista.');
 expect(/sellerPriority/.test(sitemapGenerator), 'El sitemap debe priorizar perfiles según inventario activo.');
 expect(/productPriority/.test(sitemapGenerator), 'El sitemap debe priorizar productos según actualidad.');
