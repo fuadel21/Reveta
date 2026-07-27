@@ -8,54 +8,25 @@ import { Card, CardContent } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { MapPin, Search, ShieldCheck, Sparkles } from 'lucide-react';
 
+const DEFAULT_SOCIAL_IMAGE = 'https://reveta.es/og-image.png?v=20260726';
+
 const CITY_NAMES: Record<string, string> = {
-  madrid: 'Madrid',
-  barcelona: 'Barcelona',
-  valencia: 'Valencia',
-  sevilla: 'Sevilla',
-  malaga: 'Málaga',
-  zaragoza: 'Zaragoza',
-  bilbao: 'Bilbao',
-  alicante: 'Alicante',
-  murcia: 'Murcia',
-  granada: 'Granada',
-  girona: 'Girona',
-  tarragona: 'Tarragona',
-  cordoba: 'Córdoba',
-  valladolid: 'Valladolid',
-  'pineda-de-mar': 'Pineda de Mar',
-  badalona: 'Badalona',
-  'hospitalet-de-llobregat': "L'Hospitalet de Llobregat",
-  sabadell: 'Sabadell',
-  terrassa: 'Terrassa',
-  mataro: 'Mataró',
-  'santa-coloma-de-gramenet': 'Santa Coloma de Gramenet',
-  'lloret-de-mar': 'Lloret de Mar',
-  blanes: 'Blanes',
-  'malgrat-de-mar': 'Malgrat de Mar',
-  figueres: 'Figueres',
-  reus: 'Reus',
-  lleida: 'Lleida',
-  granollers: 'Granollers',
-  vic: 'Vic',
+  madrid: 'Madrid', barcelona: 'Barcelona', valencia: 'Valencia', sevilla: 'Sevilla',
+  malaga: 'Málaga', zaragoza: 'Zaragoza', bilbao: 'Bilbao', alicante: 'Alicante',
+  murcia: 'Murcia', granada: 'Granada', girona: 'Girona', tarragona: 'Tarragona',
+  cordoba: 'Córdoba', valladolid: 'Valladolid', 'pineda-de-mar': 'Pineda de Mar',
+  badalona: 'Badalona', 'hospitalet-de-llobregat': "L'Hospitalet de Llobregat",
+  sabadell: 'Sabadell', terrassa: 'Terrassa', mataro: 'Mataró',
+  'santa-coloma-de-gramenet': 'Santa Coloma de Gramenet', 'lloret-de-mar': 'Lloret de Mar',
+  blanes: 'Blanes', 'malgrat-de-mar': 'Malgrat de Mar', figueres: 'Figueres',
+  reus: 'Reus', lleida: 'Lleida', granollers: 'Granollers', vic: 'Vic',
 };
 
 const CATEGORY_NAMES: Record<string, string> = {
-  motor: 'Motor',
-  electronica: 'Electrónica',
-  hogar: 'Hogar',
-  muebles: 'Muebles',
-  moda: 'Moda',
-  bicicletas: 'Bicicletas',
-  iphone: 'iPhone',
-  juegos: 'Juegos',
-  libros: 'Libros',
-  mascotas: 'Mascotas',
-  deportes: 'Deportes',
-  belleza: 'Belleza',
-  oficina: 'Oficina',
-  instrumentos: 'Instrumentos',
-  coleccionismo: 'Coleccionismo',
+  motor: 'Motor', electronica: 'Electrónica', hogar: 'Hogar', muebles: 'Muebles',
+  moda: 'Moda', bicicletas: 'Bicicletas', iphone: 'iPhone', juegos: 'Juegos',
+  libros: 'Libros', mascotas: 'Mascotas', deportes: 'Deportes', belleza: 'Belleza',
+  oficina: 'Oficina', instrumentos: 'Instrumentos', coleccionismo: 'Coleccionismo',
 };
 
 const CATEGORY_INTENTS: Record<string, string> = {
@@ -104,7 +75,7 @@ const createProductSlug = (title: string) => title
   .slice(0, 80) || 'producto';
 
 const absoluteUrl = (url?: string | null) => {
-  if (!url) return 'https://reveta.es/og-image.svg?v=20260710';
+  if (!url) return DEFAULT_SOCIAL_IMAGE;
   if (/^https?:\/\//.test(url)) return url;
   return `https://reveta.es${url.startsWith('/') ? url : `/${url}`}`;
 };
@@ -128,6 +99,7 @@ const SeoLanding = () => {
     const loadProducts = async () => {
       if (!isKnownCity || !isKnownCategory) {
         setProducts([]);
+        setInventoryError(false);
         setLoadingProducts(false);
         return;
       }
@@ -160,7 +132,6 @@ const SeoLanding = () => {
           .limit(12);
 
         if (categoryId) query = query.eq('category_id', categoryId);
-
         const { data, error } = await query;
         if (error) throw error;
         if (!cancelled) setProducts((data || []) as LandingProduct[]);
@@ -192,8 +163,13 @@ const SeoLanding = () => {
     ? `Compra y vende ${categoryName.toLowerCase()} de segunda mano en ${cityName}. Consulta anuncios activos, compara precios y contacta con vendedores locales en Reveta.`
     : `Compra y vende productos de segunda mano en ${cityName}. Consulta anuncios activos, encuentra ofertas locales y publica gratis en Reveta.`;
 
-  const shouldIndex = isKnownCity && isKnownCategory && !inventoryError && (loadingProducts || products.length > 0);
-  const ogImage = products[0]?.images?.[0] ? absoluteUrl(products[0].images[0]) : 'https://reveta.es/og-image.svg?v=20260710';
+  const shouldIndex = isKnownCity && isKnownCategory && !loadingProducts && !inventoryError && products.length > 0;
+  const firstProductImage = products[0]?.images?.[0];
+  const socialImage = absoluteUrl(firstProductImage);
+  const usesDefaultSocialImage = !firstProductImage;
+  const socialImageAlt = firstProductImage
+    ? `${products[0].title}, anuncio de segunda mano en ${cityName}`
+    : `Reveta, productos de segunda mano en ${cityName}`;
 
   const relatedCityLinks = POPULAR_CITIES
     .filter((item) => item !== city)
@@ -230,7 +206,8 @@ const SeoLanding = () => {
     description,
     url: canonicalUrl,
     inLanguage: 'es-ES',
-    isPartOf: { '@type': 'WebSite', name: 'Reveta', url: 'https://reveta.es/' },
+    isPartOf: { '@id': 'https://reveta.es/#website' },
+    primaryImageOfPage: { '@type': 'ImageObject', url: socialImage, caption: socialImageAlt },
     about: categoryName ? `${categoryName} de segunda mano en ${cityName}` : `Productos de segunda mano en ${cityName}`,
   };
 
@@ -284,13 +261,19 @@ const SeoLanding = () => {
         <meta property="og:description" content={description} />
         <meta property="og:type" content="website" />
         <meta property="og:url" content={canonicalUrl} />
-        <meta property="og:image" content={ogImage} />
+        <meta property="og:image" content={socialImage} />
+        <meta property="og:image:secure_url" content={socialImage} />
+        <meta property="og:image:alt" content={socialImageAlt} />
+        {usesDefaultSocialImage && <meta property="og:image:type" content="image/png" />}
+        {usesDefaultSocialImage && <meta property="og:image:width" content="1200" />}
+        {usesDefaultSocialImage && <meta property="og:image:height" content="630" />}
         <meta property="og:site_name" content="Reveta" />
         <meta property="og:locale" content="es_ES" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={title} />
         <meta name="twitter:description" content={description} />
-        <meta name="twitter:image" content={ogImage} />
+        <meta name="twitter:image" content={socialImage} />
+        <meta name="twitter:image:alt" content={socialImageAlt} />
         <script type="application/ld+json">{JSON.stringify(collectionPageJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(faqJsonLd)}</script>
         <script type="application/ld+json">{JSON.stringify(breadcrumbJsonLd)}</script>
@@ -332,13 +315,13 @@ const SeoLanding = () => {
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 8 }).map((_, index) => <div key={index} className="h-72 animate-pulse rounded-xl bg-muted" />)}</div>
             ) : products.length > 0 ? (
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                {products.map((product) => {
+                {products.map((product, index) => {
                   const productUrl = `/producto/${product.id}/${createProductSlug(product.title)}`;
                   const image = product.images?.[0];
                   return (
                     <Card key={product.id} className="overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md">
                       <Link to={productUrl} aria-label={`Ver ${product.title}`}>
-                        <div className="aspect-square bg-muted">{image ? <img src={image} alt={product.title} loading="lazy" width="480" height="480" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Sin imagen</div>}</div>
+                        <div className="aspect-square bg-muted">{image ? <img src={image} alt={product.title} loading={index < 2 ? 'eager' : 'lazy'} fetchPriority={index < 2 ? 'high' : 'auto'} decoding="async" width="480" height="480" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Sin imagen</div>}</div>
                         <CardContent className="space-y-2 p-4">
                           <h3 className="line-clamp-2 font-semibold">{product.title}</h3>
                           <p className="text-xl font-bold text-primary">{Number(product.price).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</p>
@@ -355,20 +338,12 @@ const SeoLanding = () => {
             )}
           </section>
 
-          <section className="container pb-12">
-            <div className="mx-auto max-w-3xl space-y-4 text-muted-foreground">
-              <h2 className="text-2xl font-bold text-foreground">{categoryName ? `Comprar ${categoryName.toLowerCase()} usado en ${cityName}` : `Comprar y vender en ${cityName}`}</h2>
-              <p>Reveta conecta compradores y vendedores locales. Puedes revisar anuncios activos, comparar precios, contactar por chat y encontrar productos publicados en tu zona.</p>
-              <p>{isGenericCity ? `En ${cityName} puedes encontrar tecnología, motor, hogar, moda, deportes, libros, bicicletas, muebles y otros artículos usados.` : `Esta selección reúne anuncios relacionados con ${categoryIntent} publicados en ${cityName}.`}</p>
-            </div>
-          </section>
+          <section className="container pb-12"><div className="mx-auto max-w-3xl space-y-4 text-muted-foreground"><h2 className="text-2xl font-bold text-foreground">{categoryName ? `Comprar ${categoryName.toLowerCase()} usado en ${cityName}` : `Comprar y vender en ${cityName}`}</h2><p>Reveta conecta compradores y vendedores locales. Puedes revisar anuncios activos, comparar precios, contactar por chat y encontrar productos publicados en tu zona.</p><p>{isGenericCity ? `En ${cityName} puedes encontrar tecnología, motor, hogar, moda, deportes, libros, bicicletas, muebles y otros artículos usados.` : `Esta selección reúne anuncios relacionados con ${categoryIntent} publicados en ${cityName}.`}</p></div></section>
 
-          <section className="container pb-12">
-            <div className="mx-auto max-w-3xl"><h2 className="text-2xl font-bold">Búsquedas relacionadas</h2><div className="mt-5 grid gap-5 md:grid-cols-2">
-              <Card><CardContent className="pt-6"><h3 className="font-semibold">Otras categorías en {cityName}</h3><div className="mt-4 flex flex-wrap gap-2">{relatedCategoryLinks.map((item) => <Link key={item.href} to={item.href} className="rounded-full border px-3 py-1.5 text-sm font-medium transition hover:border-primary hover:text-primary">{item.label}</Link>)}</div></CardContent></Card>
-              <Card><CardContent className="pt-6"><h3 className="font-semibold">También en otras ciudades</h3><div className="mt-4 flex flex-wrap gap-2">{relatedCityLinks.map((item) => <Link key={item.href} to={item.href} className="rounded-full border px-3 py-1.5 text-sm font-medium transition hover:border-primary hover:text-primary">{item.label}</Link>)}</div></CardContent></Card>
-            </div></div>
-          </section>
+          <section className="container pb-12"><div className="mx-auto max-w-3xl"><h2 className="text-2xl font-bold">Búsquedas relacionadas</h2><div className="mt-5 grid gap-5 md:grid-cols-2">
+            <Card><CardContent className="pt-6"><h3 className="font-semibold">Otras categorías en {cityName}</h3><div className="mt-4 flex flex-wrap gap-2">{relatedCategoryLinks.map((item) => <Link key={item.href} to={item.href} className="rounded-full border px-3 py-1.5 text-sm font-medium transition hover:border-primary hover:text-primary">{item.label}</Link>)}</div></CardContent></Card>
+            <Card><CardContent className="pt-6"><h3 className="font-semibold">También en otras ciudades</h3><div className="mt-4 flex flex-wrap gap-2">{relatedCityLinks.map((item) => <Link key={item.href} to={item.href} className="rounded-full border px-3 py-1.5 text-sm font-medium transition hover:border-primary hover:text-primary">{item.label}</Link>)}</div></CardContent></Card>
+          </div></div></section>
 
           <section className="container pb-12"><div className="mx-auto max-w-3xl"><h2 className="text-2xl font-bold">Preguntas frecuentes</h2><div className="mt-5 space-y-4">{faqs.map((faq) => <Card key={faq.question}><CardContent className="pt-6"><h3 className="font-semibold">{faq.question}</h3><p className="mt-2 text-sm text-muted-foreground">{faq.answer}</p></CardContent></Card>)}</div></div></section>
         </main>
