@@ -64,7 +64,7 @@ const getRelativeTime = (dateString: string) => {
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 const absoluteUrl = (url?: string | null) => {
-  if (!url) return 'https://reveta.es/og-image.svg?v=20260710';
+  if (!url) return 'https://reveta.es/og-image.png';
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   return `https://reveta.es${url.startsWith('/') ? url : `/${url}`}`;
 };
@@ -87,7 +87,7 @@ const PublicSellerProfile = () => {
     if (!id) return;
     setLoading(true);
 
-    const identifier = decodeURIComponent(id).trim().toLowerCase();
+    const identifier = id.trim().toLowerCase();
     const profileQuery = supabase
       .from('profiles')
       .select('id,username,full_name,avatar_url,created_at,verified');
@@ -141,7 +141,7 @@ const PublicSellerProfile = () => {
 
   const totalViews = products.reduce((sum, item) => sum + (item.views || 0), 0);
   const displayName = seller?.full_name || seller?.username || 'Vendedor de Reveta';
-  const profilePath = seller?.username || seller?.id || '';
+  const profilePath = encodeURIComponent(seller?.username || seller?.id || '');
   const profileUrl = `https://reveta.es/usuario/${profilePath}`;
   const socialImage = absoluteUrl(seller?.avatar_url);
   const pageTitle = `${displayName} | Vendedor en Reveta`;
