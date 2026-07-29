@@ -47,6 +47,24 @@ interface Props {
 
 const normalize = (value: string) => value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+const getFunctionErrorMessage = async (error: any) => {
+  const fallback = error?.message || 'No se pudo completar la solicitud';
+  const context = error?.context;
+  if (!(context instanceof Response)) return fallback;
+
+  try {
+    const payload = await context.clone().json();
+    return payload?.error || payload?.message || fallback;
+  } catch {
+    try {
+      const text = await context.clone().text();
+      return text.trim() || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+};
+
 const resizeImage = (file: File, maxDimension = 1280, quality = 0.82): Promise<string> => new Promise((resolve, reject) => {
   const image = new Image();
   const objectUrl = URL.createObjectURL(file);
@@ -112,7 +130,7 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
 
       if (data?.remaining !== undefined) setRemaining(Number(data.remaining));
       if (data?.reset_at) setResetAt(String(data.reset_at));
-      if (error) throw error;
+      if (error) throw new Error(await getFunctionErrorMessage(error));
       if (!data?.result) throw new Error(data?.error || 'Groq no devolvió una propuesta');
       const suggestion = data.result as AIResult;
       setResult(suggestion);
