@@ -15,5 +15,8 @@ verify_jwt = true
 [functions.create-sendcloud-parcel]
 verify_jwt = true
 
+[functions.ai-listing-assistant]
+verify_jwt = true
+
 [functions.stripe-webhook]
 verify_jwt = false
