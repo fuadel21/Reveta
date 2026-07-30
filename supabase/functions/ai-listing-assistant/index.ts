@@ -33,11 +33,11 @@ const validateImages = (images: unknown) => {
 };
 
 const extractOutputText = (payload: any) => {
-  if (typeof payload?.output_text === 'string') return payload.output_text;
+  if (typeof payload?.output_text === 'string' && payload.output_text.trim()) return payload.output_text;
   const content = Array.isArray(payload?.output)
     ? payload.output.flatMap((item: any) => Array.isArray(item?.content) ? item.content : [])
     : [];
-  return String(content.find((item: any) => item?.type === 'output_text')?.text || '');
+  return String(content.find((item: any) => item?.type === 'output_text')?.text || '').trim();
 };
 
 Deno.serve(async (req) => {
@@ -151,7 +151,9 @@ ${notes || 'Ninguna'}`;
             ...images.map((image_url) => ({ type: 'input_image', image_url, detail: 'auto' })),
           ],
         }],
-        max_output_tokens: 1400,
+        reasoning: { effort: 'none' },
+        text: { format: { type: 'json_object' } },
+        max_output_tokens: 1800,
       }),
     });
 
