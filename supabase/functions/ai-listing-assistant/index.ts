@@ -151,7 +151,6 @@ ${notes || 'Ninguna'}`;
             ...images.map((image_url) => ({ type: 'input_image', image_url, detail: 'auto' })),
           ],
         }],
-        reasoning: { effort: 'none' },
         text: { format: { type: 'json_object' } },
         max_output_tokens: 1800,
       }),
