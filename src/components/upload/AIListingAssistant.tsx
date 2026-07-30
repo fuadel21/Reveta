@@ -169,7 +169,7 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Asistente gratuito con Groq</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" />Asistente gratuito</CardTitle>
             <CardDescription>Sube fotos reales y Groq preparará el título, la descripción y los datos principales del anuncio.</CardDescription>
           </div>
           {remaining !== null && <Badge variant={remaining > 0 ? 'secondary' : 'destructive'}>{remaining} usos restantes hoy</Badge>}
