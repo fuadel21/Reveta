@@ -36,6 +36,7 @@ const conditionLabels: Record<string, string> = { new: 'Nuevo', like_new: 'Como 
 const emptyForm = { title: '', description: '', price: '', category_id: '', subcategory_id: '', condition: '', location: '', latitude: null as number | null, longitude: null as number | null };
 const normalizeText = (value: string) => value.trim().replace(/\s+/g, ' ');
 const normalizeMultiline = (value: string) => value.trim().replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n');
+const parsePrice = (value: string | number) => Number.parseFloat(String(value).replace(',', '.'));
 const isValidImageFile = (file: File) => ALLOWED_IMAGE_TYPES.has(file.type) && file.size <= MAX_IMAGE_SIZE_BYTES;
 const hasSuspiciousContactText = (value: string) => /\b(whatsapp|telegram|bizum|transferencia|correo|email|gmail|hotmail|tel[eé]fono|tlf|\+34)\b/i.test(value);
 
@@ -156,20 +157,23 @@ const Upload = () => {
   };
 
   const cleanupUploadedImages = async (paths: string[]) => { if (paths.length === 0) return; await supabase.storage.from('products').remove(paths); };
-  const checks = useMemo(() => [
-    { label: 'Al menos una foto', ok: images.length > 0 },
-    { label: `Título de ${MIN_TITLE_LENGTH}+ caracteres`, ok: normalizeText(formData.title).length >= MIN_TITLE_LENGTH },
-    { label: `Descripción de ${MIN_DESCRIPTION_LENGTH}+ caracteres`, ok: normalizeMultiline(formData.description).length >= MIN_DESCRIPTION_LENGTH },
-    { label: 'Precio válido', ok: Number(formData.price) >= MIN_PRICE && Number(formData.price) <= MAX_PRICE },
-    { label: 'Categoría elegida', ok: !!formData.category_id },
-    { label: 'Estado indicado', ok: !!formData.condition },
-    { label: 'Ubicación añadida', ok: normalizeText(formData.location).length >= 2 },
-  ], [formData, images.length]);
+  const checks = useMemo(() => {
+    const price = parsePrice(formData.price);
+    return [
+      { label: 'Al menos una foto', ok: images.length > 0 },
+      { label: `Título de ${MIN_TITLE_LENGTH}+ caracteres`, ok: normalizeText(formData.title).length >= MIN_TITLE_LENGTH },
+      { label: `Descripción de ${MIN_DESCRIPTION_LENGTH}+ caracteres`, ok: normalizeMultiline(formData.description).length >= MIN_DESCRIPTION_LENGTH },
+      { label: 'Precio válido', ok: Number.isFinite(price) && price >= MIN_PRICE && price <= MAX_PRICE },
+      { label: 'Categoría elegida', ok: !!formData.category_id },
+      { label: 'Estado indicado', ok: !!formData.condition },
+      { label: 'Ubicación añadida', ok: normalizeText(formData.location).length >= 2 },
+    ];
+  }, [formData, images.length]);
   const qualityScore = Math.round((checks.filter(check => check.ok).length / checks.length) * 100);
   const selectedCategory = categories.find(category => category.id === formData.category_id)?.name;
 
   const validateForm = () => {
-    const title = normalizeText(formData.title); const description = normalizeMultiline(formData.description); const location = normalizeText(formData.location); const priceNum = parseFloat(String(formData.price).replace(',', '.'));
+    const title = normalizeText(formData.title); const description = normalizeMultiline(formData.description); const location = normalizeText(formData.location); const priceNum = parsePrice(formData.price);
     if (images.length === 0) { toast({ title: 'Añade al menos una foto', variant: 'destructive' }); return null; }
     if (title.length < MIN_TITLE_LENGTH) { toast({ title: 'Título demasiado corto', variant: 'destructive' }); return null; }
     if (description.length < MIN_DESCRIPTION_LENGTH || description.length > MAX_DESCRIPTION_LENGTH) { toast({ title: 'Revisa la descripción', description: `Debe tener entre ${MIN_DESCRIPTION_LENGTH} y ${MAX_DESCRIPTION_LENGTH} caracteres.`, variant: 'destructive' }); return null; }
@@ -186,9 +190,12 @@ const Upload = () => {
     setUploading(true); let uploadedPaths: string[] = [];
     try {
       const uploadedImages = await uploadImages(); uploadedPaths = uploadedImages.paths; const geocodedLocation = await geocodeTypedLocation();
-      const { error } = await supabase.from('products').insert({ user_id: user.id, title: validated.title, description: validated.description, price: validated.priceNum, category_id: formData.category_id || null, subcategory_id: formData.subcategory_id || null, condition: formData.condition || null, location: geocodedLocation?.displayName || validated.location, latitude: geocodedLocation?.latitude ?? null, longitude: geocodedLocation?.longitude ?? null, images: uploadedImages.urls, status: 'active' });
+      const { data: createdProduct, error } = await supabase.from('products').insert({ user_id: user.id, title: validated.title, description: validated.description, price: validated.priceNum, category_id: formData.category_id || null, subcategory_id: formData.subcategory_id || null, condition: formData.condition || null, location: geocodedLocation?.displayName || validated.location, latitude: geocodedLocation?.latitude ?? null, longitude: geocodedLocation?.longitude ?? null, images: uploadedImages.urls, status: 'active' }).select('id').single();
       if (error) throw error;
-      localStorage.removeItem(DRAFT_KEY); toast({ title: 'Producto publicado', description: 'Tu anuncio ya está visible en Reveta.' }); navigate('/profile');
+      if (!createdProduct?.id) throw new Error('El producto se guardó, pero no se pudo abrir su ficha');
+      localStorage.removeItem(DRAFT_KEY);
+      toast({ title: 'Producto publicado', description: 'Abriendo la ficha de tu anuncio.' });
+      navigate(`/product/${createdProduct.id}`, { replace: true });
     } catch (error: any) { await cleanupUploadedImages(uploadedPaths); toast({ title: 'No se pudo publicar', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' }); }
     finally { setUploading(false); }
   };
