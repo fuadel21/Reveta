@@ -145,15 +145,25 @@ const Upload = () => {
     if (!user || images.length === 0) return { urls: [], paths: [] };
     const urls: string[] = [];
     const paths: string[] = [];
-    for (const image of images) {
-      const fileExt = image.type === 'image/png' ? 'png' : image.type === 'image/webp' ? 'webp' : 'jpg';
-      const fileName = `${user.id}/${crypto.randomUUID()}.${fileExt}`;
-      const { error } = await supabase.storage.from('products').upload(fileName, image, { contentType: image.type, upsert: false });
-      if (error) throw error;
-      const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(fileName);
-      urls.push(publicUrl); paths.push(fileName);
+
+    try {
+      for (const image of images) {
+        const fileExt = image.type === 'image/png' ? 'png' : image.type === 'image/webp' ? 'webp' : 'jpg';
+        const fileName = `${user.id}/${crypto.randomUUID()}.${fileExt}`;
+        const { error } = await supabase.storage.from('products').upload(fileName, image, { contentType: image.type, upsert: false });
+        if (error) throw error;
+        const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(fileName);
+        urls.push(publicUrl);
+        paths.push(fileName);
+      }
+      return { urls, paths };
+    } catch (error) {
+      if (paths.length > 0) {
+        const { error: cleanupError } = await supabase.storage.from('products').remove(paths);
+        if (cleanupError) console.error('No se pudieron limpiar las imágenes parciales:', cleanupError);
+      }
+      throw error;
     }
-    return { urls, paths };
   };
 
   const cleanupUploadedImages = async (paths: string[]) => { if (paths.length === 0) return; await supabase.storage.from('products').remove(paths); };
