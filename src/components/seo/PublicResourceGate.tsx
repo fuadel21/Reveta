@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { PackageSearch, RefreshCw, Search, Store } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ const isUuid = (value: string) =>
 
 const PublicResourceGate = ({ type, children }: PublicResourceGateProps) => {
   const { id = '' } = useParams<{ id: string }>();
+  const { user, loading: authLoading } = useAuth();
   const [state, setState] = useState<ResourceState>('loading');
 
   const validateResource = useCallback(async () => {
@@ -28,18 +30,24 @@ const PublicResourceGate = ({ type, children }: PublicResourceGateProps) => {
       return;
     }
 
+    if (type === 'product' && authLoading) {
+      setState('loading');
+      return;
+    }
+
     setState('loading');
 
     try {
       if (type === 'product') {
         const { data, error } = await supabase
           .from('products')
-          .select('id')
+          .select('id, status, user_id')
           .eq('id', identifier)
           .maybeSingle();
 
         if (error) throw error;
-        setState(data ? 'found' : 'missing');
+        const canOpenProduct = !!data && (data.status === 'active' || data.user_id === user?.id);
+        setState(canOpenProduct ? 'found' : 'missing');
         return;
       }
 
@@ -55,7 +63,7 @@ const PublicResourceGate = ({ type, children }: PublicResourceGateProps) => {
       console.error(`Error validating public ${type}:`, error);
       setState('error');
     }
-  }, [id, type]);
+  }, [authLoading, id, type, user?.id]);
 
   useEffect(() => {
     void validateResource();
@@ -74,7 +82,7 @@ const PublicResourceGate = ({ type, children }: PublicResourceGateProps) => {
   const isMissing = state === 'missing';
   const title = isMissing
     ? type === 'product'
-      ? 'Producto no encontrado | Reveta'
+      ? 'Producto no disponible | Reveta'
       : 'Vendedor no encontrado | Reveta'
     : 'No se pudo cargar el contenido | Reveta';
   const heading = isMissing
@@ -84,7 +92,7 @@ const PublicResourceGate = ({ type, children }: PublicResourceGateProps) => {
     : 'No hemos podido comprobar esta página';
   const description = isMissing
     ? type === 'product'
-      ? 'El anuncio puede haberse eliminado, haber caducado o contener un enlace incorrecto. Puedes seguir explorando productos activos en Reveta.'
+      ? 'El anuncio puede haberse retirado, reservado, vendido o contener un enlace incorrecto. Puedes seguir explorando productos activos en Reveta.'
       : 'El perfil puede haberse eliminado, haber cambiado de nombre o contener un enlace incorrecto. Puedes seguir explorando vendedores y anuncios activos.'
     : 'Se ha producido un problema temporal al consultar Reveta. Reintenta la comprobación o continúa navegando por los anuncios disponibles.';
 
@@ -103,7 +111,7 @@ const PublicResourceGate = ({ type, children }: PublicResourceGateProps) => {
               {type === 'product' ? <PackageSearch className="h-8 w-8" /> : <Store className="h-8 w-8" />}
             </div>
             <p className="mt-6 text-sm font-semibold uppercase tracking-wide text-primary">
-              {isMissing ? 'Contenido no encontrado' : 'Error temporal'}
+              {isMissing ? 'Contenido no disponible' : 'Error temporal'}
             </p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">{heading}</h1>
             <p className="mx-auto mt-4 max-w-xl text-muted-foreground">{description}</p>
