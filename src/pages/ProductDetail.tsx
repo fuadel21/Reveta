@@ -412,8 +412,22 @@ const ProductDetail = () => {
                 <div className="flex items-start justify-between gap-3"><h1 className="text-2xl font-bold">{product.title}</h1><ProductStatusBadge status={product.status || 'active'} /></div>
                 <p className="text-3xl font-bold text-primary mt-3">{product.price.toLocaleString('es-ES')} €</p>
                 <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mt-3">{product.location && <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{product.location}</span>}<span className="flex items-center gap-1"><Eye className="h-4 w-4" />{product.views || 0} vistas</span><span className="flex items-center gap-1"><Clock className="h-4 w-4" />{new Date(product.created_at).toLocaleDateString('es-ES')}</span></div>
-                <div className="mt-5 flex gap-2"><Button className="flex-1" onClick={handleContactSeller} disabled={!isProductAvailable || isOwner}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button><Button variant="outline" onClick={toggleFavorite} disabled={isOwner} aria-label={isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}><Heart className={`h-4 w-4 ${isFavorite ? 'fill-current text-red-500' : ''}`} /></Button></div>
-                <Button variant="secondary" className="w-full mt-2" onClick={handleRequestPrivateCall} disabled={requestingCall || !user || isOwner || !isProductAvailable}><Phone className="h-4 w-4 mr-2" />Llamada privada</Button>
+                {isOwner ? (
+                  <div className="mt-5 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <p className="font-semibold">Este anuncio es tuyo</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Gestiona su estado y revisa el interés recibido desde tu panel de vendedor.</p>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      <Button onClick={() => navigate('/seller-dashboard')}>Gestionar anuncio</Button>
+                      <Button variant="outline" onClick={() => navigate(`/boost/${product.id}`)} disabled={!isProductAvailable}>Destacar producto</Button>
+                    </div>
+                    <Button variant="ghost" className="mt-2 w-full" onClick={() => navigate('/upload')}>Publicar otro producto</Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-5 flex gap-2"><Button className="flex-1" onClick={handleContactSeller} disabled={!isProductAvailable}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button><Button variant="outline" onClick={toggleFavorite} aria-label={isFavorite ? 'Quitar de favoritos' : 'Añadir a favoritos'}><Heart className={`h-4 w-4 ${isFavorite ? 'fill-current text-red-500' : ''}`} /></Button></div>
+                    <Button variant="secondary" className="w-full mt-2" onClick={handleRequestPrivateCall} disabled={requestingCall || !user || !isProductAvailable}><Phone className="h-4 w-4 mr-2" />Llamada privada</Button>
+                  </>
+                )}
               </div>
 
               <SellerTrustCard seller={seller} activeProductsCount={sellerActiveProductsCount} />
