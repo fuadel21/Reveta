@@ -22,6 +22,7 @@ const SellerDashboard = lazy(() => import("./pages/SellerDashboard"));
 const BuyerCenter = lazy(() => import("./pages/BuyerCenter"));
 const PublicSellerProfile = lazy(() => import("./pages/PublicSellerProfile"));
 const Upload = lazy(() => import("./pages/Upload"));
+const EditProduct = lazy(() => import("./pages/EditProduct"));
 const Messages = lazy(() => import("./pages/Messages"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const ProductComparison = lazy(() => import("./pages/ProductComparison"));
@@ -66,6 +67,7 @@ const App = () => (
       <Route path="/comprador" element={privatePage("Centro del comprador | Reveta", <BuyerCenter />)} />
       <Route path="/usuario/:id" element={<PublicResourceGate type="seller"><PublicSellerProfile /></PublicResourceGate>} />
       <Route path="/upload" element={privatePage("Publicar producto | Reveta", <Upload />)} />
+      <Route path="/edit-product/:productId" element={privatePage("Editar anuncio | Reveta", <EditProduct />)} />
       <Route path="/messages" element={privatePage("Mensajes | Reveta", <Messages />)} />
       <Route path="/product/:id" element={<PublicResourceGate type="product"><ProductDetail /></PublicResourceGate>} />
       <Route path="/producto/:id/:slug" element={<PublicResourceGate type="product"><ProductDetail /></PublicResourceGate>} />
