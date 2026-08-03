@@ -7,7 +7,7 @@ import Footer from '@/components/Footer';
 import ProductStatusBadge from '@/components/ProductStatusBadge';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
@@ -35,13 +35,48 @@ type ProductMetrics = {
 };
 
 type DashboardProduct = ProductRow & { metrics: ProductMetrics };
+type ProductMetricRow = { product_id: string };
 
 const EMPTY_METRICS: ProductMetrics = { favorites: 0, conversations: 0, offers: 0, reservations: 0, openTransactions: 0 };
 const OPEN_TRANSACTION_STATUSES = ['pending', 'pending_payment', 'paid', 'shipped', 'disputed', 'under_review'];
+const PAGE_SIZE = 1000;
 
 const getImage = (product: ProductRow) => Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null;
 const totalInterest = (product: DashboardProduct) => product.metrics.favorites + product.metrics.conversations + product.metrics.offers + product.metrics.reservations;
 const isBoostActive = (value?: string | null) => !!value && new Date(value).getTime() > Date.now();
+
+const countByProduct = (rows: ProductMetricRow[]) => {
+  const counts = new Map<string, number>();
+  rows.forEach(({ product_id }) => counts.set(product_id, (counts.get(product_id) || 0) + 1));
+  return counts;
+};
+
+const fetchMetricRows = async (
+  table: string,
+  productIds: string[],
+  configure?: (query: any) => any,
+): Promise<ProductMetricRow[]> => {
+  const rows: ProductMetricRow[] = [];
+
+  for (let from = 0; ; from += PAGE_SIZE) {
+    let query = (supabase as any)
+      .from(table)
+      .select('product_id')
+      .in('product_id', productIds)
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (configure) query = configure(query);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const page = (data || []) as ProductMetricRow[];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+
+  return rows;
+};
 
 const getRecommendation = (product: DashboardProduct) => {
   const ageDays = Math.max(0, Math.floor((Date.now() - new Date(product.created_at).getTime()) / 86400000));
@@ -72,11 +107,13 @@ const SellerDashboard = () => {
 
   useEffect(() => {
     if (user?.id) fetchDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   const fetchDashboard = async () => {
     if (!user) return;
     setLoading(true);
+
     try {
       const { data: productRows, error } = await supabase
         .from('products')
@@ -86,27 +123,38 @@ const SellerDashboard = () => {
         .limit(100);
       if (error) throw error;
 
-      const hydrated = await Promise.all(((productRows || []) as ProductRow[]).map(async (product) => {
-        const [favorites, conversations, offers, reservations, transactions] = await Promise.all([
-          supabase.from('favorites').select('id', { count: 'exact', head: true }).eq('product_id', product.id),
-          supabase.from('conversations').select('id', { count: 'exact', head: true }).eq('product_id', product.id),
-          (supabase as any).from('offers').select('id', { count: 'exact', head: true }).eq('product_id', product.id).in('status', ['pending', 'accepted']),
-          (supabase as any).from('product_reservations').select('id', { count: 'exact', head: true }).eq('product_id', product.id).eq('status', 'active'),
-          supabase.from('transactions').select('id', { count: 'exact', head: true }).eq('product_id', product.id).in('status', OPEN_TRANSACTION_STATUSES),
-        ]);
+      const baseProducts = (productRows || []) as ProductRow[];
+      if (baseProducts.length === 0) {
+        setProducts([]);
+        return;
+      }
 
-        return {
-          ...product,
-          metrics: {
-            favorites: favorites.count || 0,
-            conversations: conversations.count || 0,
-            offers: offers.count || 0,
-            reservations: reservations.count || 0,
-            openTransactions: transactions.count || 0,
-          },
-        } as DashboardProduct;
-      }));
-      setProducts(hydrated);
+      const productIds = baseProducts.map((product) => product.id);
+      const [favorites, conversations, offers, reservations, transactions] = await Promise.all([
+        fetchMetricRows('favorites', productIds),
+        fetchMetricRows('conversations', productIds),
+        fetchMetricRows('offers', productIds, (metricQuery) => metricQuery.in('status', ['pending', 'accepted'])),
+        fetchMetricRows('product_reservations', productIds, (metricQuery) => metricQuery.eq('status', 'active')),
+        fetchMetricRows('transactions', productIds, (metricQuery) => metricQuery.in('status', OPEN_TRANSACTION_STATUSES)),
+      ]);
+
+      const favoriteCounts = countByProduct(favorites);
+      const conversationCounts = countByProduct(conversations);
+      const offerCounts = countByProduct(offers);
+      const reservationCounts = countByProduct(reservations);
+      const transactionCounts = countByProduct(transactions);
+
+      setProducts(baseProducts.map((product) => ({
+        ...product,
+        metrics: {
+          ...EMPTY_METRICS,
+          favorites: favoriteCounts.get(product.id) || 0,
+          conversations: conversationCounts.get(product.id) || 0,
+          offers: offerCounts.get(product.id) || 0,
+          reservations: reservationCounts.get(product.id) || 0,
+          openTransactions: transactionCounts.get(product.id) || 0,
+        },
+      })));
     } catch (error) {
       console.error('Error loading seller dashboard:', error);
       toast({ title: 'No se pudo cargar el panel', description: 'Inténtalo de nuevo en unos segundos.', variant: 'destructive' });
@@ -121,6 +169,7 @@ const SellerDashboard = () => {
       toast({ title: 'Acción bloqueada', description: 'Este anuncio tiene una reserva u operación abierta. Resuélvela antes de cambiar su estado.', variant: 'destructive' });
       return;
     }
+
     setUpdatingId(product.id);
     const { error } = await supabase.from('products').update({ status: nextStatus }).eq('id', product.id).eq('user_id', user.id);
     if (error) {
@@ -136,7 +185,6 @@ const SellerDashboard = () => {
     active: products.filter((product) => product.status === 'active').length,
     reserved: products.filter((product) => product.status === 'reserved').length,
     sold: products.filter((product) => product.status === 'sold').length,
-    inactive: products.filter((product) => product.status === 'inactive').length,
     favorites: products.reduce((sum, product) => sum + product.metrics.favorites, 0),
     conversations: products.reduce((sum, product) => sum + product.metrics.conversations, 0),
     offers: products.reduce((sum, product) => sum + product.metrics.offers, 0),
@@ -147,8 +195,7 @@ const SellerDashboard = () => {
     const normalized = query.trim().toLowerCase();
     const filtered = products.filter((product) => {
       const matchesQuery = !normalized || product.title.toLowerCase().includes(normalized) || (product.location || '').toLowerCase().includes(normalized);
-      const matchesStatus = statusFilter === 'all' || product.status === statusFilter;
-      return matchesQuery && matchesStatus;
+      return matchesQuery && (statusFilter === 'all' || product.status === statusFilter);
     });
 
     return [...filtered].sort((a, b) => {
@@ -190,6 +237,7 @@ const SellerDashboard = () => {
             const boostActive = isBoostActive(product.boosted_until);
             const canBoost = product.status === 'active' && !boostActive;
             const canEdit = !blocked && product.status !== 'sold' && product.status !== 'completed';
+
             return <Card key={product.id} className="overflow-hidden"><CardContent className="p-0"><div className="grid md:grid-cols-[180px_1fr]"><div className="aspect-video bg-muted md:aspect-auto md:min-h-48">{image ? <img src={image} alt={product.title} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><ImageOff className="h-8 w-8 text-muted-foreground" /></div>}</div><div className="p-4 space-y-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold">{product.title}</h2><ProductStatusBadge status={product.status || 'active'} />{boostActive && <Badge variant="secondary"><Sparkles className="mr-1 h-3 w-3" />Destacado activo</Badge>}</div><p className="mt-1 text-lg font-bold text-primary">{Number(product.price).toLocaleString('es-ES')} €</p><p className="text-xs text-muted-foreground">{product.location || 'Sin ubicación'} · Publicado {new Date(product.created_at).toLocaleDateString('es-ES')}</p></div>{blocked && <Badge className="bg-amber-600 text-white"><AlertTriangle className="mr-1 h-3 w-3" />Operación abierta</Badge>}</div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-5"><div className="rounded-lg border p-2 text-center"><Heart className="mx-auto h-4 w-4" /><p className="font-bold">{product.metrics.favorites}</p><p className="text-[11px] text-muted-foreground">Favoritos</p></div><div className="rounded-lg border p-2 text-center"><MessageCircle className="mx-auto h-4 w-4" /><p className="font-bold">{product.metrics.conversations}</p><p className="text-[11px] text-muted-foreground">Chats</p></div><div className="rounded-lg border p-2 text-center"><Tag className="mx-auto h-4 w-4" /><p className="font-bold">{product.metrics.offers}</p><p className="text-[11px] text-muted-foreground">Ofertas</p></div><div className="rounded-lg border p-2 text-center"><ShoppingBag className="mx-auto h-4 w-4" /><p className="font-bold">{product.metrics.reservations}</p><p className="text-[11px] text-muted-foreground">Reservas</p></div><div className="rounded-lg border p-2 text-center"><BarChart3 className="mx-auto h-4 w-4" /><p className="font-bold">{totalInterest(product)}</p><p className="text-[11px] text-muted-foreground">Interés</p></div></div>
             <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><div><p className="font-medium">Recomendación</p><p className="text-muted-foreground">{getRecommendation(product)}</p></div></div>
