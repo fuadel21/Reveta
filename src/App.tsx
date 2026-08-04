@@ -24,6 +24,7 @@ const PublicSellerProfile = lazy(() => import("./pages/PublicSellerProfile"));
 const Upload = lazy(() => import("./pages/Upload"));
 const EditProduct = lazy(() => import("./pages/EditProduct"));
 const Messages = lazy(() => import("./pages/Messages"));
+const Notifications = lazy(() => import("./pages/Notifications"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const ProductComparison = lazy(() => import("./pages/ProductComparison"));
 const Search = lazy(() => import("./pages/Search"));
@@ -69,6 +70,7 @@ const App = () => (
       <Route path="/upload" element={privatePage("Publicar producto | Reveta", <Upload />)} />
       <Route path="/edit-product/:productId" element={privatePage("Editar anuncio | Reveta", <EditProduct />)} />
       <Route path="/messages" element={privatePage("Mensajes | Reveta", <Messages />)} />
+      <Route path="/notifications" element={privatePage("Notificaciones | Reveta", <Notifications />)} />
       <Route path="/product/:id" element={<PublicResourceGate type="product"><ProductDetail /></PublicResourceGate>} />
       <Route path="/producto/:id/:slug" element={<PublicResourceGate type="product"><ProductDetail /></PublicResourceGate>} />
       <Route path="/comparar" element={privatePage("Comparar productos | Reveta", <ProductComparison />)} />
