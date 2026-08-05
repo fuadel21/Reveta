@@ -138,13 +138,29 @@ export const getOwnedStoragePath = (url: string, userId: string) => {
   }
 };
 
+export const getUnreferencedOwnedStoragePaths = async (urls: string[], userId: string, excludedProductId?: string) => {
+  const candidates = urls
+    .map((url) => ({ url, path: getOwnedStoragePath(url, userId) }))
+    .filter((candidate): candidate is { url: string; path: string } => Boolean(candidate.path));
+
+  const checks = await Promise.allSettled(candidates.map(async (candidate) => {
+    let query = (supabase as any).from('products').select('id').contains('images', [candidate.url]).limit(1);
+    if (excludedProductId) query = query.neq('id', excludedProductId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).length === 0 ? candidate.path : null;
+  }));
+
+  return checks.flatMap((result) => result.status === 'fulfilled' && result.value ? [result.value] : []);
+};
+
 const DRAFT_DB = 'reveta-listing-drafts';
 const DRAFT_STORE = 'drafts';
-const DRAFT_KEY = 'new-listing';
-const FALLBACK_KEY = 'reveta:listing-draft:v2';
+const DEFAULT_DRAFT_KEY = 'new-listing';
+const fallbackKey = (draftKey: string) => `reveta:listing-draft:v3:${draftKey}`;
 
 type StoredFile = { name: string; type: string; lastModified: number; blob: Blob };
-type StoredDraft = { form: ListingFormData; files: StoredFile[]; savedAt: string };
+type StoredDraft = { form: ListingFormData; files: StoredFile[]; originalUrls: string[]; savedAt: string };
 
 const openDraftDatabase = () => new Promise<IDBDatabase>((resolve, reject) => {
   if (!('indexedDB' in window)) return reject(new Error('IndexedDB no disponible'));
@@ -161,7 +177,7 @@ const idbRequest = <T,>(request: IDBRequest<T>) => new Promise<T>((resolve, reje
   request.onerror = () => reject(request.error || new Error('Error de almacenamiento'));
 });
 
-export const saveListingDraft = async (form: ListingFormData, images: ListingImage[]) => {
+export const saveListingDraft = async (form: ListingFormData, images: ListingImage[], draftKey = DEFAULT_DRAFT_KEY) => {
   const draft: StoredDraft = {
     form,
     files: images.filter((image) => image.file).map((image) => ({
@@ -170,48 +186,55 @@ export const saveListingDraft = async (form: ListingFormData, images: ListingIma
       lastModified: image.file!.lastModified,
       blob: image.file!,
     })),
+    originalUrls: images.filter((image) => image.original).map((image) => image.url),
     savedAt: new Date().toISOString(),
   };
   try {
     const database = await openDraftDatabase();
     const transaction = database.transaction(DRAFT_STORE, 'readwrite');
-    await idbRequest(transaction.objectStore(DRAFT_STORE).put(draft, DRAFT_KEY));
+    await idbRequest(transaction.objectStore(DRAFT_STORE).put(draft, draftKey));
     database.close();
-    localStorage.removeItem(FALLBACK_KEY);
+    localStorage.removeItem(fallbackKey(draftKey));
   } catch {
-    localStorage.setItem(FALLBACK_KEY, JSON.stringify({ form, savedAt: draft.savedAt }));
+    localStorage.setItem(fallbackKey(draftKey), JSON.stringify({ form, originalUrls: draft.originalUrls, savedAt: draft.savedAt }));
   }
   return draft.savedAt;
 };
 
-export const loadListingDraft = async (): Promise<{ form: ListingFormData; files: File[]; savedAt: string } | null> => {
+export const loadListingDraft = async (draftKey = DEFAULT_DRAFT_KEY): Promise<{ form: ListingFormData; files: File[]; originalUrls: string[]; savedAt: string } | null> => {
   try {
     const database = await openDraftDatabase();
     const transaction = database.transaction(DRAFT_STORE, 'readonly');
-    const draft = await idbRequest(transaction.objectStore(DRAFT_STORE).get(DRAFT_KEY)) as StoredDraft | undefined;
+    const draft = await idbRequest(transaction.objectStore(DRAFT_STORE).get(draftKey)) as StoredDraft | undefined;
     database.close();
     if (!draft) return null;
     return {
       form: { ...EMPTY_LISTING_FORM, ...draft.form },
       files: (draft.files || []).map((stored) => new File([stored.blob], stored.name, { type: stored.type, lastModified: stored.lastModified })),
+      originalUrls: draft.originalUrls || [],
       savedAt: draft.savedAt,
     };
   } catch {
     try {
-      const fallback = JSON.parse(localStorage.getItem(FALLBACK_KEY) || 'null');
-      return fallback?.form ? { form: { ...EMPTY_LISTING_FORM, ...fallback.form }, files: [], savedAt: fallback.savedAt || new Date().toISOString() } : null;
+      const fallback = JSON.parse(localStorage.getItem(fallbackKey(draftKey)) || 'null');
+      return fallback?.form ? {
+        form: { ...EMPTY_LISTING_FORM, ...fallback.form },
+        files: [],
+        originalUrls: fallback.originalUrls || [],
+        savedAt: fallback.savedAt || new Date().toISOString(),
+      } : null;
     } catch {
       return null;
     }
   }
 };
 
-export const clearListingDraft = async () => {
-  localStorage.removeItem(FALLBACK_KEY);
+export const clearListingDraft = async (draftKey = DEFAULT_DRAFT_KEY) => {
+  localStorage.removeItem(fallbackKey(draftKey));
   try {
     const database = await openDraftDatabase();
     const transaction = database.transaction(DRAFT_STORE, 'readwrite');
-    await idbRequest(transaction.objectStore(DRAFT_STORE).delete(DRAFT_KEY));
+    await idbRequest(transaction.objectStore(DRAFT_STORE).delete(draftKey));
     database.close();
   } catch {
     // The fallback was already removed.
