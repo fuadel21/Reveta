@@ -4,8 +4,7 @@ import { Helmet } from 'react-helmet-async';
 import { useAuth } from '@/hooks/useAuth';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import { Chat } from '@/components/Chat';
-import MessagingCommandCenter from '@/components/chat/MessagingCommandCenter';
+import MessagingWorkspace from '@/components/chat/MessagingWorkspace';
 import { MessageCircle, ShieldCheck } from 'lucide-react';
 
 const Messages = () => {
@@ -37,14 +36,14 @@ const Messages = () => {
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <main className="flex-1 container py-6">
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
                 <MessageCircle className="h-3.5 w-3.5" />
                 Mensajería y negociación
               </div>
               <h1 className="text-2xl font-bold">Mensajes</h1>
-              <p className="text-sm text-muted-foreground">Controla conversaciones, ofertas pendientes y operaciones asociadas a cada producto.</p>
+              <p className="text-sm text-muted-foreground">Conversaciones, ofertas, llamadas y operaciones en una sola bandeja.</p>
             </div>
             <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2 text-xs text-muted-foreground">
               <ShieldCheck className="h-4 w-4 text-primary" />
@@ -52,11 +51,7 @@ const Messages = () => {
             </div>
           </div>
 
-          <MessagingCommandCenter />
-
-          <section className="h-[calc(100vh-14rem)] min-h-[620px]">
-            <Chat />
-          </section>
+          <MessagingWorkspace />
         </main>
         <Footer />
       </div>
