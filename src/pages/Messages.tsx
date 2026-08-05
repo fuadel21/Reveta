@@ -17,6 +17,7 @@ const Messages = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const refreshTimer = useRef<number | null>(null);
   const inboxIdsRef = useRef<Set<string>>(new Set());
+  const loadedOnceRef = useRef(false);
   const [inbox, setInbox] = useState<MessagingConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -32,18 +33,20 @@ const Messages = () => {
 
   const loadInbox = useCallback(async (manual = false) => {
     if (!user) return;
-    manual ? setRefreshing(true) : setLoading(true);
+    if (manual) setRefreshing(true);
+    else if (!loadedOnceRef.current) setLoading(true);
     setError(false);
 
     try {
       const result = await loadMessagingInbox(user.id, 100);
       setInbox(result.conversations);
+      loadedOnceRef.current = true;
       if (result.partial) toast.warning('El buzón se cargó parcialmente. Puedes actualizarlo de nuevo.');
       else if (manual) toast.success('Mensajes actualizados');
     } catch (loadError) {
       console.error('Error loading messaging inbox:', loadError);
       setError(true);
-      toast.error('No se pudo cargar el buzón de mensajes');
+      if (!loadedOnceRef.current || manual) toast.error('No se pudo cargar el buzón de mensajes');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -51,8 +54,9 @@ const Messages = () => {
   }, [user]);
 
   useEffect(() => {
+    loadedOnceRef.current = false;
     if (user) void loadInbox();
-  }, [loadInbox, user]);
+  }, [loadInbox, user?.id]);
 
   useEffect(() => {
     if (!user) return;
