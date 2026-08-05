@@ -69,6 +69,9 @@ type Conversation = {
   updated_at: string;
 };
 
+type QueryPayload<T> = { data: T[] | null; error: unknown | null };
+type SettledQuery<T> = PromiseSettledResult<QueryPayload<T>>;
+
 type BuyerData = {
   favorites: Product[];
   recent: Product[];
@@ -93,6 +96,8 @@ const slugify = (value: string) => value.toLowerCase().normalize('NFD').replace(
 const formatDate = (value: string) => new Date(value).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
 const formatPrice = (value: number) => `${Number(value || 0).toLocaleString('es-ES')} €`;
 const productPath = (product: Product) => `/producto/${product.id}/${slugify(product.title)}`;
+const hasQueryFailed = <T,>(result: SettledQuery<T>) => result.status === 'rejected' || !!result.value.error;
+const getQueryData = <T,>(result: SettledQuery<T>): T[] => result.status === 'fulfilled' && !result.value.error ? (result.value.data || []) : [];
 const statusLabel = (value: string) => ({
   pending: 'Pendiente',
   accepted: 'Aceptada',
@@ -144,12 +149,12 @@ const BuyerCenter = () => {
         (supabase as any).from('offers').select('id,product_id,conversation_id,amount,status,created_at').eq('buyer_id', user.id).order('created_at', { ascending: false }).limit(50),
         supabase.from('transactions').select('id,product_id,amount,status,payment_status,shipping_status,sendcloud_tracking_url,created_at').eq('buyer_id', user.id).order('created_at', { ascending: false }).limit(50),
         supabase.from('conversations').select('id,product_id,updated_at').eq('buyer_id', user.id).order('updated_at', { ascending: false }).limit(20),
-      ]);
+      ]) as [SettledQuery<{ product_id: string }>, SettledQuery<Offer>, SettledQuery<Transaction>, SettledQuery<Conversation>];
 
-      const favoriteIds = favoritesResult.status === 'fulfilled' ? (favoritesResult.value.data || []).map((row: any) => row.product_id).filter(Boolean) : [];
-      const offers = offersResult.status === 'fulfilled' ? ((offersResult.value.data || []) as Offer[]) : [];
-      const transactions = transactionsResult.status === 'fulfilled' ? ((transactionsResult.value.data || []) as Transaction[]) : [];
-      const conversations = conversationsResult.status === 'fulfilled' ? ((conversationsResult.value.data || []) as Conversation[]) : [];
+      const favoriteIds = getQueryData(favoritesResult).map((row) => row.product_id).filter(Boolean);
+      const offers = getQueryData(offersResult);
+      const transactions = getQueryData(transactionsResult);
+      const conversations = getQueryData(conversationsResult);
 
       const relatedIds = Array.from(new Set([
         ...favoriteIds,
@@ -170,7 +175,7 @@ const BuyerCenter = () => {
       }
 
       const productsById = new Map(relatedProducts.map((product) => [product.id, product]));
-      const favorites = favoriteIds.map((id: string) => productsById.get(id)).filter(Boolean) as Product[];
+      const favorites = favoriteIds.map((id) => productsById.get(id)).filter(Boolean) as Product[];
       const recent = recentIds.map((id) => productsById.get(id)).filter(Boolean) as Product[];
       const excludedIds = Array.from(new Set([...favorites, ...recent].map((product) => product.id)));
       const categoryIds = Array.from(new Set([...favorites, ...recent].map((product) => product.category_id).filter(Boolean))) as string[];
@@ -198,14 +203,14 @@ const BuyerCenter = () => {
       setData({
         favorites,
         recent,
-        recommendations: (recommendationResult.data || []) as Product[],
+        recommendations: recommendationResult.error ? [] : (recommendationResult.data || []) as Product[],
         offers,
         transactions,
         conversations,
         productsById,
       });
 
-      const failedSections = [favoritesResult, offersResult, transactionsResult, conversationsResult].filter((result) => result.status === 'rejected').length;
+      const failedSections = [favoritesResult, offersResult, transactionsResult, conversationsResult].filter(hasQueryFailed).length + (recommendationResult.error ? 1 : 0);
       if (failedSections > 0) toast({ title: 'Panel cargado parcialmente', description: 'Alguna sección no pudo actualizarse. Puedes volver a intentarlo.' });
       if (manual && failedSections === 0) toast({ title: 'Centro actualizado' });
     } catch (error) {
@@ -301,7 +306,7 @@ const BuyerCenter = () => {
         <div className="grid gap-6 lg:grid-cols-2">
           <Card><CardHeader><CardTitle className="flex items-center gap-2"><Tag className="h-5 w-5 text-primary" />Tus ofertas</CardTitle><CardDescription>Ofertas pendientes o ya aceptadas por el vendedor.</CardDescription></CardHeader><CardContent className="space-y-3">{openOffers.length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">No tienes ofertas abiertas.</div> : openOffers.slice(0, 6).map((offer) => { const product = offer.product_id ? data.productsById.get(offer.product_id) : undefined; return <OperationCard key={offer.id} product={product} title="Oferta enviada" amount={offer.amount} status={offer.status} date={offer.created_at}><Button size="sm" variant="outline" asChild><Link to="/messages">Abrir chat</Link></Button>{product && <Button size="sm" asChild><Link to={productPath(product)}>Ver producto</Link></Button>}</OperationCard>; })}</CardContent></Card>
 
-          <Card><CardHeader><CardTitle className="flex items-center gap-2"><PackageCheck className="h-5 w-5 text-primary" />Compras y envíos</CardTitle><CardDescription>Pagos, entregas y operaciones recientes.</CardDescription></CardHeader><CardContent className="space-y-3">{activeTransactions.length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">No tienes compras en curso.</div> : activeTransactions.slice(0, 6).map((transaction) => { const product = data.productsById.get(transaction.product_id); return <OperationCard key={transaction.id} product={product} title={transaction.shipping_status ? `Envío: ${transaction.shipping_status}` : 'Compra en curso'} amount={transaction.amount} status={transaction.status} date={transaction.created_at}>{transaction.sendcloud_tracking_url && <Button size="sm" variant="outline" asChild><a href={transaction.sendcloud_tracking_url} target="_blank" rel="noreferrer">Seguimiento</a></Button>}{transaction.status === 'pending_payment' && <Button size="sm" asChild><Link to={`/checkout/${transaction.product_id}`}>Continuar pago</Link></Button>}<Button size="sm" variant="outline" asChild><Link to="/transactions">Detalles</Link></Button></OperationCard>; })}</CardContent></Card>
+          <Card><CardHeader><CardTitle className="flex items-center gap-2"><PackageCheck className="h-5 w-5 text-primary" />Compras y envíos</CardTitle><CardDescription>Pagos, entregas y operaciones recientes.</CardDescription></CardHeader><CardContent className="space-y-3">{activeTransactions.length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">No tienes compras en curso.</div> : activeTransactions.slice(0, 6).map((transaction) => { const product = data.productsById.get(transaction.product_id); return <OperationCard key={transaction.id} product={product} title={transaction.shipping_status ? `Envío: ${transaction.shipping_status}` : 'Compra en curso'} amount={transaction.amount} status={transaction.status} date={transaction.created_at}>{transaction.sendcloud_tracking_url && <Button size="sm" variant="outline" asChild><a href={transaction.sendcloud_tracking_url} target="_blank" rel="noreferrer">Seguimiento</a></Button>}<Button size="sm" variant="outline" asChild><Link to="/transactions">{transaction.status === 'pending_payment' ? 'Revisar pago' : 'Detalles'}</Link></Button></OperationCard>; })}</CardContent></Card>
         </div>
 
         <Card><CardHeader><CardTitle className="flex items-center gap-2"><MessageCircle className="h-5 w-5" />Conversaciones recientes</CardTitle><CardDescription>Retoma una negociación sin buscar otra vez el anuncio.</CardDescription></CardHeader><CardContent>{data.conversations.length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">Todavía no has iniciado conversaciones.</div> : <div className="grid gap-3 md:grid-cols-2">{data.conversations.slice(0, 8).map((conversation) => { const product = data.productsById.get(conversation.product_id); return <div key={conversation.id} className="flex items-center gap-3 rounded-xl border p-3"><div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">{product?.images?.[0] && <img src={product.images[0]} alt={product.title} className="h-full w-full object-cover" />}</div><div className="min-w-0 flex-1"><p className="truncate font-medium">{product?.title || 'Conversación de producto'}</p><p className="text-xs text-muted-foreground">Actualizada {formatDate(conversation.updated_at)}</p></div><Button size="sm" variant="outline" asChild><Link to="/messages">Abrir</Link></Button></div>; })}</div>}</CardContent></Card>
