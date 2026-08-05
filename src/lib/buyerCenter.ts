@@ -116,14 +116,15 @@ const readWatchSnapshot = (userId: string): WatchSnapshot => {
   }
 };
 
-const saveWatchSnapshot = (userId: string, products: BuyerProduct[]) => {
+const saveWatchSnapshot = (userId: string, products: BuyerProduct[], previous: WatchSnapshot) => {
   if (typeof window === 'undefined') return;
   const checkedAt = new Date().toISOString();
-  const next = Object.fromEntries(products.map((product) => [product.id, {
-    price: Number(product.price || 0),
-    status: product.status,
-    checkedAt,
-  }]));
+  const next = Object.fromEntries(products.map((product) => {
+    const currentPrice = Number(product.price || 0);
+    const oldPrice = Number(previous[product.id]?.price);
+    const referencePrice = Number.isFinite(oldPrice) && currentPrice < oldPrice ? oldPrice : currentPrice;
+    return [product.id, { price: referencePrice, status: product.status, checkedAt }];
+  }));
   try {
     localStorage.setItem(getWatchKey(userId), JSON.stringify(next));
   } catch {
@@ -208,7 +209,7 @@ export const loadBuyerCenter = async (userId: string): Promise<BuyerCenterData> 
 
   const previousSnapshot = readWatchSnapshot(userId);
   const watchChanges = calculateWatchChanges(previousSnapshot, favorites);
-  saveWatchSnapshot(userId, favorites);
+  saveWatchSnapshot(userId, favorites, previousSnapshot);
 
   const failedSections = results.filter((result) => result.status === 'rejected' || (result.status === 'fulfilled' && Boolean((result.value as any)?.error))).length;
 
