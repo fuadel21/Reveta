@@ -76,6 +76,7 @@ type RawProductReport = {
 };
 
 type RawBlock = { blocker_id: string; blocked_id: string; created_at: string };
+type RawSafetyNote = { report_id: string; notes: string };
 
 const ACTIVE_STATUSES = new Set<UnifiedSafetyStatus>(['open', 'under_review']);
 const IN_QUERY_CHUNK = 150;
@@ -187,6 +188,27 @@ const loadProfilesAndProducts = async (profileIds: string[], productIds: string[
   };
 };
 
+const loadAdminNotes = async (reportIds: string[]) => {
+  const notesByReportId = new Map<string, string>();
+  let failures = 0;
+
+  for (const ids of chunksOf(Array.from(new Set(reportIds.filter(Boolean))))) {
+    const { data, error } = await (supabase as any)
+      .from('safety_report_admin_notes')
+      .select('report_id,notes')
+      .in('report_id', ids);
+
+    if (error) {
+      failures += 1;
+      continue;
+    }
+
+    ((data || []) as RawSafetyNote[]).forEach((row) => notesByReportId.set(row.report_id, row.notes));
+  }
+
+  return { notesByReportId, failures };
+};
+
 const normalizeReports = (
   safetyRows: RawSafetyReport[],
   productRows: RawProductReport[],
@@ -276,14 +298,13 @@ const normalizeBlocks = (rows: RawBlock[], profilesById: Map<string, ProfileRow>
   createdAt: row.created_at,
 }));
 
-const PUBLIC_SAFETY_SELECT = 'id,reporter_id,reported_user_id,product_id,conversation_id,reason,details,source,status,reviewed_at,created_at';
-const ADMIN_SAFETY_SELECT = `${PUBLIC_SAFETY_SELECT},resolution_notes`;
+const SAFETY_SELECT = 'id,reporter_id,reported_user_id,product_id,conversation_id,reason,details,source,status,reviewed_at,created_at';
 const PRODUCT_REPORT_SELECT = 'id,product_id,seller_id,reporter_id,reason,details,status,created_at';
 const BLOCK_SELECT = 'blocker_id,blocked_id,created_at';
 
 export const loadSafetyCenter = async (userId: string): Promise<SafetyCenterData> => {
   const results = await Promise.allSettled([
-    (supabase as any).from('safety_reports').select(PUBLIC_SAFETY_SELECT).eq('reporter_id', userId).order('created_at', { ascending: false }).limit(100),
+    (supabase as any).from('safety_reports').select(SAFETY_SELECT).eq('reporter_id', userId).order('created_at', { ascending: false }).limit(100),
     (supabase as any).from('product_reports').select(PRODUCT_REPORT_SELECT).eq('reporter_id', userId).order('created_at', { ascending: false }).limit(100),
     (supabase as any).from('user_blocks').select(BLOCK_SELECT).eq('blocker_id', userId).order('created_at', { ascending: false }).limit(100),
     supabase.from('profiles').select('id,verified').eq('id', userId).maybeSingle(),
@@ -321,7 +342,7 @@ export const loadSafetyCenter = async (userId: string): Promise<SafetyCenterData
 
 export const loadAdminSafety = async (): Promise<AdminSafetyData> => {
   const results = await Promise.allSettled([
-    (supabase as any).from('safety_reports').select(ADMIN_SAFETY_SELECT).order('created_at', { ascending: false }).limit(1000),
+    (supabase as any).from('safety_reports').select(SAFETY_SELECT).order('created_at', { ascending: false }).limit(1000),
     (supabase as any).from('product_reports').select(PRODUCT_REPORT_SELECT).order('created_at', { ascending: false }).limit(1000),
     (supabase as any).from('user_blocks').select(BLOCK_SELECT).order('created_at', { ascending: false }).limit(1000),
   ]);
@@ -329,6 +350,11 @@ export const loadAdminSafety = async (): Promise<AdminSafetyData> => {
   const safetyRows = settledRows<RawSafetyReport>(results[0] as any);
   const productReportRows = settledRows<RawProductReport>(results[1] as any);
   const blockRows = settledRows<RawBlock>(results[2] as any);
+  const notes = await loadAdminNotes(safetyRows.map((row) => row.id));
+  const safetyRowsWithNotes = safetyRows.map((row) => ({
+    ...row,
+    resolution_notes: notes.notesByReportId.get(row.id) || null,
+  }));
 
   const profileIds = Array.from(new Set([
     ...safetyRows.flatMap((row) => [row.reporter_id, ...(row.reported_user_id ? [row.reported_user_id] : [])]),
@@ -341,10 +367,10 @@ export const loadAdminSafety = async (): Promise<AdminSafetyData> => {
   ]));
 
   const related = await loadProfilesAndProducts(profileIds, productIds);
-  const failedSections = results.filter((result) => result.status !== 'fulfilled' || Boolean((result as any).value?.error)).length + related.failures;
+  const failedSections = results.filter((result) => result.status !== 'fulfilled' || Boolean((result as any).value?.error)).length + related.failures + notes.failures;
 
   return {
-    reports: normalizeReports(safetyRows, productReportRows, related.profilesById, related.productsById),
+    reports: normalizeReports(safetyRowsWithNotes, productReportRows, related.profilesById, related.productsById),
     blocks: normalizeBlocks(blockRows, related.profilesById),
     failedSections,
   };
