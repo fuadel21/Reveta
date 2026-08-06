@@ -60,7 +60,7 @@ type RawSafetyReport = {
   source: string | null;
   status: string | null;
   reviewed_at: string | null;
-  resolution_notes: string | null;
+  resolution_notes?: string | null;
   created_at: string;
 };
 
@@ -226,7 +226,7 @@ const normalizeReports = (
       rawStatus: row.status || 'open',
       createdAt: row.created_at,
       reviewedAt: row.reviewed_at,
-      resolutionNotes: row.resolution_notes,
+      resolutionNotes: row.resolution_notes ?? null,
       recurrence: row.reported_user_id
         ? recurrenceByUser.get(row.reported_user_id) || 1
         : row.product_id
@@ -276,13 +276,14 @@ const normalizeBlocks = (rows: RawBlock[], profilesById: Map<string, ProfileRow>
   createdAt: row.created_at,
 }));
 
-const SAFETY_SELECT = 'id,reporter_id,reported_user_id,product_id,conversation_id,reason,details,source,status,reviewed_at,resolution_notes,created_at';
+const PUBLIC_SAFETY_SELECT = 'id,reporter_id,reported_user_id,product_id,conversation_id,reason,details,source,status,reviewed_at,created_at';
+const ADMIN_SAFETY_SELECT = `${PUBLIC_SAFETY_SELECT},resolution_notes`;
 const PRODUCT_REPORT_SELECT = 'id,product_id,seller_id,reporter_id,reason,details,status,created_at';
 const BLOCK_SELECT = 'blocker_id,blocked_id,created_at';
 
 export const loadSafetyCenter = async (userId: string): Promise<SafetyCenterData> => {
   const results = await Promise.allSettled([
-    (supabase as any).from('safety_reports').select(SAFETY_SELECT).eq('reporter_id', userId).order('created_at', { ascending: false }).limit(100),
+    (supabase as any).from('safety_reports').select(PUBLIC_SAFETY_SELECT).eq('reporter_id', userId).order('created_at', { ascending: false }).limit(100),
     (supabase as any).from('product_reports').select(PRODUCT_REPORT_SELECT).eq('reporter_id', userId).order('created_at', { ascending: false }).limit(100),
     (supabase as any).from('user_blocks').select(BLOCK_SELECT).eq('blocker_id', userId).order('created_at', { ascending: false }).limit(100),
     supabase.from('profiles').select('id,verified').eq('id', userId).maybeSingle(),
@@ -320,7 +321,7 @@ export const loadSafetyCenter = async (userId: string): Promise<SafetyCenterData
 
 export const loadAdminSafety = async (): Promise<AdminSafetyData> => {
   const results = await Promise.allSettled([
-    (supabase as any).from('safety_reports').select(SAFETY_SELECT).order('created_at', { ascending: false }).limit(1000),
+    (supabase as any).from('safety_reports').select(ADMIN_SAFETY_SELECT).order('created_at', { ascending: false }).limit(1000),
     (supabase as any).from('product_reports').select(PRODUCT_REPORT_SELECT).order('created_at', { ascending: false }).limit(1000),
     (supabase as any).from('user_blocks').select(BLOCK_SELECT).order('created_at', { ascending: false }).limit(1000),
   ]);
