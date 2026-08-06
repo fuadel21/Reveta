@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, Flag, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
@@ -38,6 +39,21 @@ const ReportProductButton = ({ productId, sellerId, productTitle, isOwner }: Rep
 
   if (isOwner) return null;
 
+  const notifySafetyChange = () => window.dispatchEvent(new CustomEvent('reveta:safety-changed'));
+
+  const findExistingReport = async () => {
+    if (!user) return null;
+    const { data, error } = await (supabase as any)
+      .from('product_reports')
+      .select('id,status')
+      .eq('product_id', productId)
+      .eq('reporter_id', user.id)
+      .limit(1)
+      .maybeSingle();
+    if (error) console.error('Error checking product report:', error);
+    return data || null;
+  };
+
   const openReportDialog = async () => {
     if (!user) {
       toast({ title: 'Inicia sesión', description: 'Debes iniciar sesión para denunciar un producto.', variant: 'destructive' });
@@ -49,14 +65,7 @@ const ReportProductButton = ({ productId, sellerId, productTitle, isOwner }: Rep
       return;
     }
 
-    const { data } = await (supabase as any)
-      .from('product_reports')
-      .select('id')
-      .eq('product_id', productId)
-      .eq('reporter_id', user.id)
-      .maybeSingle();
-
-    setAlreadyReported(!!data?.id);
+    setAlreadyReported(Boolean(await findExistingReport()));
     setOpen(true);
   };
 
@@ -87,16 +96,11 @@ const ReportProductButton = ({ productId, sellerId, productTitle, isOwner }: Rep
     setSubmitting(true);
 
     try {
-      const { data: existingReport } = await (supabase as any)
-        .from('product_reports')
-        .select('id')
-        .eq('product_id', productId)
-        .eq('reporter_id', user.id)
-        .maybeSingle();
-
+      const existingReport = await findExistingReport();
       if (existingReport?.id) {
         setAlreadyReported(true);
-        toast({ title: 'Ya lo has denunciado', description: 'Este producto ya está en revisión por el equipo de Reveta.' });
+        toast({ title: 'Ya lo has denunciado', description: 'Puedes seguir el estado desde Mi Centro de Protección.' });
+        notifySafetyChange();
         return;
       }
 
@@ -111,17 +115,21 @@ const ReportProductButton = ({ productId, sellerId, productTitle, isOwner }: Rep
 
       if (error) throw error;
 
-      toast({ title: 'Denuncia enviada', description: 'Gracias. Revisaremos este anuncio para proteger a la comunidad.' });
-      setOpen(false);
+      toast({ title: 'Denuncia enviada', description: 'Gracias. Puedes seguir su estado desde Mi Centro de Protección.' });
       setDetails('');
       setReason('possible_fraud');
       setAlreadyReported(true);
+      notifySafetyChange();
     } catch (error: any) {
       console.error('Error reporting product:', error);
+      if (error?.code === '23505') {
+        setAlreadyReported(true);
+        notifySafetyChange();
+      }
       toast({
-        title: 'No se pudo enviar',
-        description: error?.code === '23505' ? 'Ya has denunciado este producto.' : 'No se pudo registrar la denuncia. Inténtalo más tarde.',
-        variant: 'destructive',
+        title: error?.code === '23505' ? 'Ya lo has denunciado' : 'No se pudo enviar',
+        description: error?.code === '23505' ? 'Puedes seguir el estado desde Mi Centro de Protección.' : 'No se pudo registrar la denuncia. Inténtalo más tarde.',
+        variant: error?.code === '23505' ? 'default' : 'destructive',
       });
     } finally {
       submitLockRef.current = false;
@@ -131,7 +139,7 @@ const ReportProductButton = ({ productId, sellerId, productTitle, isOwner }: Rep
 
   return (
     <>
-      <Button variant="outline" className="w-full justify-center border-destructive/30 text-destructive hover:bg-destructive/10" onClick={openReportDialog}>
+      <Button variant="outline" className="w-full justify-center border-destructive/30 text-destructive hover:bg-destructive/10" onClick={() => void openReportDialog()}>
         <Flag className="mr-2 h-4 w-4" /> Denunciar producto
       </Button>
 
@@ -149,9 +157,10 @@ const ReportProductButton = ({ productId, sellerId, productTitle, isOwner }: Rep
               <div className="space-y-4">
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 flex gap-3">
                   <AlertTriangle className="h-5 w-5 shrink-0" />
-                  <span>Ya has denunciado este producto. El equipo de Reveta lo revisará desde el panel de seguridad.</span>
+                  <span>Ya has denunciado este producto. El equipo de Reveta lo revisará y conservará el contexto del anuncio.</span>
                 </div>
-                <Button className="w-full" onClick={() => setOpen(false)}>Cerrar</Button>
+                <Button asChild className="w-full"><Link to="/mi-proteccion">Ver estado en Mi protección</Link></Button>
+                <Button variant="outline" className="w-full" onClick={() => setOpen(false)}>Cerrar</Button>
               </div>
             ) : (
               <div className="space-y-4">
@@ -170,7 +179,7 @@ const ReportProductButton = ({ productId, sellerId, productTitle, isOwner }: Rep
 
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">No envíes pagos fuera de Reveta si tienes dudas. Evita transferencias anticipadas, enlaces externos o vendedores que presionan para cerrar rápido.</div>
 
-                <div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={() => setOpen(false)} disabled={submitting}>Cancelar</Button><Button className="flex-1" onClick={handleSubmit} disabled={submitting}>{submitting ? 'Enviando...' : 'Enviar denuncia'}</Button></div>
+                <div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={() => setOpen(false)} disabled={submitting}>Cancelar</Button><Button className="flex-1" onClick={() => void handleSubmit()} disabled={submitting}>{submitting ? 'Enviando...' : 'Enviar denuncia'}</Button></div>
               </div>
             )}
           </div>

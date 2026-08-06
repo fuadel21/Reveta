@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Plus, User, Heart, MessageCircle, Search, Shield, ShieldAlert, Settings, BookMarked, Receipt, MapPin, BarChart3, ShoppingBag, Bell } from "lucide-react";
+import { Plus, User, Heart, MessageCircle, Search, Shield, ShieldAlert, ShieldCheck, Settings, BookMarked, Receipt, MapPin, BarChart3, ShoppingBag, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
@@ -145,6 +145,7 @@ const Header = () => {
                   <DropdownMenuItem asChild><Link to="/notifications" className="flex items-center gap-2"><Bell className="h-4 w-4" />Notificaciones</Link></DropdownMenuItem>
                   <DropdownMenuItem asChild><Link to="/messages" className="flex items-center gap-2"><MessagesIcon compact />Mensajes{unreadMessages > 0 && <span className="ml-auto text-xs font-bold text-destructive">{unreadMessages > 9 ? '9+' : unreadMessages}</span>}</Link></DropdownMenuItem>
                   <DropdownMenuItem asChild><Link to="/saved-searches" className="flex items-center gap-2"><BookMarked className="h-4 w-4" />Búsquedas guardadas</Link></DropdownMenuItem>
+                  <DropdownMenuItem asChild><Link to="/mi-proteccion" className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" />Mi protección</Link></DropdownMenuItem>
                   {isAdmin && (
                     <>
                       <DropdownMenuSeparator />
