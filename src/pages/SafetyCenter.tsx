@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import {
@@ -51,12 +51,13 @@ import {
 } from '@/lib/trustSafety';
 
 const EMPTY_DATA: SafetyCenterData = { reports: [], blocks: [], verified: false, failedSections: 0 };
+const POLL_INTERVAL_MS = 30_000;
 
 const SafetyCenter = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const refreshTimer = useRef<number | null>(null);
+  const requestInFlight = useRef(false);
   const [data, setData] = useState<SafetyCenterData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -70,37 +71,9 @@ const SafetyCenter = () => {
     if (!authLoading && !user) navigate('/auth');
   }, [authLoading, navigate, user]);
 
-  useEffect(() => {
-    if (user?.id) void refreshData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const scheduleRefresh = () => {
-      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
-      refreshTimer.current = window.setTimeout(() => void refreshData(false, true), 450);
-    };
-
-    const channel = supabase
-      .channel(`protection-center-${user.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'safety_reports', filter: `reporter_id=eq.${user.id}` }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_reports', filter: `reporter_id=eq.${user.id}` }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_blocks', filter: `blocker_id=eq.${user.id}` }, scheduleRefresh)
-      .subscribe();
-
-    window.addEventListener('reveta:safety-changed', scheduleRefresh);
-    return () => {
-      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
-      window.removeEventListener('reveta:safety-changed', scheduleRefresh);
-      supabase.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
-
-  const refreshData = async (manual = false, silent = false) => {
-    if (!user) return;
+  const refreshData = useCallback(async (manual = false, silent = false) => {
+    if (!user || requestInFlight.current) return;
+    requestInFlight.current = true;
     if (manual) setRefreshing(true);
     else if (!silent) setLoading(true);
 
@@ -115,10 +88,35 @@ const SafetyCenter = () => {
       console.error('Error loading protection center:', error);
       if (!silent) toast({ title: 'No se pudo cargar tu protección', description: 'Inténtalo de nuevo en unos segundos.', variant: 'destructive' });
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [toast, user]);
+
+  useEffect(() => {
+    if (user?.id) void refreshData();
+  }, [refreshData, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refreshData(false, true);
+    };
+    const intervalId = window.setInterval(refreshWhenVisible, POLL_INTERVAL_MS);
+
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('reveta:safety-changed', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('reveta:safety-changed', refreshWhenVisible);
+    };
+  }, [refreshData, user?.id]);
 
   const filteredReports = useMemo(() => {
     const term = query.trim().toLowerCase();

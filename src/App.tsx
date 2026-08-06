@@ -34,6 +34,7 @@ const Safety = lazy(() => import("./pages/Safety"));
 const SafetyCenter = lazy(() => import("./pages/SafetyCenter"));
 const Admin = lazy(() => import("./pages/Admin"));
 const AdminSafety = lazy(() => import("./pages/AdminSafety"));
+const AdminConversationReview = lazy(() => import("./pages/AdminConversationReview"));
 const AdminGrowth = lazy(() => import("./pages/AdminGrowth"));
 const AdminDisputeDetail = lazy(() => import("./pages/AdminDisputeDetail"));
 const Transactions = lazy(() => import("./pages/Transactions"));
@@ -88,6 +89,7 @@ const App = () => (
       <Route path="/mi-proteccion" element={privatePage("Mi Centro de Protección | Reveta", <SafetyCenter />)} />
       <Route path="/admin" element={privatePage("Administración | Reveta", <Admin />)} />
       <Route path="/admin/safety" element={privatePage("Seguridad admin | Reveta", <AdminSafety />)} />
+      <Route path="/admin/safety/conversations/:id" element={privatePage("Revisión de conversación | Reveta", <AdminConversationReview />)} />
       <Route path="/admin/growth" element={privatePage("Growth admin | Reveta", <AdminGrowth />)} />
       <Route path="/admin/disputes/:id" element={privatePage("Incidencia admin | Reveta", <AdminDisputeDetail />)} />
       <Route path="/transactions" element={privatePage("Transacciones | Reveta", <Transactions />)} />
