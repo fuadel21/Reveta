@@ -31,6 +31,7 @@ const Search = lazy(() => import("./pages/Search"));
 const SeoIndex = lazy(() => import("./pages/SeoIndex"));
 const SeoLanding = lazy(() => import("./pages/SeoLanding"));
 const Safety = lazy(() => import("./pages/Safety"));
+const SafetyCenter = lazy(() => import("./pages/SafetyCenter"));
 const Admin = lazy(() => import("./pages/Admin"));
 const AdminSafety = lazy(() => import("./pages/AdminSafety"));
 const AdminGrowth = lazy(() => import("./pages/AdminGrowth"));
@@ -84,6 +85,7 @@ const App = () => (
       <Route path="/segunda-mano/:city" element={<SeoLanding />} />
       <Route path="/segunda-mano/:city/:category" element={<SeoLanding />} />
       <Route path="/seguridad" element={<Safety />} />
+      <Route path="/mi-proteccion" element={privatePage("Mi Centro de Protección | Reveta", <SafetyCenter />)} />
       <Route path="/admin" element={privatePage("Administración | Reveta", <Admin />)} />
       <Route path="/admin/safety" element={privatePage("Seguridad admin | Reveta", <AdminSafety />)} />
       <Route path="/admin/growth" element={privatePage("Growth admin | Reveta", <AdminGrowth />)} />
