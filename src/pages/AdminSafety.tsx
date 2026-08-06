@@ -53,6 +53,7 @@ const AdminSafety = () => {
   const { user, loading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdmin();
   const requestInFlight = useRef(false);
+  const writeInFlight = useRef(false);
   const dirtyNotes = useRef(new Set<string>());
   const [data, setData] = useState<AdminSafetyData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
@@ -76,8 +77,8 @@ const AdminSafety = () => {
     }
   }, [adminLoading, isAdmin, navigate, user]);
 
-  const fetchData = useCallback(async (manual = false, silent = false) => {
-    if (!isAdmin || requestInFlight.current) return;
+  const fetchData = useCallback(async (manual = false, silent = false, bypassWriteLock = false) => {
+    if (!isAdmin || (!bypassWriteLock && writeInFlight.current) || requestInFlight.current) return;
     requestInFlight.current = true;
     if (manual) setRefreshing(true);
     else if (!silent) setLoading(true);
@@ -125,12 +126,21 @@ const AdminSafety = () => {
     };
   }, [fetchData, isAdmin]);
 
+  const waitForRefreshIdle = async () => {
+    while (requestInFlight.current) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 25));
+    }
+  };
+
   const updateReport = async (report: UnifiedSafetyReport, status: UnifiedSafetyStatus) => {
     if (!user || updatingKey) return;
     const key = `${report.kind}-${report.id}`;
     setUpdatingKey(key);
+    writeInFlight.current = true;
 
     try {
+      await waitForRefreshIdle();
+
       if (report.kind === 'user') {
         const now = new Date().toISOString();
         const cleanNotes = (notes[report.id] || '').trim().slice(0, 2000) || null;
@@ -144,7 +154,6 @@ const AdminSafety = () => {
           })
           .eq('id', report.id);
         if (error) throw error;
-        dirtyNotes.current.delete(report.id);
       } else {
         const { error } = await (supabase as any)
           .from('product_reports')
@@ -153,12 +162,14 @@ const AdminSafety = () => {
         if (error) throw error;
       }
 
+      await fetchData(false, true, true);
+      if (report.kind === 'user') dirtyNotes.current.delete(report.id);
       toast.success('Reporte actualizado');
-      await fetchData(false, true);
     } catch (error) {
       console.error('Error updating safety report:', error);
       toast.error('No se pudo actualizar el reporte');
     } finally {
+      writeInFlight.current = false;
       setUpdatingKey(null);
     }
   };
