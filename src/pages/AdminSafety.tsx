@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import {
@@ -28,18 +28,19 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import {
+  adminSafetyContextHref,
   formatSafetyDate,
   isActiveSafetyStatus,
   loadAdminSafety,
   SAFETY_SOURCE_LABELS,
   SAFETY_STATUS_LABELS,
-  safetyContextHref,
   type AdminSafetyData,
   type UnifiedSafetyReport,
   type UnifiedSafetyStatus,
 } from '@/lib/trustSafety';
 
 const EMPTY_DATA: AdminSafetyData = { reports: [], blocks: [], failedSections: 0 };
+const POLL_INTERVAL_MS = 30_000;
 const PRODUCT_STATUS_MAP: Record<UnifiedSafetyStatus, string> = {
   open: 'pending',
   under_review: 'reviewing',
@@ -51,7 +52,8 @@ const AdminSafety = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useAdmin();
-  const refreshTimer = useRef<number | null>(null);
+  const requestInFlight = useRef(false);
+  const dirtyNotes = useRef(new Set<string>());
   const [data, setData] = useState<AdminSafetyData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -74,58 +76,54 @@ const AdminSafety = () => {
     }
   }, [adminLoading, isAdmin, navigate, user]);
 
-  useEffect(() => {
-    if (isAdmin) void fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-
-    const scheduleRefresh = () => {
-      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
-      refreshTimer.current = window.setTimeout(() => void fetchData(false, true), 500);
-    };
-
-    const channel = supabase
-      .channel('admin-protection-center')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'safety_reports' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_reports' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_blocks' }, scheduleRefresh)
-      .subscribe();
-
-    return () => {
-      if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
-      supabase.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin]);
-
-  const fetchData = async (manual = false, silent = false) => {
+  const fetchData = useCallback(async (manual = false, silent = false) => {
+    if (!isAdmin || requestInFlight.current) return;
+    requestInFlight.current = true;
     if (manual) setRefreshing(true);
     else if (!silent) setLoading(true);
 
     try {
-      const [centerData, notesResult] = await Promise.all([
-        loadAdminSafety(),
-        (supabase as any).from('safety_reports').select('id,resolution_notes').limit(1000),
-      ]);
-
+      const centerData = await loadAdminSafety();
       setData(centerData);
-      if (!notesResult.error) {
-        setNotes(Object.fromEntries((notesResult.data || []).map((row: any) => [row.id, row.resolution_notes || ''])));
-      }
-
-      if (manual && centerData.failedSections === 0 && !notesResult.error) toast.success('Seguridad actualizada');
-      if (!silent && (centerData.failedSections > 0 || notesResult.error)) toast.warning('La cola se cargó parcialmente');
+      setNotes((current) => {
+        const next = { ...current };
+        centerData.reports.forEach((report) => {
+          if (report.kind === 'user' && !dirtyNotes.current.has(report.id)) {
+            next[report.id] = report.resolutionNotes || '';
+          }
+        });
+        return next;
+      });
+      if (manual && centerData.failedSections === 0) toast.success('Seguridad actualizada');
+      if (!silent && centerData.failedSections > 0) toast.warning('La cola se cargó parcialmente');
     } catch (error) {
       console.error('Error loading admin safety center:', error);
       if (!silent) toast.error('No se pudo cargar la cola de seguridad');
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (isAdmin) void fetchData();
+  }, [fetchData, isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void fetchData(false, true);
+    };
+    const intervalId = window.setInterval(refreshWhenVisible, POLL_INTERVAL_MS);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [fetchData, isAdmin]);
 
   const updateReport = async (report: UnifiedSafetyReport, status: UnifiedSafetyStatus) => {
     if (!user || updatingKey) return;
@@ -135,16 +133,18 @@ const AdminSafety = () => {
     try {
       if (report.kind === 'user') {
         const now = new Date().toISOString();
+        const cleanNotes = (notes[report.id] || '').trim().slice(0, 2000) || null;
         const { error } = await (supabase as any)
           .from('safety_reports')
           .update({
             status,
-            resolution_notes: (notes[report.id] || '').trim().slice(0, 2000) || null,
+            resolution_notes: cleanNotes,
             reviewed_by: user.id,
             reviewed_at: now,
           })
           .eq('id', report.id);
         if (error) throw error;
+        dirtyNotes.current.delete(report.id);
       } else {
         const { error } = await (supabase as any)
           .from('product_reports')
@@ -197,7 +197,7 @@ const AdminSafety = () => {
       const matchesKind = kindFilter === 'all' || report.kind === kindFilter;
       const matchesSource = sourceFilter === 'all' || report.source === sourceFilter;
       const matchesRecurrence = recurrenceFilter === 'all' || report.recurrence > 1;
-      const haystack = `${report.reason} ${report.details || ''} ${report.reportedName} ${report.productTitle || ''} ${SAFETY_SOURCE_LABELS[report.source] || report.source}`.toLowerCase();
+      const haystack = `${report.reason} ${report.details || ''} ${report.reporterName} ${report.reportedName} ${report.productTitle || ''} ${SAFETY_SOURCE_LABELS[report.source] || report.source}`.toLowerCase();
       return matchesStatus && matchesKind && matchesSource && matchesRecurrence && (!term || haystack.includes(term));
     });
   }, [data.reports, kindFilter, query, recurrenceFilter, sourceFilter, statusFilter]);
@@ -241,7 +241,7 @@ const AdminSafety = () => {
 
               {loading ? <Card><CardContent className="flex justify-center py-12"><Loader2 className="h-7 w-7 animate-spin text-primary" /></CardContent></Card> : filteredReports.length === 0 ? <Card><CardContent className="py-12 text-center text-muted-foreground">No hay reportes con estos filtros.</CardContent></Card> : <div className="space-y-4">{filteredReports.map((report) => {
                 const key = `${report.kind}-${report.id}`;
-                const href = safetyContextHref(report);
+                const href = adminSafetyContextHref(report);
                 const isUpdating = updatingKey === key || updatingKey === `retire-${report.productId}`;
                 return (
                   <Card key={key} className={report.recurrence > 1 ? 'border-amber-300' : ''}>
@@ -249,13 +249,13 @@ const AdminSafety = () => {
                       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
                         <div className="min-w-0 space-y-3">
                           <div className="flex flex-wrap items-center gap-2"><Badge variant={report.kind === 'product' ? 'secondary' : 'outline'}>{report.kind === 'product' ? 'Producto' : 'Usuario'}</Badge><Badge variant={report.status === 'resolved' ? 'default' : report.status === 'dismissed' ? 'secondary' : 'outline'}>{SAFETY_STATUS_LABELS[report.status]}</Badge><Badge variant="outline">{SAFETY_SOURCE_LABELS[report.source] || report.source}</Badge>{report.recurrence > 1 && <Badge className="bg-amber-500">{report.recurrence} coincidencias</Badge>}</div>
-                          <div><h2 className="text-lg font-semibold">{report.productTitle || report.reportedName}</h2><p className="text-sm text-muted-foreground">Reportado: {report.reportedName} · {formatSafetyDate(report.createdAt)}</p></div>
+                          <div><h2 className="text-lg font-semibold">{report.productTitle || report.reportedName}</h2><p className="text-sm text-muted-foreground">Reporta: {report.reporterName} · Reportado: {report.reportedName} · {formatSafetyDate(report.createdAt)}</p></div>
                           <div><p className="font-medium">{report.reason}</p>{report.details && <p className="mt-2 whitespace-pre-wrap rounded-xl bg-muted/50 p-3 text-sm text-muted-foreground">{report.details}</p>}</div>
                           <div className="flex flex-wrap gap-2">{href && <Button size="sm" variant="outline" asChild><Link to={href}><ExternalLink className="mr-1 h-4 w-4" />Abrir contexto</Link></Button>}{report.reportedUserId && <Button size="sm" variant="outline" asChild><Link to={`/usuario/${encodeURIComponent(report.reportedUserId)}`}>Ver perfil</Link></Button>}{report.kind === 'product' && report.productStatus === 'active' && <Button size="sm" variant="destructive" disabled={isUpdating} onClick={() => void retireProduct(report)}><PackageX className="mr-1 h-4 w-4" />Retirar anuncio</Button>}</div>
                         </div>
 
                         <div className="space-y-3">
-                          {report.kind === 'user' ? <Textarea value={notes[report.id] || ''} onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.target.value.slice(0, 2000) }))} placeholder="Notas internas, pruebas y decisión..." rows={4} disabled={isUpdating} /> : <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">Las denuncias de producto conservan estado y contexto. Las notas internas siguen disponibles para reportes de usuario.</div>}
+                          {report.kind === 'user' ? <Textarea value={notes[report.id] || ''} onChange={(event) => { dirtyNotes.current.add(report.id); setNotes((current) => ({ ...current, [report.id]: event.target.value.slice(0, 2000) })); }} placeholder="Notas internas, pruebas y decisión..." rows={4} disabled={isUpdating} /> : <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">Las denuncias de producto conservan estado y contexto. Las notas internas se guardan en los reportes de usuario.</div>}
                           <div className="grid grid-cols-3 gap-2"><Button size="sm" variant="outline" disabled={isUpdating} onClick={() => void updateReport(report, 'under_review')}>Revisar</Button><Button size="sm" disabled={isUpdating} onClick={() => void updateReport(report, 'resolved')}><CheckCircle2 className="mr-1 h-4 w-4" />Resolver</Button><Button size="sm" variant="secondary" disabled={isUpdating} onClick={() => void updateReport(report, 'dismissed')}>Descartar</Button></div>
                         </div>
                       </div>
