@@ -4,6 +4,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useAuth } from '@/hooks/useAuth';
 import { AlertTriangle, Ban, CheckCircle2, CreditCard, FileWarning, Flag, Lock, MessageCircle, PackageCheck, ShieldCheck, Smartphone, Truck } from 'lucide-react';
 
 const buyerSteps = [
@@ -52,7 +53,7 @@ const protectionCards = [
   },
 ];
 
-const socialImage = 'https://reveta.es/og-image.svg?v=20260710';
+const socialImage = 'https://reveta.es/og-image.png';
 
 const safetyJsonLd = {
   '@context': 'https://schema.org',
@@ -119,6 +120,8 @@ const breadcrumbJsonLd = {
 };
 
 const Safety = () => {
+  const { user } = useAuth();
+
   return (
     <>
       <Helmet>
@@ -133,7 +136,7 @@ const Safety = () => {
         <meta property="og:url" content="https://reveta.es/seguridad" />
         <meta property="og:image" content={socialImage} />
         <meta property="og:image:secure_url" content={socialImage} />
-        <meta property="og:image:type" content="image/svg+xml" />
+        <meta property="og:image:type" content="image/png" />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
         <meta property="og:site_name" content="Reveta" />
@@ -161,12 +164,8 @@ const Safety = () => {
                   Seguridad, antifraude y herramientas de confianza para comprar y vender productos de segunda mano sin salir del entorno seguro de Reveta.
                 </p>
                 <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                  <Button asChild size="lg">
-                    <Link to="/search">Buscar productos seguros</Link>
-                  </Button>
-                  <Button asChild size="lg" variant="outline">
-                    <Link to="/upload">Vender con seguridad</Link>
-                  </Button>
+                  <Button asChild size="lg"><Link to="/search">Buscar productos seguros</Link></Button>
+                  <Button asChild size="lg" variant="outline"><Link to={user ? '/mi-proteccion' : '/auth'}>{user ? 'Abrir mi protección' : 'Entrar a mi protección'}</Link></Button>
                 </div>
               </div>
             </div>
@@ -179,9 +178,7 @@ const Safety = () => {
                 return (
                   <Card key={item.title}>
                     <CardContent className="pt-6">
-                      <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                        <Icon className="h-5 w-5" />
-                      </div>
+                      <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Icon className="h-5 w-5" /></div>
                       <h2 className="font-bold">{item.title}</h2>
                       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.text}</p>
                     </CardContent>
@@ -192,86 +189,31 @@ const Safety = () => {
           </section>
 
           <section className="container pb-10">
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="mb-4 flex items-center gap-3">
-                    <CreditCard className="h-6 w-6 text-primary" />
-                    <h2 className="text-2xl font-bold">Para compradores</h2>
-                  </div>
-                  <div className="space-y-3">
-                    {buyerSteps.map((item) => (
-                      <div key={item} className="flex gap-3 text-sm text-muted-foreground">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                        <span>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+            <div className="rounded-3xl border border-primary/20 bg-primary/5 p-6 md:flex md:items-center md:justify-between md:gap-8 md:p-8">
+              <div className="flex gap-4"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground"><ShieldCheck className="h-6 w-6" /></div><div><h2 className="text-2xl font-bold">Tu historial de protección, en un solo lugar</h2><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Consulta el estado de denuncias de producto y usuario, revisa tus bloqueos, desbloquea personas y comprueba las señales de confianza de tu cuenta.</p></div></div>
+              <Button asChild className="mt-5 shrink-0 md:mt-0"><Link to={user ? '/mi-proteccion' : '/auth'}>{user ? 'Ir a Mi Centro de Protección' : 'Iniciar sesión'}</Link></Button>
+            </div>
+          </section>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="mb-4 flex items-center gap-3">
-                    <Truck className="h-6 w-6 text-primary" />
-                    <h2 className="text-2xl font-bold">Para vendedores</h2>
-                  </div>
-                  <div className="space-y-3">
-                    {sellerSteps.map((item) => (
-                      <div key={item} className="flex gap-3 text-sm text-muted-foreground">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                        <span>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+          <section className="container pb-10">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card><CardContent className="pt-6"><div className="mb-4 flex items-center gap-3"><CreditCard className="h-6 w-6 text-primary" /><h2 className="text-2xl font-bold">Para compradores</h2></div><div className="space-y-3">{buyerSteps.map((item) => <div key={item} className="flex gap-3 text-sm text-muted-foreground"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>{item}</span></div>)}</div></CardContent></Card>
+              <Card><CardContent className="pt-6"><div className="mb-4 flex items-center gap-3"><Truck className="h-6 w-6 text-primary" /><h2 className="text-2xl font-bold">Para vendedores</h2></div><div className="space-y-3">{sellerSteps.map((item) => <div key={item} className="flex gap-3 text-sm text-muted-foreground"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><span>{item}</span></div>)}</div></CardContent></Card>
             </div>
           </section>
 
           <section className="container pb-10">
             <div className="rounded-3xl border border-amber-200 bg-amber-50 p-6 md:p-8">
-              <div className="mb-5 flex items-start gap-3 text-amber-950">
-                <AlertTriangle className="mt-1 h-6 w-6 shrink-0" />
-                <div>
-                  <h2 className="text-2xl font-bold">Señales de alerta de fraude</h2>
-                  <p className="mt-2 text-sm text-amber-900">Si ves una o varias de estas señales, no pagues y denuncia el producto.</p>
-                </div>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                {warningSigns.map((item) => (
-                  <div key={item} className="flex gap-3 rounded-2xl bg-white/70 p-3 text-sm text-amber-950">
-                    <Ban className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
+              <div className="mb-5 flex items-start gap-3 text-amber-950"><AlertTriangle className="mt-1 h-6 w-6 shrink-0" /><div><h2 className="text-2xl font-bold">Señales de alerta de fraude</h2><p className="mt-2 text-sm text-amber-900">Si ves una o varias de estas señales, no pagues y denuncia el producto.</p></div></div>
+              <div className="grid gap-3 md:grid-cols-2">{warningSigns.map((item) => <div key={item} className="flex gap-3 rounded-2xl bg-white/70 p-3 text-sm text-amber-950"><Ban className="mt-0.5 h-4 w-4 shrink-0" /><span>{item}</span></div>)}</div>
             </div>
           </section>
 
           <section className="container pb-14">
             <div className="grid gap-5 md:grid-cols-3">
-              <Card>
-                <CardContent className="pt-6">
-                  <Lock className="mb-3 h-6 w-6 text-primary" />
-                  <h2 className="font-bold">No salgas del entorno seguro</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Evita enlaces externos, webs clonadas y pagos que no puedas demostrar dentro de Reveta.</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <Smartphone className="mb-3 h-6 w-6 text-primary" />
-                  <h2 className="font-bold">Cuidado con Bizum inverso</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Lee cada solicitud antes de aceptar. Un falso ingreso puede ser una solicitud para que tú envíes dinero.</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <FileWarning className="mb-3 h-6 w-6 text-primary" />
-                  <h2 className="font-bold">Documenta productos valiosos</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Guarda fotos, vídeos, número de serie y embalaje cuando vendas o compres productos de alto valor.</p>
-                </CardContent>
-              </Card>
+              <Card><CardContent className="pt-6"><Lock className="mb-3 h-6 w-6 text-primary" /><h2 className="font-bold">No salgas del entorno seguro</h2><p className="mt-2 text-sm text-muted-foreground">Evita enlaces externos, webs clonadas y pagos que no puedas demostrar dentro de Reveta.</p></CardContent></Card>
+              <Card><CardContent className="pt-6"><Smartphone className="mb-3 h-6 w-6 text-primary" /><h2 className="font-bold">Cuidado con Bizum inverso</h2><p className="mt-2 text-sm text-muted-foreground">Lee cada solicitud antes de aceptar. Un falso ingreso puede ser una solicitud para que tú envíes dinero.</p></CardContent></Card>
+              <Card><CardContent className="pt-6"><FileWarning className="mb-3 h-6 w-6 text-primary" /><h2 className="font-bold">Documenta productos valiosos</h2><p className="mt-2 text-sm text-muted-foreground">Guarda fotos, vídeos, número de serie y embalaje cuando vendas o compres productos de alto valor.</p></CardContent></Card>
             </div>
           </section>
         </main>
