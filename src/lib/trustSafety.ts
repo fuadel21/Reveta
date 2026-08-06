@@ -7,6 +7,7 @@ export type UnifiedSafetyReport = {
   id: string;
   kind: UnifiedSafetyKind;
   reporterId: string;
+  reporterName: string;
   reportedUserId: string | null;
   reportedName: string;
   productId: string | null;
@@ -75,6 +76,7 @@ type RawProductReport = {
 type RawBlock = { blocker_id: string; blocked_id: string; created_at: string };
 
 const ACTIVE_STATUSES = new Set<UnifiedSafetyStatus>(['open', 'under_review']);
+const IN_QUERY_CHUNK = 150;
 
 export const SAFETY_STATUS_LABELS: Record<UnifiedSafetyStatus, string> = {
   open: 'Abierto',
@@ -125,8 +127,8 @@ const productSlug = (value: string) => value
   .slice(0, 80) || 'producto';
 
 export const safetyContextHref = (report: UnifiedSafetyReport) => {
-  if (report.productId && report.productTitle) return `/producto/${report.productId}/${productSlug(report.productTitle)}`;
   if (report.conversationId) return `/messages?conversation=${encodeURIComponent(report.conversationId)}`;
+  if (report.productId && report.productTitle) return `/producto/${report.productId}/${productSlug(report.productTitle)}`;
   if (report.reportedUserId) return `/usuario/${encodeURIComponent(report.reportedUserId)}`;
   return null;
 };
@@ -136,37 +138,43 @@ const settledRows = <T,>(result: PromiseSettledResult<{ data?: T[] | null; error
   return (result.value.data || []) as T[];
 };
 
+const chunksOf = <T,>(items: T[], size = IN_QUERY_CHUNK) => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size));
+  return chunks;
+};
+
 const loadProfilesAndProducts = async (profileIds: string[], productIds: string[]) => {
-  const requests: PromiseLike<{ data?: any[] | null; error?: unknown }>[] = [];
-  const keys: ('profiles' | 'products')[] = [];
+  const uniqueProfiles = Array.from(new Set(profileIds.filter(Boolean)));
+  const uniqueProducts = Array.from(new Set(productIds.filter(Boolean)));
 
-  if (profileIds.length > 0) {
-    keys.push('profiles');
-    requests.push(supabase.from('profiles').select('id,full_name,username,verified').in('id', profileIds));
-  }
-  if (productIds.length > 0) {
-    keys.push('products');
-    requests.push(supabase.from('products').select('id,title,status,user_id').in('id', productIds));
-  }
-
-  const results = await Promise.allSettled(requests);
-  let profileRows: ProfileRow[] = [];
-  let productRows: ProductRow[] = [];
-  let failures = 0;
-
-  results.forEach((result, index) => {
-    if (result.status !== 'fulfilled' || result.value.error) {
-      failures += 1;
-      return;
+  const fetchProfiles = async () => {
+    const rows: ProfileRow[] = [];
+    let failures = 0;
+    for (const ids of chunksOf(uniqueProfiles)) {
+      const { data, error } = await supabase.from('profiles').select('id,full_name,username,verified').in('id', ids);
+      if (error) failures += 1;
+      else rows.push(...((data || []) as ProfileRow[]));
     }
-    if (keys[index] === 'profiles') profileRows = (result.value.data || []) as ProfileRow[];
-    if (keys[index] === 'products') productRows = (result.value.data || []) as ProductRow[];
-  });
+    return { rows, failures };
+  };
 
+  const fetchProducts = async () => {
+    const rows: ProductRow[] = [];
+    let failures = 0;
+    for (const ids of chunksOf(uniqueProducts)) {
+      const { data, error } = await supabase.from('products').select('id,title,status,user_id').in('id', ids);
+      if (error) failures += 1;
+      else rows.push(...((data || []) as ProductRow[]));
+    }
+    return { rows, failures };
+  };
+
+  const [profiles, products] = await Promise.all([fetchProfiles(), fetchProducts()]);
   return {
-    profilesById: new Map(profileRows.map((row) => [row.id, row])),
-    productsById: new Map(productRows.map((row) => [row.id, row])),
-    failures,
+    profilesById: new Map(profiles.rows.map((row) => [row.id, row])),
+    productsById: new Map(products.rows.map((row) => [row.id, row])),
+    failures: profiles.failures + products.failures,
   };
 };
 
@@ -195,6 +203,7 @@ const normalizeReports = (
       id: row.id,
       kind: 'user',
       reporterId: row.reporter_id,
+      reporterName: profileName(profilesById.get(row.reporter_id)),
       reportedUserId: row.reported_user_id,
       reportedName: profileName(row.reported_user_id ? profilesById.get(row.reported_user_id) : null),
       productId: row.product_id,
@@ -223,6 +232,7 @@ const normalizeReports = (
       id: row.id,
       kind: 'product',
       reporterId: row.reporter_id,
+      reporterName: profileName(profilesById.get(row.reporter_id)),
       reportedUserId: row.seller_id,
       reportedName: profileName(row.seller_id ? profilesById.get(row.seller_id) : null),
       productId: row.product_id,
@@ -273,8 +283,8 @@ export const loadSafetyCenter = async (userId: string): Promise<SafetyCenterData
 
   const profileIds = Array.from(new Set([
     userId,
-    ...safetyRows.flatMap((row) => row.reported_user_id ? [row.reported_user_id] : []),
-    ...productReportRows.flatMap((row) => row.seller_id ? [row.seller_id] : []),
+    ...safetyRows.flatMap((row) => [row.reporter_id, ...(row.reported_user_id ? [row.reported_user_id] : [])]),
+    ...productReportRows.flatMap((row) => [row.reporter_id, ...(row.seller_id ? [row.seller_id] : [])]),
     ...blockRows.flatMap((row) => [row.blocker_id, row.blocked_id]),
   ]));
   const productIds = Array.from(new Set([
