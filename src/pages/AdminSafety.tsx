@@ -142,17 +142,12 @@ const AdminSafety = () => {
       await waitForRefreshIdle();
 
       if (report.kind === 'user') {
-        const now = new Date().toISOString();
         const cleanNotes = (notes[report.id] || '').trim().slice(0, 2000) || null;
-        const { error } = await (supabase as any)
-          .from('safety_reports')
-          .update({
-            status,
-            resolution_notes: cleanNotes,
-            reviewed_by: user.id,
-            reviewed_at: now,
-          })
-          .eq('id', report.id);
+        const { error } = await (supabase as any).rpc('admin_update_safety_report', {
+          p_report_id: report.id,
+          p_status: status,
+          p_notes: cleanNotes,
+        });
         if (error) throw error;
       } else {
         const { error } = await (supabase as any)
