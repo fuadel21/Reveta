@@ -13,9 +13,10 @@ interface BlockedUser {
   };
 }
 
-const normalizeReason = (value?: string) => {
-  const reason = value?.trim().replace(/\s+/g, ' ') || '';
-  return reason ? reason.slice(0, 300) : null;
+type UserBlockRow = {
+  blocker_id: string;
+  blocked_id: string;
+  created_at: string;
 };
 
 export const useBlockedUsers = () => {
@@ -33,10 +34,10 @@ export const useBlockedUsers = () => {
     }
 
     setLoading(true);
-    const { data, error } = await supabase
-      .from('blocked_users')
-      .select('id, blocked_user_id, reason, created_at')
-      .eq('user_id', user.id)
+    const { data, error } = await (supabase as any)
+      .from('user_blocks')
+      .select('blocker_id,blocked_id,created_at')
+      .eq('blocker_id', user.id)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -44,8 +45,14 @@ export const useBlockedUsers = () => {
       setBlockedUsers([]);
       setBlockedUserIds(new Set());
     } else {
-      setBlockedUsers(data || []);
-      setBlockedUserIds(new Set((data || []).map((blocked) => blocked.blocked_user_id)));
+      const rows = ((data || []) as UserBlockRow[]).map((row) => ({
+        id: `${row.blocker_id}:${row.blocked_id}`,
+        blocked_user_id: row.blocked_id,
+        reason: null,
+        created_at: row.created_at,
+      }));
+      setBlockedUsers(rows);
+      setBlockedUserIds(new Set(rows.map((blocked) => blocked.blocked_user_id)));
     }
 
     setLoading(false);
@@ -53,7 +60,7 @@ export const useBlockedUsers = () => {
 
   const isBlocked = useCallback((userId: string) => blockedUserIds.has(userId), [blockedUserIds]);
 
-  const blockUser = useCallback(async (blockedUserId: string, reason?: string) => {
+  const blockUser = useCallback(async (blockedUserId: string, _reason?: string) => {
     if (!user || !blockedUserId) return false;
     if (blockedUserId === user.id) {
       console.warn('Cannot block yourself');
@@ -62,32 +69,18 @@ export const useBlockedUsers = () => {
 
     if (blockedUserIds.has(blockedUserId)) return true;
 
-    const safeReason = normalizeReason(reason);
-    const { data: existingBlock, error: checkError } = await supabase
-      .from('blocked_users')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('blocked_user_id', blockedUserId)
-      .maybeSingle();
-
-    if (checkError) {
-      console.error('Error checking blocked user:', checkError);
-      return false;
-    }
-
-    const { error } = existingBlock?.id
-      ? await supabase
-        .from('blocked_users')
-        .update({ reason: safeReason })
-        .eq('id', existingBlock.id)
-        .eq('user_id', user.id)
-      : await supabase
-        .from('blocked_users')
-        .insert({
-          user_id: user.id,
-          blocked_user_id: blockedUserId,
-          reason: safeReason,
-        } as any);
+    const { error } = await (supabase as any)
+      .from('user_blocks')
+      .upsert(
+        {
+          blocker_id: user.id,
+          blocked_id: blockedUserId,
+        },
+        {
+          onConflict: 'blocker_id,blocked_id',
+          ignoreDuplicates: true,
+        },
+      );
 
     if (error) {
       console.error('Error blocking user:', error);
@@ -95,17 +88,18 @@ export const useBlockedUsers = () => {
     }
 
     await fetchBlockedUsers();
+    window.dispatchEvent(new CustomEvent('reveta:safety-changed'));
     return true;
   }, [user?.id, blockedUserIds, fetchBlockedUsers]);
 
   const unblockUser = useCallback(async (blockedUserId: string) => {
     if (!user || !blockedUserId) return false;
 
-    const { error } = await supabase
-      .from('blocked_users')
+    const { error } = await (supabase as any)
+      .from('user_blocks')
       .delete()
-      .eq('user_id', user.id)
-      .eq('blocked_user_id', blockedUserId);
+      .eq('blocker_id', user.id)
+      .eq('blocked_id', blockedUserId);
 
     if (error) {
       console.error('Error unblocking user:', error);
@@ -113,11 +107,12 @@ export const useBlockedUsers = () => {
     }
 
     await fetchBlockedUsers();
+    window.dispatchEvent(new CustomEvent('reveta:safety-changed'));
     return true;
   }, [user?.id, fetchBlockedUsers]);
 
   useEffect(() => {
-    fetchBlockedUsers();
+    void fetchBlockedUsers();
   }, [fetchBlockedUsers]);
 
   return { blockedUsers, blockedUserIds, loading, isBlocked, blockUser, unblockUser, refetch: fetchBlockedUsers };
