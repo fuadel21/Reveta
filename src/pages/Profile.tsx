@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
@@ -57,6 +57,7 @@ const formatBoostDate = (boostedUntil?: string | null) => boostedUntil ? new Dat
 const Profile = () => {
   const { user, signOut, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [products, setProducts] = useState<ProductData[]>([]);
@@ -70,6 +71,10 @@ const Profile = () => {
   useEffect(() => {
     if (!authLoading && !user) navigate('/auth');
   }, [user, authLoading, navigate]);
+
+  useEffect(() => {
+    if (searchParams.get('edit') === '1') navigate('/settings?section=profile', { replace: true });
+  }, [navigate, searchParams]);
 
   useEffect(() => {
     if (user) void fetchProfileData();
