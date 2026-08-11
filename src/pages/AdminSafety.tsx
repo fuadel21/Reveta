@@ -54,10 +54,12 @@ const AdminSafety = () => {
   const { isAdmin, loading: adminLoading } = useAdmin();
   const requestInFlight = useRef(false);
   const writeInFlight = useRef(false);
+  const userReportWritesAllowed = useRef(false);
   const dirtyNotes = useRef(new Set<string>());
   const [data, setData] = useState<AdminSafetyData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [userReportWritesReady, setUserReportWritesReady] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('active');
   const [kindFilter, setKindFilter] = useState('all');
@@ -85,19 +87,28 @@ const AdminSafety = () => {
 
     try {
       const centerData = await loadAdminSafety();
+      const completeLoad = centerData.failedSections === 0;
+      userReportWritesAllowed.current = completeLoad;
+      setUserReportWritesReady(completeLoad);
       setData(centerData);
-      setNotes((current) => {
-        const next = { ...current };
-        centerData.reports.forEach((report) => {
-          if (report.kind === 'user' && !dirtyNotes.current.has(report.id)) {
-            next[report.id] = report.resolutionNotes || '';
-          }
+
+      if (completeLoad) {
+        setNotes((current) => {
+          const next = { ...current };
+          centerData.reports.forEach((report) => {
+            if (report.kind === 'user' && !dirtyNotes.current.has(report.id)) {
+              next[report.id] = report.resolutionNotes || '';
+            }
+          });
+          return next;
         });
-        return next;
-      });
-      if (manual && centerData.failedSections === 0) toast.success('Seguridad actualizada');
-      if (!silent && centerData.failedSections > 0) toast.warning('La cola se cargó parcialmente');
+      }
+
+      if (manual && completeLoad) toast.success('Seguridad actualizada');
+      if (!silent && !completeLoad) toast.warning('La cola se cargó parcialmente');
     } catch (error) {
+      userReportWritesAllowed.current = false;
+      setUserReportWritesReady(false);
       console.error('Error loading admin safety center:', error);
       if (!silent) toast.error('No se pudo cargar la cola de seguridad');
     } finally {
@@ -142,6 +153,11 @@ const AdminSafety = () => {
       await waitForRefreshIdle();
 
       if (report.kind === 'user') {
+        if (!userReportWritesAllowed.current) {
+          toast.error('Actualiza la cola antes de moderar este reporte. Las notas internas no están confirmadas.');
+          return;
+        }
+
         const cleanNotes = (notes[report.id] || '').trim().slice(0, 2000) || null;
         const { error } = await (supabase as any).rpc('admin_update_safety_report', {
           p_report_id: report.id,
@@ -229,7 +245,7 @@ const AdminSafety = () => {
             <Button variant="outline" disabled={refreshing} onClick={() => void fetchData(true)}><RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Actualizar</Button>
           </div>
 
-          {data.failedSections > 0 && <div className="flex gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-semibold">La cola se cargó parcialmente</p><p>Algunas tablas no respondieron. El resto de la moderación permanece disponible.</p></div></div>}
+          {data.failedSections > 0 && <div className="flex gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-semibold">La cola se cargó parcialmente</p><p>Se conservan las notas que ya estaban en pantalla y la moderación de reportes de usuario queda pausada hasta una carga completa. Los reportes de producto siguen disponibles.</p></div></div>}
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <Card><CardHeader className="pb-2"><CardTitle>{openCount}</CardTitle><CardDescription className="flex items-center gap-2"><Flag className="h-4 w-4" />Abiertos</CardDescription></CardHeader></Card>
@@ -249,6 +265,7 @@ const AdminSafety = () => {
                 const key = `${report.kind}-${report.id}`;
                 const href = adminSafetyContextHref(report);
                 const isUpdating = updatingKey === key || updatingKey === `retire-${report.productId}`;
+                const userModerationUnavailable = report.kind === 'user' && !userReportWritesReady;
                 return (
                   <Card key={key} className={report.recurrence > 1 ? 'border-amber-300' : ''}>
                     <CardContent className="p-5">
@@ -261,8 +278,8 @@ const AdminSafety = () => {
                         </div>
 
                         <div className="space-y-3">
-                          {report.kind === 'user' ? <Textarea value={notes[report.id] || ''} onChange={(event) => { dirtyNotes.current.add(report.id); setNotes((current) => ({ ...current, [report.id]: event.target.value.slice(0, 2000) })); }} placeholder="Notas internas, pruebas y decisión..." rows={4} disabled={isUpdating} /> : <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">Las denuncias de producto conservan estado y contexto. Las notas internas se guardan en los reportes de usuario.</div>}
-                          <div className="grid grid-cols-3 gap-2"><Button size="sm" variant="outline" disabled={isUpdating} onClick={() => void updateReport(report, 'under_review')}>Revisar</Button><Button size="sm" disabled={isUpdating} onClick={() => void updateReport(report, 'resolved')}><CheckCircle2 className="mr-1 h-4 w-4" />Resolver</Button><Button size="sm" variant="secondary" disabled={isUpdating} onClick={() => void updateReport(report, 'dismissed')}>Descartar</Button></div>
+                          {report.kind === 'user' ? <><Textarea value={notes[report.id] || ''} onChange={(event) => { dirtyNotes.current.add(report.id); setNotes((current) => ({ ...current, [report.id]: event.target.value.slice(0, 2000) })); }} placeholder="Notas internas, pruebas y decisión..." rows={4} disabled={isUpdating || userModerationUnavailable} />{userModerationUnavailable && <p className="text-xs text-amber-700">Notas internas sin confirmar. Pulsa Actualizar antes de cambiar el estado.</p>}</> : <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground">Las denuncias de producto conservan estado y contexto. Las notas internas se guardan en los reportes de usuario.</div>}
+                          <div className="grid grid-cols-3 gap-2"><Button size="sm" variant="outline" disabled={isUpdating || userModerationUnavailable} onClick={() => void updateReport(report, 'under_review')}>Revisar</Button><Button size="sm" disabled={isUpdating || userModerationUnavailable} onClick={() => void updateReport(report, 'resolved')}><CheckCircle2 className="mr-1 h-4 w-4" />Resolver</Button><Button size="sm" variant="secondary" disabled={isUpdating || userModerationUnavailable} onClick={() => void updateReport(report, 'dismissed')}>Descartar</Button></div>
                         </div>
                       </div>
                     </CardContent>
