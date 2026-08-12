@@ -8,32 +8,32 @@ import { cn } from '@/lib/utils';
 interface PushNotificationToggleProps {
   variant?: 'switch' | 'button';
   className?: string;
+  onSubscriptionChange?: (subscribed: boolean) => void | Promise<void>;
 }
 
-const PushNotificationToggle = ({ 
+const PushNotificationToggle = ({
   variant = 'switch',
-  className 
+  className,
+  onSubscriptionChange,
 }: PushNotificationToggleProps) => {
-  const { 
-    isSupported, 
-    isSubscribed, 
-    isLoading, 
+  const {
+    isSupported,
+    isSubscribed,
+    isLoading,
     permission,
-    subscribe, 
-    unsubscribe 
+    subscribe,
+    unsubscribe,
   } = usePushNotifications();
 
   const handleToggle = async () => {
-    if (isSubscribed) {
-      await unsubscribe();
-    } else {
-      await subscribe();
-    }
+    const nextSubscribed = !isSubscribed;
+    const success = isSubscribed ? await unsubscribe() : await subscribe();
+    if (success) await onSubscriptionChange?.(nextSubscribed);
   };
 
   if (!isSupported) {
     return (
-      <div className={cn("text-sm text-muted-foreground", className)}>
+      <div className={cn('text-sm text-muted-foreground', className)}>
         <BellOff className="h-4 w-4 inline mr-2" />
         Tu navegador no soporta notificaciones push
       </div>
@@ -42,7 +42,7 @@ const PushNotificationToggle = ({
 
   if (permission === 'denied') {
     return (
-      <div className={cn("text-sm text-destructive", className)}>
+      <div className={cn('text-sm text-destructive', className)}>
         <BellOff className="h-4 w-4 inline mr-2" />
         Notificaciones bloqueadas en el navegador
       </div>
@@ -52,9 +52,9 @@ const PushNotificationToggle = ({
   if (variant === 'button') {
     return (
       <Button
-        variant={isSubscribed ? "secondary" : "default"}
+        variant={isSubscribed ? 'secondary' : 'default'}
         size="sm"
-        onClick={handleToggle}
+        onClick={() => void handleToggle()}
         disabled={isLoading}
         className={className}
       >
@@ -71,7 +71,7 @@ const PushNotificationToggle = ({
   }
 
   return (
-    <div className={cn("flex items-center justify-between gap-4", className)}>
+    <div className={cn('flex items-center justify-between gap-4', className)}>
       <div className="flex items-center gap-3">
         {isSubscribed ? (
           <Bell className="h-5 w-5 text-primary" />
@@ -83,17 +83,17 @@ const PushNotificationToggle = ({
             Notificaciones push
           </Label>
           <p className="text-sm text-muted-foreground">
-            {isSubscribed 
-              ? 'Recibirás alertas aunque no estés en la app' 
+            {isSubscribed
+              ? 'Recibirás alertas aunque no estés en la app'
               : 'Activa para recibir alertas en tiempo real'}
           </p>
         </div>
       </div>
-      
+
       <Switch
         id="push-toggle"
         checked={isSubscribed}
-        onCheckedChange={handleToggle}
+        onCheckedChange={() => void handleToggle()}
         disabled={isLoading}
       />
     </div>
