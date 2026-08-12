@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useBlockedUsers } from '@/hooks/useBlockedUsers';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,72 +30,59 @@ const BlockUserButton = ({
   isBlocked = false,
   onBlockChange,
   variant = 'outline',
-  size = 'sm'
+  size = 'sm',
 }: BlockUserButtonProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [blocked, setBlocked] = useState(isBlocked);
+  const { isBlocked: isCanonicalBlocked, blockUser, unblockUser, loading: blockStateLoading } = useBlockedUsers();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [working, setWorking] = useState(false);
+
+  const blocked = user ? isCanonicalBlocked(userId) : isBlocked;
 
   const handleBlock = async () => {
-    if (!user) return;
+    if (!user || working) return;
+    setWorking(true);
 
-    setLoading(true);
-
-    const { error } = await supabase
-      .from('blocked_users')
-      .insert({
-        user_id: user.id,
-        blocked_user_id: userId
-      });
-
-    if (error) {
+    const success = await blockUser(userId);
+    if (!success) {
       toast({
         title: 'Error',
         description: 'No se pudo bloquear al usuario',
-        variant: 'destructive'
+        variant: 'destructive',
       });
     } else {
-      setBlocked(true);
       toast({
         title: 'Usuario bloqueado',
-        description: 'Ya no verás productos ni mensajes de este usuario'
+        description: 'Las interacciones con este usuario quedan bloqueadas en Reveta.',
       });
       onBlockChange?.(true);
     }
 
-    setLoading(false);
+    setWorking(false);
     setDialogOpen(false);
   };
 
   const handleUnblock = async () => {
-    if (!user) return;
+    if (!user || working) return;
+    setWorking(true);
 
-    setLoading(true);
-
-    const { error } = await supabase
-      .from('blocked_users')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('blocked_user_id', userId);
-
-    if (error) {
+    const success = await unblockUser(userId);
+    if (!success) {
       toast({
         title: 'Error',
         description: 'No se pudo desbloquear al usuario',
-        variant: 'destructive'
+        variant: 'destructive',
       });
     } else {
-      setBlocked(false);
       toast({
         title: 'Usuario desbloqueado',
-        description: 'Ahora puedes ver sus productos y mensajes'
+        description: 'Las interacciones vuelven a regirse por tus preferencias de privacidad.',
       });
       onBlockChange?.(false);
     }
 
-    setLoading(false);
+    setWorking(false);
   };
 
   if (user?.id === userId) return null;
@@ -105,8 +92,8 @@ const BlockUserButton = ({
       <Button
         variant={variant}
         size={size}
-        onClick={handleUnblock}
-        disabled={loading}
+        onClick={() => void handleUnblock()}
+        disabled={working || blockStateLoading}
       >
         <Check className="h-4 w-4 mr-2" />
         Desbloquear
@@ -120,7 +107,7 @@ const BlockUserButton = ({
         variant={variant}
         size={size}
         onClick={() => setDialogOpen(true)}
-        disabled={loading}
+        disabled={working || blockStateLoading}
         className="text-destructive hover:text-destructive"
       >
         <Ban className="h-4 w-4 mr-2" />
@@ -134,9 +121,9 @@ const BlockUserButton = ({
             <AlertDialogDescription>
               Al bloquear a este usuario:
               <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>No verás sus productos</li>
-                <li>No podrá contactarte</li>
-                <li>No podrá ver tus productos</li>
+                <li>Se impedirán nuevas interacciones entre ambas cuentas</li>
+                <li>No podrá iniciar conversaciones contigo</li>
+                <li>El bloqueo aparecerá en tu Centro de Protección</li>
               </ul>
               <p className="mt-2">Puedes desbloquearlo en cualquier momento desde ajustes.</p>
             </AlertDialogDescription>
@@ -144,7 +131,7 @@ const BlockUserButton = ({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleBlock}
+              onClick={() => void handleBlock()}
               className="bg-destructive hover:bg-destructive/90"
             >
               Bloquear
