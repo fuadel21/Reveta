@@ -132,7 +132,7 @@ const SavedSearches = () => {
     if (search.radius_km) return { loading: false, count: null, products: [], error: false, geoDependent: true };
 
     try {
-      let query: any = supabase
+      let query = supabase
         .from('products')
         .select('id,title,price,images,location,created_at', { count: 'exact' })
         .eq('status', 'active');
@@ -165,7 +165,8 @@ const SavedSearches = () => {
 
   const fetchSearches = async (manual = false) => {
     if (!user) return;
-    manual ? setRefreshing(true) : setLoading(true);
+    if (manual) setRefreshing(true);
+    else setLoading(true);
 
     try {
       const { data, error } = await supabase
@@ -175,7 +176,7 @@ const SavedSearches = () => {
         .order('created_at', { ascending: false });
       if (error) throw error;
 
-      const formatted = (data || []).map((item: any) => ({ ...item, category: item.categories })) as SavedSearch[];
+      const formatted = (data || []).map((item) => ({ ...item, category: item.categories })) as SavedSearch[];
       setSearches(formatted);
       await loadInsights(formatted);
       if (manual) toast({ title: 'Búsquedas actualizadas' });

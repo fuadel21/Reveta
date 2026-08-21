@@ -14,6 +14,7 @@ import {
   User,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { Badge } from '@/components/ui/badge';
@@ -99,11 +100,12 @@ const AdminConversationReview = () => {
       return;
     }
 
-    manual ? setRefreshing(true) : setLoading(true);
+    if (manual) setRefreshing(true);
+    else setLoading(true);
     setErrorMessage(null);
 
     try {
-      const { data: conversation, error: conversationError } = await (supabase as any)
+      const { data: conversation, error: conversationError } = await supabaseUntyped
         .from('conversations')
         .select('id,product_id,buyer_id,seller_id,updated_at')
         .eq('id', id)
@@ -115,7 +117,7 @@ const AdminConversationReview = () => {
       const related = await Promise.allSettled([
         supabase.from('products').select('id,title,images,status,price').eq('id', conversation.product_id).maybeSingle(),
         supabase.from('profiles').select('id,full_name,username,avatar_url').in('id', [conversation.buyer_id, conversation.seller_id]),
-        (supabase as any)
+        supabaseUntyped
           .from('messages')
           .select('id,conversation_id,sender_id,content,created_at,read')
           .eq('conversation_id', conversation.id)

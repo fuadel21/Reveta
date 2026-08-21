@@ -1,7 +1,9 @@
+import { getErrorMessage, getFunctionErrorMessage } from '@/lib/errors';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { useBlockedUsers } from '@/hooks/useBlockedUsers';
 import Header from '@/components/Header';
@@ -118,18 +120,6 @@ const normalizePhone = (value: string) => value.trim().replace(/\s+/g, ' ');
 const normalizeBio = (value: string) => value.trim().replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n');
 const hasPublicContactText = (value: string) => /\b(whatsapp|telegram|bizum|transferencia|correo|email|gmail|hotmail|tel[eé]fono|tlf|\+34)\b/i.test(value);
 
-const getFunctionErrorMessage = async (error: any) => {
-  try {
-    if (error?.context && typeof error.context.json === 'function') {
-      const payload = await error.context.json();
-      return payload?.error || payload?.message || error.message;
-    }
-  } catch {
-    // Ignore parser errors.
-  }
-  return error?.message || 'No se pudo completar la operación.';
-};
-
 const Settings = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
@@ -159,7 +149,7 @@ const Settings = () => {
     if (!authLoading && !user) navigate('/auth');
   }, [authLoading, navigate, user]);
 
-  const applyPrivateProfile = (profileData: any) => {
+  const applyPrivateProfile = (profileData: unknown) => {
     if (!profileData) return;
     const nextProfile = profileData as ProfileData;
     setProfile(nextProfile);
@@ -173,7 +163,7 @@ const Settings = () => {
   };
 
   const loadPrivateProfile = async () => {
-    const { data, error } = await (supabase as any).rpc('get_private_profile');
+    const { data, error } = await supabaseUntyped.rpc('get_private_profile');
     if (error) throw error;
     const row = Array.isArray(data) ? data[0] : data;
     applyPrivateProfile(row);
@@ -184,7 +174,7 @@ const Settings = () => {
     if (!user) return;
     setLoading(true);
     const [profileResult, settingsResult] = await Promise.all([
-      (supabase as any).rpc('get_private_profile'),
+      supabaseUntyped.rpc('get_private_profile'),
       supabase
         .from('user_settings')
         .select('email_notifications,push_notifications,message_notifications,offer_notifications,saved_search_notifications,show_online_status,show_last_seen,allow_messages_from')
@@ -224,7 +214,7 @@ const Settings = () => {
       return;
     }
     const profiles: Record<string, { full_name: string | null; avatar_url: string | null }> = {};
-    (data || []).forEach((row: any) => { profiles[row.id] = { full_name: row.full_name, avatar_url: row.avatar_url }; });
+    (data || []).forEach((row) => { profiles[row.id] = { full_name: row.full_name, avatar_url: row.avatar_url }; });
     setBlockedProfiles(profiles);
   };
 
@@ -266,9 +256,9 @@ const Settings = () => {
   const handlePushPreferenceChange = async (subscribed: boolean) => {
     if (!user) return;
     updateSetting('push_notifications', subscribed);
-    const { error } = await supabase
+    const { error } = await supabaseUntyped
       .from('user_settings')
-      .upsert({ user_id: user.id, push_notifications: subscribed } as any, { onConflict: 'user_id' });
+      .upsert({ user_id: user.id, push_notifications: subscribed }, { onConflict: 'user_id' });
     if (error) {
       console.error('Error syncing push preference:', error);
       toast({ title: 'Push cambiado en este dispositivo', description: 'No se pudo sincronizar la preferencia con tu cuenta.', variant: 'destructive' });
@@ -316,7 +306,7 @@ const Settings = () => {
       if (error) throw error;
       await loadPrivateProfile();
       toast({ title: 'Perfil actualizado' });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error saving profile:', error);
       toast({
         title: 'No se pudo guardar el perfil',
@@ -411,8 +401,8 @@ const Settings = () => {
       toast({ title: 'Cuenta eliminada', description: 'Hemos cerrado tu sesión y procesado la eliminación.' });
       await signOut();
       navigate('/', { replace: true });
-    } catch (error: any) {
-      toast({ title: 'No se pudo eliminar la cuenta', description: error?.message || 'Inténtalo de nuevo más tarde.', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'No se pudo eliminar la cuenta', description: getErrorMessage(error, 'Inténtalo de nuevo más tarde.'), variant: 'destructive' });
     } finally {
       setDeletingAccount(false);
       setDeleteConfirmation('');

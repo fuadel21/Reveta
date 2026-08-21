@@ -51,7 +51,7 @@ type NotificationRow = {
   type: string;
   title: string;
   message: string;
-  data: Record<string, any> | null;
+  data: Record<string, unknown> | null;
   read: boolean | null;
   created_at: string;
 };
@@ -138,7 +138,8 @@ const Notifications = () => {
 
   const fetchNotifications = async (silent = false) => {
     if (!user) return;
-    silent ? setRefreshing(true) : setLoading(true);
+    if (silent) setRefreshing(true);
+    else setLoading(true);
     const { data, error } = await supabase
       .from('notifications')
       .select('id,user_id,type,title,message,data,read,created_at')

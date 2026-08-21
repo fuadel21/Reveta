@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/errors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -15,6 +16,7 @@ import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { useToast } from '@/hooks/use-toast';
@@ -148,7 +150,7 @@ export const ListingEditor = ({ mode, productId }: Props) => {
         }
       } else {
         if (!productId) throw new Error('Falta el anuncio que quieres editar');
-        const { data, error } = await (supabase as any)
+        const { data, error } = await supabaseUntyped
           .from('products')
           .select('id,user_id,title,description,price,category_id,subcategory_id,condition,location,latitude,longitude,status,images')
           .eq('id', productId)
@@ -176,8 +178,8 @@ export const ListingEditor = ({ mode, productId }: Props) => {
         setOriginalImageUrls(currentUrls);
         setSavedSignature(listingStateSignature(loadedForm, loadedImages));
       }
-    } catch (error: any) {
-      toast({ title: mode === 'create' ? 'No se pudo preparar el anuncio' : 'No se puede editar este anuncio', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: mode === 'create' ? 'No se pudo preparar el anuncio' : 'No se puede editar este anuncio', description: getErrorMessage(error, 'Inténtalo de nuevo.'), variant: 'destructive' });
       if (mode === 'edit') navigate('/seller-dashboard', { replace: true });
     } finally {
       setLoading(false);
@@ -197,7 +199,7 @@ export const ListingEditor = ({ mode, productId }: Props) => {
 
   const assertProductEditable = async (id: string) => {
     const [{ count: reservations }, { count: transactions }] = await Promise.all([
-      (supabase as any).from('product_reservations').select('id', { count: 'exact', head: true }).eq('product_id', id).eq('status', 'active'),
+      supabaseUntyped.from('product_reservations').select('id', { count: 'exact', head: true }).eq('product_id', id).eq('status', 'active'),
       supabase.from('transactions').select('id', { count: 'exact', head: true }).eq('product_id', id).in('status', OPEN_TRANSACTION_STATUSES),
     ]);
     if ((reservations || 0) > 0 || (transactions || 0) > 0) throw new Error('Este anuncio tiene una reserva u operación abierta y no se puede editar todavía');
@@ -282,13 +284,13 @@ export const ListingEditor = ({ mode, productId }: Props) => {
 
       let savedId = productId || '';
       if (mode === 'create') {
-        const { data, error } = await (supabase as any).from('products').insert({ ...payload, user_id: user.id, status: 'active' }).select('id').single();
+        const { data, error } = await supabaseUntyped.from('products').insert({ ...payload, user_id: user.id, status: 'active' }).select('id').single();
         if (error || !data?.id) throw error || new Error('El producto se guardó, pero no se pudo abrir su ficha');
         savedId = data.id;
         submittedRef.current = true;
         await clearListingDraft();
       } else {
-        const { data, error } = await (supabase as any).from('products').update(payload).eq('id', productId).eq('user_id', user.id).select('id').maybeSingle();
+        const { data, error } = await supabaseUntyped.from('products').update(payload).eq('id', productId).eq('user_id', user.id).select('id').maybeSingle();
         if (error || !data?.id) throw error || new Error('El anuncio cambió mientras lo editabas. Actualiza e inténtalo de nuevo.');
         const keptOriginals = new Set(images.filter((image) => image.original).map((image) => image.url));
         const removedPaths = originalImageUrls
@@ -304,9 +306,9 @@ export const ListingEditor = ({ mode, productId }: Props) => {
       setSavedSignature(signature);
       toast({ title: mode === 'create' ? 'Producto publicado' : 'Anuncio actualizado', description: 'Abriendo la ficha del producto.' });
       navigate(`/product/${savedId}`, { replace: true });
-    } catch (error: any) {
+    } catch (error) {
       if (uploadedPaths.length > 0) await supabase.storage.from('products').remove(uploadedPaths);
-      toast({ title: mode === 'create' ? 'No se pudo publicar' : 'No se pudo guardar', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+      toast({ title: mode === 'create' ? 'No se pudo publicar' : 'No se pudo guardar', description: getErrorMessage(error, 'Inténtalo de nuevo.'), variant: 'destructive' });
     } finally {
       setSaving(false);
     }

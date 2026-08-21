@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Star } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 
 interface Review {
   id: string;
@@ -26,7 +27,7 @@ const RecentReviews = ({ userId, limit = 3 }: RecentReviewsProps) => {
       if (!userId) return;
       setLoading(true);
 
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabaseUntyped
         .from('reviews')
         .select('id,rating,comment,created_at')
         .eq('reviewed_id', userId)

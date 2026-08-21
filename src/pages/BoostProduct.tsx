@@ -1,3 +1,4 @@
+import { getErrorMessage, getFunctionErrorMessage } from '@/lib/errors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -33,18 +34,6 @@ type Product = {
   user_id: string;
   status: string | null;
   boosted_until?: string | null;
-};
-
-const getFunctionErrorMessage = async (error: any) => {
-  try {
-    if (error?.context && typeof error.context.json === 'function') {
-      const payload = await error.context.json();
-      return payload?.error || payload?.message || error.message;
-    }
-  } catch {
-    // Ignore parsing errors.
-  }
-  return error?.message || 'No se pudo conectar con el servidor.';
 };
 
 const isBoostActive = (value?: string | null) => !!value && new Date(value).getTime() > Date.now();
@@ -100,9 +89,9 @@ const BoostPaymentForm = ({ product }: { product: Product }) => {
 
       toast({ title: 'Pago recibido', description: 'El destacado se activará automáticamente cuando Stripe confirme el webhook.' });
       navigate('/profile', { replace: true });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Boost payment error:', error);
-      toast({ title: 'No se pudo destacar el producto', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+      toast({ title: 'No se pudo destacar el producto', description: getErrorMessage(error, 'Inténtalo de nuevo.'), variant: 'destructive' });
       submitLockRef.current = false;
     } finally {
       setProcessing(false);

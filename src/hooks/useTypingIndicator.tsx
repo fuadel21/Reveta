@@ -39,7 +39,7 @@ export const useTypingIndicator = (conversationId: string | undefined, userId: s
 
         Object.keys(state).forEach((key) => {
           if (key !== userId) {
-            const presences = state[key] as any[];
+            const presences = state[key] as Array<{ isTyping?: boolean }>;
             presences.forEach((presence) => {
               if (presence.isTyping) {
                 typing.push({ id: key, name: presence.name || 'Usuario' });

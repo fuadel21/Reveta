@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import type { TablesInsert } from '@/integrations/supabase/types';
 import { useAuth } from '@/hooks/useAuth';
 import { Send, X, Image as ImageIcon, ArrowLeft, MessageCircle, HandCoins, PhoneCall } from 'lucide-react';
@@ -242,14 +243,14 @@ export const Chat: React.FC<ChatProps> = ({ productId, sellerId, onClose }) => {
       return false;
     }
 
-    const { data: pendingOffers, error: pendingError } = await (supabase as any)
+    const { data: pendingOffers, error: pendingError } = await supabaseUntyped
       .from('offers')
       .select('id, created_by, buyer_id, status')
       .eq('conversation_id', selectedConversation.id)
       .eq('status', 'pending');
 
     if (pendingError) throw pendingError;
-    const hasOwnPendingOffer = (pendingOffers || []).some((offer: any) => offer.created_by === user.id || (!offer.created_by && offer.buyer_id === user.id));
+    const hasOwnPendingOffer = (pendingOffers || []).some((offer) => offer.created_by === user.id || (!offer.created_by && offer.buyer_id === user.id));
     if (hasOwnPendingOffer) {
       toast({ title: 'Ya tienes una oferta pendiente', description: 'Espera respuesta o envía una contraoferta cuando te respondan.' });
       return false;

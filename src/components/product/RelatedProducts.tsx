@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import ProductCard from '@/components/ProductCard';
 import { Button } from '@/components/ui/button';
@@ -88,7 +89,7 @@ const RelatedProducts = ({ currentProductId, categoryId, location }: RelatedProd
   }, [currentProductId, categoryId, location]);
 
   const trackRelatedClick = (productId: string) => {
-    void (supabase as any).from('product_clicks').insert({
+    void supabaseUntyped.from('product_clicks').insert({
       product_id: productId,
       user_id: user?.id || null,
       source: 'related_products',

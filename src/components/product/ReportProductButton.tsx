@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, Flag, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -43,7 +44,7 @@ const ReportProductButton = ({ productId, sellerId, productTitle, isOwner }: Rep
 
   const findExistingReport = async () => {
     if (!user) return null;
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabaseUntyped
       .from('product_reports')
       .select('id,status')
       .eq('product_id', productId)
@@ -104,7 +105,7 @@ const ReportProductButton = ({ productId, sellerId, productTitle, isOwner }: Rep
         return;
       }
 
-      const { error } = await (supabase as any).from('product_reports').insert({
+      const { error } = await supabaseUntyped.from('product_reports').insert({
         product_id: productId,
         reporter_id: user.id,
         seller_id: sellerId,
@@ -120,7 +121,7 @@ const ReportProductButton = ({ productId, sellerId, productTitle, isOwner }: Rep
       setReason('possible_fraud');
       setAlreadyReported(true);
       notifySafetyChange();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error reporting product:', error);
       if (error?.code === '23505') {
         setAlreadyReported(true);

@@ -5,6 +5,7 @@ import ProductCard from '@/components/ProductCard';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { COMPARISON_EVENT, getComparedProductIds, toggleComparedProduct } from '@/lib/productComparison';
 import { toast } from 'sonner';
@@ -61,7 +62,7 @@ export const ProductGrid = ({ products, favorites, useGeoFilter, formatDistance,
 
   const handleProductClick = (product: Product) => {
     rememberRecentlyViewed(product.id);
-    void (supabase as any).from('product_clicks').insert({ product_id: product.id, user_id: user?.id || null, source: 'product_grid' });
+    void supabaseUntyped.from('product_clicks').insert({ product_id: product.id, user_id: user?.id || null, source: 'product_grid' });
     navigate(`/producto/${product.id}/${createProductSlug(product.title)}`);
   };
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import Header from '@/components/Header';
@@ -91,7 +92,10 @@ const SearchPage = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   useEffect(() => { fetchCategories(); }, []);
-  useEffect(() => { selectedCategory ? fetchSubcategories(selectedCategory) : setSubcategories([]); }, [selectedCategory]);
+  useEffect(() => {
+    if (selectedCategory) fetchSubcategories(selectedCategory);
+    else setSubcategories([]);
+  }, [selectedCategory]);
   useEffect(() => { fetchProducts(); }, [searchParams, geolocation.latitude, geolocation.longitude]);
   useEffect(() => { if (user) fetchFavorites(); }, [user]);
   useEffect(() => { if (useGeoFilter && !geolocation.hasLocation && !geolocation.loading) geolocation.requestLocation(); }, [useGeoFilter]);
@@ -147,7 +151,7 @@ const SearchPage = () => {
         result_count: totalCount,
       };
 
-      const { error } = await (supabase as any).from('search_analytics').insert(payload);
+      const { error } = await supabaseUntyped.from('search_analytics').insert(payload);
       if (error) console.warn('Search analytics not recorded:', error.message);
     }, 800);
 
@@ -266,7 +270,8 @@ const SearchPage = () => {
   const handleSortChange = (value: string) => {
     setSortBy(value);
     const params = new URLSearchParams(searchParams);
-    value === 'recent' ? params.delete('sort') : params.set('sort', value);
+    if (value === 'recent') params.delete('sort');
+    else params.set('sort', value);
     setSearchParams(params);
   };
 
@@ -378,7 +383,7 @@ const SearchPage = () => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6"><div><h1 className="text-2xl font-bold">{useGeoFilter && geolocation.hasLocation ? 'Productos cerca de ti' : searchQuery ? `Resultados para "${searchQuery}"` : 'Todos los productos'}</h1><p className="text-muted-foreground">{totalCount} producto{totalCount !== 1 ? 's' : ''} encontrado{totalCount !== 1 ? 's' : ''}{useGeoFilter && geolocation.hasLocation && ` a menos de ${distanceRadius} km`}</p></div><div className="flex items-center gap-3">{user && hasActiveFilters && <Button variant="outline" size="sm" onClick={() => setSaveSearchDialogOpen(true)}><Bookmark className="h-4 w-4 mr-2" />Guardar búsqueda</Button>}<SortSelect value={sortBy} onChange={handleSortChange} showDistanceOption={useGeoFilter && geolocation.hasLocation} /><ViewModeToggle viewMode={viewMode} onViewModeChange={setViewMode} /></div></div>
               <SaveSearchDialog open={saveSearchDialogOpen} onOpenChange={setSaveSearchDialogOpen} filters={currentFilters} />
               <ActiveFilters useGeoFilter={useGeoFilter} distanceRadius={distanceRadius} searchQuery={searchQuery} selectedCategory={selectedCategory} selectedSubcategory={selectedSubcategory} categories={categories} subcategories={subcategories} location={location} condition={condition} priceRange={priceRange} hasLocation={geolocation.hasLocation} onRemoveGeo={() => { setUseGeoFilter(false); applyFilters(); }} onRemoveSearch={() => { setSearchQuery(''); applyFilters(); }} onRemoveCategory={() => { setSelectedCategory(''); setSelectedSubcategory(''); applyFilters(); }} onRemoveSubcategory={() => { setSelectedSubcategory(''); applyFilters(); }} onRemoveLocation={() => { setLocation(''); applyFilters(); }} onRemoveCondition={() => { setCondition(''); applyFilters(); }} onRemovePrice={() => { setPriceRange([0, 10000]); applyFilters(); }} />
-              {loading ? <div className="flex items-center justify-center py-12"><div className="flex flex-col items-center gap-4"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" /><p className="text-muted-foreground">Buscando productos...</p></div></div> : products.length === 0 ? <div className="text-center py-12 bg-muted/30 rounded-xl"><Search className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="text-lg font-medium mb-2">No se encontraron productos</h3><p className="text-muted-foreground mb-4">{useGeoFilter ? 'No hay productos cerca de ti. Prueba aumentar el radio de búsqueda.' : 'Prueba con otros filtros o términos de búsqueda'}</p><Button variant="outline" onClick={clearFilters}>Limpiar filtros</Button></div> : viewMode === 'map' ? <ProductsMap products={mappableProducts as any} userLocation={geolocation.hasLocation ? { latitude: geolocation.latitude!, longitude: geolocation.longitude! } : null} className="h-[600px]" /> : viewMode === 'split' ? <div className="grid grid-cols-2 gap-6 h-[700px]"><div className="overflow-y-auto pr-2 scrollbar-thin"><ProductGrid products={products} favorites={favorites} useGeoFilter={useGeoFilter} formatDistance={formatDistance} formatDate={formatDate} selectedProductId={hoveredProductId} onProductHover={setHoveredProductId} compact /></div><div className="sticky top-0"><ProductsMap products={mappableProducts as any} userLocation={geolocation.hasLocation ? { latitude: geolocation.latitude!, longitude: geolocation.longitude! } : null} className="h-full rounded-xl" /></div></div> : <ProductGrid products={products} favorites={favorites} useGeoFilter={useGeoFilter} formatDistance={formatDistance} formatDate={formatDate} selectedProductId={hoveredProductId} onProductHover={setHoveredProductId} />}
+              {loading ? <div className="flex items-center justify-center py-12"><div className="flex flex-col items-center gap-4"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" /><p className="text-muted-foreground">Buscando productos...</p></div></div> : products.length === 0 ? <div className="text-center py-12 bg-muted/30 rounded-xl"><Search className="h-12 w-12 mx-auto text-muted-foreground mb-4" /><h3 className="text-lg font-medium mb-2">No se encontraron productos</h3><p className="text-muted-foreground mb-4">{useGeoFilter ? 'No hay productos cerca de ti. Prueba aumentar el radio de búsqueda.' : 'Prueba con otros filtros o términos de búsqueda'}</p><Button variant="outline" onClick={clearFilters}>Limpiar filtros</Button></div> : viewMode === 'map' ? <ProductsMap products={mappableProducts} userLocation={geolocation.hasLocation ? { latitude: geolocation.latitude!, longitude: geolocation.longitude! } : null} className="h-[600px]" /> : viewMode === 'split' ? <div className="grid grid-cols-2 gap-6 h-[700px]"><div className="overflow-y-auto pr-2 scrollbar-thin"><ProductGrid products={products} favorites={favorites} useGeoFilter={useGeoFilter} formatDistance={formatDistance} formatDate={formatDate} selectedProductId={hoveredProductId} onProductHover={setHoveredProductId} compact /></div><div className="sticky top-0"><ProductsMap products={mappableProducts} userLocation={geolocation.hasLocation ? { latitude: geolocation.latitude!, longitude: geolocation.longitude! } : null} className="h-full rounded-xl" /></div></div> : <ProductGrid products={products} favorites={favorites} useGeoFilter={useGeoFilter} formatDistance={formatDistance} formatDate={formatDate} selectedProductId={hoveredProductId} onProductHover={setHoveredProductId} />}
             </div>
           </div>
         </main>

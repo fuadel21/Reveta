@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Ban, Flag, ShieldAlert } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -57,7 +58,7 @@ const TrustSafetyActions = ({
 
     const loadState = async () => {
       const [blockResult, reportResult] = await Promise.all([
-        (supabase as any)
+        supabaseUntyped
           .from('user_blocks')
           .select('blocked_id')
           .eq('blocker_id', user.id)
@@ -79,7 +80,7 @@ const TrustSafetyActions = ({
 
   async function findActiveReport() {
     if (!user) return null;
-    let query = (supabase as any)
+    let query = supabaseUntyped
       .from('safety_reports')
       .select('id,status')
       .eq('reporter_id', user.id)
@@ -103,7 +104,7 @@ const TrustSafetyActions = ({
     setLoading(true);
     try {
       if (isBlocked) {
-        const { error } = await (supabase as any)
+        const { error } = await supabaseUntyped
           .from('user_blocks')
           .delete()
           .eq('blocker_id', user.id)
@@ -112,7 +113,7 @@ const TrustSafetyActions = ({
         setIsBlocked(false);
         toast({ title: 'Usuario desbloqueado', description: 'Podrá volver a iniciar interacciones contigo.' });
       } else {
-        const { error } = await (supabase as any)
+        const { error } = await supabaseUntyped
           .from('user_blocks')
           .insert({ blocker_id: user.id, blocked_id: targetUserId });
         if (error && error.code !== '23505') throw error;
@@ -146,7 +147,7 @@ const TrustSafetyActions = ({
         return;
       }
 
-      const { error } = await (supabase as any).from('safety_reports').insert({
+      const { error } = await supabaseUntyped.from('safety_reports').insert({
         reporter_id: user.id,
         reported_user_id: targetUserId,
         product_id: productId,

@@ -1,3 +1,5 @@
+import type { StripeCardElementChangeEvent } from '@stripe/stripe-js';
+import { getErrorCode, getErrorMessage, getFunctionErrorMessage } from '@/lib/errors';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -53,20 +55,8 @@ interface ShippingAddress {
 
 const OPEN_TRANSACTION_STATUSES = ['pending', 'pending_payment', 'paid', 'shipped', 'completed'];
 
-const getFunctionErrorMessage = async (error: any) => {
-  try {
-    if (error?.context && typeof error.context.json === 'function') {
-      const payload = await error.context.json();
-      return payload?.error || payload?.message || error.message;
-    }
-  } catch {
-    // Ignore parsing errors.
-  }
-  return error?.message || 'No se pudo conectar con el servidor.';
-};
-
-const isDuplicateTransactionError = (error: any) =>
-  error?.code === '23505' || String(error?.message || '').includes('transactions_one_open_per_product_idx');
+const isDuplicateTransactionError = (error: unknown) =>
+  getErrorCode(error) === '23505' || getErrorMessage(error, '').includes('transactions_one_open_per_product_idx');
 
 const normalizeText = (value: string) => value.trim().replace(/\s+/g, ' ');
 const normalizePhone = (value: string) => value.trim().replace(/\s+/g, ' ');
@@ -80,7 +70,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
   const [processingPayment, setProcessingPayment] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(STRIPE_PAYMENTS_ENABLED ? 'card' : 'in_person');
-  const [selectedShipping, setSelectedShipping] = useState<any>(null);
+  const [selectedShipping, setSelectedShipping] = useState<SelectedShipping | null>(null);
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress>({
     fullName: '',
     phone: '',
@@ -92,7 +82,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
   const productImage = Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : null;
   const totalAmount = useMemo(() => product.price + (selectedShipping?.price || 0), [product.price, selectedShipping]);
-  const handleCardChange = (event: any) => setCardError(event.error?.message || null);
+  const handleCardChange = (event: StripeCardElementChangeEvent) => setCardError(event.error?.message || null);
   const updateAddressField = (field: keyof ShippingAddress, value: string) => setShippingAddress((current) => ({ ...current, [field]: value }));
 
   const normalizedShippingAddress = () => ({
@@ -203,7 +193,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     if (existingTransaction?.id) return { created: false, transactionId: existingTransaction.id };
 
     await ensureProductStillAvailable();
-    const insertPayload: any = {
+    const insertPayload = {
       product_id: product.id,
       buyer_id: user.id,
       seller_id: product.user_id,
@@ -243,9 +233,9 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
 
   const cancelPendingCardTransaction = async (transactionId: string | null) => {
     if (!transactionId || !user) return;
-    const { error } = await supabase
+    const { error } = await supabaseUntyped
       .from('transactions')
-      .update({ status: 'cancelled', payment_status: 'client_failed', completed_at: new Date().toISOString() } as any)
+      .update({ status: 'cancelled', payment_status: 'client_failed', completed_at: new Date().toISOString() })
       .eq('id', transactionId)
       .eq('buyer_id', user.id)
       .eq('status', 'pending_payment');
@@ -304,7 +294,7 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
       const trackingNumber = parcel?.tracking_number || parcel?.tracking_code;
       const tracking = trackingNumber ? ` Seguimiento: ${trackingNumber}.` : '';
       if (conversationId) await sendTransactionMessage(conversationId, `Envío nacional España creado con Sendcloud para “${product.title}”.${parcelId}${tracking}`);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Sendcloud parcel error:', error);
       toast.warning('Pago registrado, pero no se pudo crear o guardar el envío en Sendcloud. Revisa la configuración de Sendcloud.');
     }
@@ -417,9 +407,9 @@ const CheckoutForm = ({ product, seller }: { product: Product; seller: Seller | 
     try {
       if (paymentMethod === 'card') await handleCardPayment();
       else await handleInPersonPayment();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Checkout error:', error);
-      toast.error(error.message || 'Error al procesar la compra');
+      toast.error(getErrorMessage(error, 'Error al procesar la compra'));
       if (paymentMethod === 'card') setPaymentMethod('in_person');
     } finally {
       setProcessingPayment(false);

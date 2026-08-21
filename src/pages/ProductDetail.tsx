@@ -184,7 +184,7 @@ const ProductDetail = () => {
       setIsFavorite(false);
       toast({ title: 'Eliminado de favoritos', description: 'El producto se ha eliminado de tus favoritos' });
     } else {
-      const { error } = await supabase.from('favorites').upsert({ user_id: user.id, product_id: product.id } as any, { onConflict: 'user_id,product_id' });
+      const { error } = await supabaseUntyped.from('favorites').upsert({ user_id: user.id, product_id: product.id }, { onConflict: 'user_id,product_id' });
       if (error) {
         toast({ title: 'Error', description: 'No se pudo añadir a favoritos', variant: 'destructive' });
         return;

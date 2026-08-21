@@ -17,6 +17,7 @@ import {
   Users,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -159,14 +160,14 @@ const AdminSafety = () => {
         }
 
         const cleanNotes = (notes[report.id] || '').trim().slice(0, 2000) || null;
-        const { error } = await (supabase as any).rpc('admin_update_safety_report', {
+        const { error } = await supabaseUntyped.rpc('admin_update_safety_report', {
           p_report_id: report.id,
           p_status: status,
           p_notes: cleanNotes,
         });
         if (error) throw error;
       } else {
-        const { error } = await (supabase as any)
+        const { error } = await supabaseUntyped
           .from('product_reports')
           .update({ status: PRODUCT_STATUS_MAP[status] })
           .eq('id', report.id);

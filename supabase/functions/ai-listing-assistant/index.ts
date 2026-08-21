@@ -32,12 +32,16 @@ const validateImages = (images: unknown) => {
   return safeImages;
 };
 
-const extractOutputText = (payload: any) => {
-  if (typeof payload?.output_text === 'string' && payload.output_text.trim()) return payload.output_text;
-  const content = Array.isArray(payload?.output)
-    ? payload.output.flatMap((item: any) => Array.isArray(item?.content) ? item.content : [])
+interface OutputBlock {
+  content?: Array<{ type?: string; text?: unknown }>;
+}
+const extractOutputText = (payload: unknown): string => {
+  const value = payload as { output_text?: unknown; output?: unknown } | null;
+  if (typeof value?.output_text === 'string' && value.output_text.trim()) return value.output_text;
+  const content = Array.isArray(value?.output)
+    ? (value.output as Array<OutputBlock | null>).flatMap((item) => Array.isArray(item?.content) ? item.content : [])
     : [];
-  return String(content.find((item: any) => item?.type === 'output_text')?.text || '').trim();
+  return String(content.find((item) => item?.type === 'output_text')?.text || '').trim();
 };
 
 Deno.serve(async (req) => {
@@ -98,9 +102,9 @@ Deno.serve(async (req) => {
     const categories = Array.isArray(body?.categories) ? body.categories.slice(0, 100) : [];
     const notes = String(body?.notes || '').trim().slice(0, 800);
     const current = body?.current && typeof body.current === 'object' ? body.current : {};
-    const categoryText = categories.map((category: any) => {
+    const categoryText = categories.map((category: { name?: unknown; subcategories?: Array<{ name?: unknown }> | null }) => {
       const subs = Array.isArray(category?.subcategories)
-        ? category.subcategories.map((sub: any) => sub?.name).filter(Boolean).join(', ')
+        ? category.subcategories.map((sub) => sub?.name).filter(Boolean).join(', ')
         : '';
       return `- ${category?.name || ''}${subs ? ` (subcategorías: ${subs})` : ''}`;
     }).join('\n');

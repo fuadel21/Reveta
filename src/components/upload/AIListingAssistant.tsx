@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/errors';
 import { useMemo, useState } from 'react';
 import { Loader2, Sparkles, WandSparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -47,13 +48,13 @@ interface Props {
 
 const normalize = (value: string) => value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-const getFunctionErrorMessage = async (error: any) => {
-  const fallback = error?.message || 'No se pudo completar la solicitud';
-  const context = error?.context;
+const getFunctionErrorMessage = async (error: unknown) => {
+  const fallback = getErrorMessage(error, 'No se pudo completar la solicitud');
+  const context = (error as { context?: unknown } | null)?.context;
   if (!(context instanceof Response)) return fallback;
 
   try {
-    const payload = await context.clone().json();
+    const payload = (await context.clone().json()) as { error?: string; message?: string } | null;
     return payload?.error || payload?.message || fallback;
   } catch {
     try {
@@ -156,9 +157,9 @@ const AIListingAssistant = ({ images, categories, subcategories, formData, onApp
           ? `Revisa los datos antes de publicar. Te quedan ${data.remaining} análisis hoy.`
           : 'Revisa los datos antes de publicar. La IA puede equivocarse.',
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Groq listing analysis error:', error);
-      toast({ title: 'No se pudo completar con Groq', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+      toast({ title: 'No se pudo completar con Groq', description: getErrorMessage(error, 'Inténtalo de nuevo.'), variant: 'destructive' });
     } finally {
       setAnalyzing(false);
     }

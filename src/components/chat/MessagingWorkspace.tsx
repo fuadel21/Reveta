@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useTypingIndicator } from '@/hooks/useTypingIndicator';
@@ -98,7 +99,8 @@ export const MessagingWorkspace = () => {
 
   const loadOverview = useCallback(async (manual = false) => {
     if (!user) return;
-    manual ? setRefreshing(true) : setLoadingOverview(true);
+    if (manual) setRefreshing(true);
+    else setLoadingOverview(true);
     try {
       const result = await loadMessagingOverview(user.id, 100);
       conversationIdsRef.current = new Set(result.conversations.map((conversation) => conversation.id));
@@ -136,7 +138,7 @@ export const MessagingWorkspace = () => {
       if (refreshTimer.current) window.clearTimeout(refreshTimer.current);
       refreshTimer.current = window.setTimeout(() => void loadOverview(), 500);
     };
-    const relevantConversationEvent = (payload: any) => {
+    const relevantConversationEvent = (payload: { new?: { conversation_id?: string }; old?: { conversation_id?: string } }) => {
       const id = payload.new?.conversation_id || payload.old?.conversation_id;
       if (!id || conversationIdsRef.current.has(id)) schedule();
     };
@@ -164,7 +166,7 @@ export const MessagingWorkspace = () => {
   }, [user]);
 
   const fetchMessagePage = useCallback(async (conversationId: string, offset = 0) => {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabaseUntyped
       .from('messages')
       .select(MESSAGE_SELECT)
       .eq('conversation_id', conversationId)
@@ -281,9 +283,9 @@ export const MessagingWorkspace = () => {
       toast({ title: 'Producto no disponible', description: 'Ya no acepta nuevas ofertas.', variant: 'destructive' });
       return false;
     }
-    const { data, error } = await (supabase as any).from('offers').select('id,created_by,buyer_id').eq('conversation_id', selectedConversation.id).eq('status', 'pending');
+    const { data, error } = await supabaseUntyped.from('offers').select('id,created_by,buyer_id').eq('conversation_id', selectedConversation.id).eq('status', 'pending');
     if (error) throw error;
-    const ownPending = (data || []).some((offer: any) => offer.created_by === user.id || (!offer.created_by && offer.buyer_id === user.id));
+    const ownPending = (data || []).some((offer) => offer.created_by === user.id || (!offer.created_by && offer.buyer_id === user.id));
     if (ownPending) {
       toast({ title: 'Ya tienes una oferta pendiente', description: 'Espera la respuesta de la otra persona.' });
       return false;
@@ -355,7 +357,7 @@ export const MessagingWorkspace = () => {
     const calleeId = selectedConversation.buyer_id === user.id ? selectedConversation.seller_id : selectedConversation.buyer_id;
     setCreatingCall(true);
     try {
-      const { data, error } = await (supabase as any).from('call_sessions').insert({
+      const { data, error } = await supabaseUntyped.from('call_sessions').insert({
         conversation_id: selectedConversation.id,
         product_id: selectedConversation.product_id,
         caller_id: user.id,
@@ -388,7 +390,7 @@ export const MessagingWorkspace = () => {
       }
       const note = normalizeText(offerNote, MAX_OFFER_NOTE_LENGTH);
       setSendingOffer(true);
-      const { error } = await (supabase as any).from('offers').insert({
+      const { error } = await supabaseUntyped.from('offers').insert({
         product_id: selectedConversation.product_id,
         conversation_id: selectedConversation.id,
         buyer_id: selectedConversation.buyer_id,

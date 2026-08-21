@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -139,7 +140,7 @@ const AdminDisputeDetail = () => {
     if (!id) return;
     setLoading(true);
 
-    const { data: disputeData, error: disputeError } = await (supabase as any)
+    const { data: disputeData, error: disputeError } = await supabaseUntyped
       .from('disputes')
       .select('id, transaction_id, product_id, buyer_id, seller_id, opened_by, reason, details, status, resolution, created_at, updated_at, closed_at')
       .eq('id', id)
@@ -248,7 +249,7 @@ const AdminDisputeDetail = () => {
       closed: 'Cerrada por Reveta',
     };
 
-    const { error: disputeError } = await (supabase as any)
+    const { error: disputeError } = await supabaseUntyped
       .from('disputes')
       .update({
         status: nextStatus,
@@ -267,9 +268,9 @@ const AdminDisputeDetail = () => {
 
     const transactionUpdate = transactionUpdateForResolution(nextStatus, now);
     if (transactionUpdate && dispute.transaction_id) {
-      const { error: transactionError } = await supabase
+      const { error: transactionError } = await supabaseUntyped
         .from('transactions')
-        .update(transactionUpdate as any)
+        .update(transactionUpdate)
         .eq('id', dispute.transaction_id);
 
       if (transactionError) {

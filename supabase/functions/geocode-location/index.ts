@@ -20,7 +20,7 @@ const normalize = (value: string) => value
   .toLowerCase()
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
-  .replace(/[.,;:()\[\]]/g, ' ')
+  .replace(/[.,;:()[\]]/g, ' ')
   .replace(/\s+/g, ' ')
   .replace(/^(ciudad|municipio|localidad|pueblo|villa|zona|area)\s+(de\s+)?/, '')
   .trim();

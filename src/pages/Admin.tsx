@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { ArrowLeft, BarChart3, CheckCircle2, Eye, Flag, Grid3X3, Loader2, Package, Search, ShieldAlert, ShieldCheck, Users, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -60,14 +61,14 @@ const Admin = () => {
     if (error) { console.error('Error fetching profiles:', error); toast.error('No se pudieron cargar los usuarios'); return; }
     const { data: rolesData, error: rolesError } = await supabase.from('user_roles').select('user_id, role').eq('role', 'admin');
     if (rolesError) console.error('Error fetching roles:', rolesError);
-    const adminUserIds = new Set((rolesData || []).map((role: any) => role.user_id));
-    setProfiles((data || []).map((profile: any) => ({ ...profile, hasAdminRole: adminUserIds.has(profile.id) })));
+    const adminUserIds = new Set((rolesData || []).map((role) => role.user_id));
+    setProfiles((data || []).map((profile) => ({ ...profile, hasAdminRole: adminUserIds.has(profile.id) })));
   };
 
   const fetchProducts = async () => {
     const { data, error } = await supabase.from('products').select('id, title, price, status, created_at, user_id').order('created_at', { ascending: false });
     if (error) { console.error('Error fetching products:', error); toast.error('No se pudieron cargar los productos'); return; }
-    const productsWithProfiles = await Promise.all((data || []).map(async (product: any) => {
+    const productsWithProfiles = await Promise.all((data || []).map(async (product) => {
       const { data: profileData } = await supabase.from('profiles').select('username, full_name').eq('id', product.user_id).maybeSingle();
       return { ...product, profiles: profileData || null };
     }));
@@ -77,14 +78,14 @@ const Admin = () => {
   const fetchReports = async () => {
     const [legacyResult, productReportsResult] = await Promise.all([
       supabase.from('reports').select('id, reason, description, status, created_at').order('created_at', { ascending: false }),
-      (supabase as any).from('product_reports').select('id, product_id, seller_id, reporter_id, reason, details, status, created_at').order('created_at', { ascending: false }),
+      supabaseUntyped.from('product_reports').select('id, product_id, seller_id, reporter_id, reason, details, status, created_at').order('created_at', { ascending: false }),
     ]);
     if (legacyResult.error) console.error('Error fetching legacy reports:', legacyResult.error);
     if (productReportsResult.error) console.error('Error fetching product reports:', productReportsResult.error);
     if (legacyResult.error && productReportsResult.error) { toast.error('No se pudieron cargar los reportes'); setReports([]); return; }
 
-    const legacyReports: Report[] = (legacyResult.data || []).map((report: any) => ({ id: report.id, source: 'legacy', reason: report.reason, description: report.description || null, status: report.status || 'pending', created_at: report.created_at }));
-    const productReports: Report[] = await Promise.all((productReportsResult.data || []).map(async (report: any) => {
+    const legacyReports: Report[] = (legacyResult.data || []).map((report) => ({ id: report.id, source: 'legacy', reason: report.reason, description: report.description || null, status: report.status || 'pending', created_at: report.created_at }));
+    const productReports: Report[] = await Promise.all((productReportsResult.data || []).map(async (report) => {
       let productTitle: string | null = null;
       if (report.product_id) {
         const { data: product } = await supabase.from('products').select('title').eq('id', report.product_id).maybeSingle();
@@ -102,9 +103,9 @@ const Admin = () => {
   };
 
   const fetchDisputes = async () => {
-    const { data, error } = await (supabase as any).from('disputes').select(disputeSelect).order('created_at', { ascending: false });
+    const { data, error } = await supabaseUntyped.from('disputes').select(disputeSelect).order('created_at', { ascending: false });
     if (error) { console.error('Error fetching disputes:', error); toast.error('No se pudieron cargar las incidencias'); return; }
-    const enrichedDisputes = await Promise.all((data || []).map(async (dispute: any) => {
+    const enrichedDisputes = await Promise.all((data || []).map(async (dispute) => {
       const [{ data: product }, { data: buyer }, { data: seller }, { data: transaction }] = await Promise.all([
         supabase.from('products').select('title').eq('id', dispute.product_id).maybeSingle(),
         supabase.from('profiles').select('full_name, username').eq('id', dispute.buyer_id).maybeSingle(),
@@ -119,7 +120,7 @@ const Admin = () => {
   const handleVerifyUser = async (profile: Profile, verified: boolean) => {
     if (profile.hasAdminRole && !verified) { toast.error('No se puede quitar la verificación a un administrador desde esta acción.'); return; }
     setUpdatingKey(`verify-${profile.id}`);
-    const { error } = await supabase.from('profiles').update({ verified, verified_at: verified ? new Date().toISOString() : null } as any).eq('id', profile.id);
+    const { error } = await supabaseUntyped.from('profiles').update({ verified, verified_at: verified ? new Date().toISOString() : null }).eq('id', profile.id);
     if (error) { toast.error('Error al actualizar verificación'); setUpdatingKey(null); return; }
     toast.success(verified ? 'Usuario verificado' : 'Verificación removida');
     await fetchProfiles();
@@ -130,7 +131,7 @@ const Admin = () => {
     if (profile.hasAdminRole) { toast.info('Este usuario ya es administrador'); return; }
     setUpdatingKey(`admin-${profile.id}`);
 
-    const { data: existingRole, error: checkError } = await (supabase as any)
+    const { data: existingRole, error: checkError } = await supabaseUntyped
       .from('user_roles')
       .select('user_id')
       .eq('user_id', profile.id)
@@ -145,7 +146,7 @@ const Admin = () => {
     }
 
     if (!existingRole) {
-      const { error } = await (supabase as any).from('user_roles').insert({ user_id: profile.id, role: 'admin' });
+      const { error } = await supabaseUntyped.from('user_roles').insert({ user_id: profile.id, role: 'admin' });
       if (error) {
         console.error('Error making admin:', error);
         toast.error('Error al actualizar permisos');
@@ -174,7 +175,7 @@ const Admin = () => {
     if (!REPORT_STATUSES.includes(status)) { toast.error('Estado de reporte no válido'); return; }
     setUpdatingKey(`report-${report.source}-${report.id}`);
     const table = report.source === 'product' ? 'product_reports' : 'reports';
-    const { error } = await (supabase as any).from(table).update({ status }).eq('id', report.id);
+    const { error } = await supabaseUntyped.from(table).update({ status }).eq('id', report.id);
     if (error) { console.error('Error updating report:', error); toast.error('Error al actualizar reporte'); setUpdatingKey(null); return; }
     toast.success('Reporte actualizado');
     await fetchReports();
@@ -186,11 +187,11 @@ const Admin = () => {
     setUpdatingKey(`dispute-${dispute.id}`);
     const now = new Date().toISOString();
     const resolutionMap: Record<string, string | null> = { open: null, under_review: 'En revisión por Reveta', resolved_buyer: 'Resuelta a favor del comprador', resolved_seller: 'Resuelta a favor del vendedor', closed: 'Cerrada por Reveta' };
-    const { error } = await (supabase as any).from('disputes').update({ status: nextStatus, resolution: resolutionMap[nextStatus] || null, updated_at: now, closed_at: TERMINAL_DISPUTES.includes(nextStatus) ? now : null }).eq('id', dispute.id);
+    const { error } = await supabaseUntyped.from('disputes').update({ status: nextStatus, resolution: resolutionMap[nextStatus] || null, updated_at: now, closed_at: TERMINAL_DISPUTES.includes(nextStatus) ? now : null }).eq('id', dispute.id);
     if (error) { toast.error('No se pudo actualizar la incidencia'); setUpdatingKey(null); return; }
-    if (nextStatus === 'under_review') await supabase.from('transactions').update({ status: 'under_review' } as any).eq('id', dispute.transaction_id);
-    if (nextStatus === 'resolved_seller') await supabase.from('transactions').update({ status: 'completed', completed_at: now } as any).eq('id', dispute.transaction_id);
-    if (nextStatus === 'resolved_buyer' || nextStatus === 'closed') await supabase.from('transactions').update({ status: 'disputed', completed_at: now } as any).eq('id', dispute.transaction_id);
+    if (nextStatus === 'under_review') await supabaseUntyped.from('transactions').update({ status: 'under_review' }).eq('id', dispute.transaction_id);
+    if (nextStatus === 'resolved_seller') await supabaseUntyped.from('transactions').update({ status: 'completed', completed_at: now }).eq('id', dispute.transaction_id);
+    if (nextStatus === 'resolved_buyer' || nextStatus === 'closed') await supabaseUntyped.from('transactions').update({ status: 'disputed', completed_at: now }).eq('id', dispute.transaction_id);
     toast.success('Incidencia actualizada');
     await fetchDisputes();
     setUpdatingKey(null);

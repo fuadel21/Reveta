@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/errors';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -28,6 +29,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -72,7 +74,8 @@ const SellerDashboard = () => {
 
   const fetchDashboard = useCallback(async (manual = false) => {
     if (!user) return;
-    manual ? setRefreshing(true) : setLoading(true);
+    if (manual) setRefreshing(true);
+    else setLoading(true);
     try {
       const result = await loadSellerInventory(user.id);
       setProducts(result.products);
@@ -111,11 +114,11 @@ const SellerDashboard = () => {
   const getServerBlockedIds = async (ids: string[]) => {
     if (ids.length === 0) return new Set<string>();
     const [reservations, transactions] = await Promise.all([
-      (supabase as any).from('product_reservations').select('product_id').in('product_id', ids).eq('status', 'active'),
+      supabaseUntyped.from('product_reservations').select('product_id').in('product_id', ids).eq('status', 'active'),
       supabase.from('transactions').select('product_id').in('product_id', ids).in('status', OPEN_TRANSACTION_STATUSES),
     ]);
     if (reservations.error || transactions.error) throw reservations.error || transactions.error;
-    return new Set([...(reservations.data || []), ...(transactions.data || [])].map((row: any) => row.product_id));
+    return new Set([...(reservations.data || []), ...(transactions.data || [])].map((row) => row.product_id));
   };
 
   const updateProductStatuses = async (ids: string[], nextStatus: InventoryStatus) => {
@@ -134,7 +137,7 @@ const SellerDashboard = () => {
       return;
     }
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabaseUntyped
       .from('products')
       .update({ status: nextStatus })
       .eq('user_id', user.id)
@@ -142,7 +145,7 @@ const SellerDashboard = () => {
       .in('id', safeIds)
       .select('id');
     if (error) throw error;
-    const changed = new Set((data || []).map((row: any) => row.id));
+    const changed = new Set((data || []).map((row) => row.id));
     setProducts((current) => current.map((product) => changed.has(product.id) ? { ...product, status: nextStatus } : product));
     setSelectedIds((current) => new Set([...current].filter((id) => !changed.has(id))));
 
@@ -204,7 +207,7 @@ const SellerDashboard = () => {
       }
 
       const title = `${product.title.replace(/\s*\(copia\)$/i, '')} (copia)`.slice(0, 100);
-      const { data, error } = await (supabase as any).from('products').insert({
+      const { data, error } = await supabaseUntyped.from('products').insert({
         user_id: user.id,
         title,
         description: product.description,
@@ -222,10 +225,10 @@ const SellerDashboard = () => {
 
       toast({ title: 'Copia creada', description: 'Está archivada para que puedas revisarla antes de publicarla.' });
       navigate(`/edit-product/${data.id}`);
-    } catch (error: any) {
+    } catch (error) {
       if (uploadedPaths.length > 0) await supabase.storage.from('products').remove(uploadedPaths);
       console.error('Error duplicating listing:', error);
-      toast({ title: 'No se pudo duplicar el anuncio', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+      toast({ title: 'No se pudo duplicar el anuncio', description: getErrorMessage(error, 'Inténtalo de nuevo.'), variant: 'destructive' });
     } finally {
       setUpdatingId(null);
     }
@@ -265,7 +268,8 @@ const SellerDashboard = () => {
   const allVisibleSelected = selectableVisibleIds.length > 0 && selectableVisibleIds.every((id) => selectedIds.has(id));
   const toggleProduct = (id: string) => setSelectedIds((current) => {
     const next = new Set(current);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     return next;
   });
   const toggleVisible = () => setSelectedIds((current) => {

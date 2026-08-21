@@ -1,4 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
+import { rowsFrom } from '@/lib/query-helpers';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 
 export type OperationType = 'purchase' | 'sale';
 export type OperationFilter = 'all' | 'action' | 'progress' | 'finished' | 'problem';
@@ -33,17 +35,27 @@ export const FINISHED_STATUSES = ['completed', 'cancelled', 'refunded'];
 export const PROBLEM_STATUSES = ['disputed', 'under_review'];
 
 const conversationKey = (productId: string, buyerId: string, sellerId: string) => `${productId}:${buyerId}:${sellerId}`;
-const rowsFrom = <T,>(result: PromiseSettledResult<any>): T[] => result.status === 'fulfilled' && !result.value.error ? (result.value.data || []) as T[] : [];
+
+interface TransactionRow {
+  id: string; product_id: string; buyer_id: string; seller_id: string;
+  amount: number | null; status: string; created_at: string | null; completed_at: string | null;
+  payment_provider: string | null; payment_status: string | null; paid_at: string | null;
+  shipping_status: string | null; sendcloud_tracking_number: string | null; sendcloud_tracking_url: string | null; offer_id: string | null;
+}
+interface ProductLiteRow { id: string; title: string | null; images: string[] | null; status: string }
+interface ProfileLiteRow { id: string; full_name: string | null }
+interface DisputeLiteRow { id: string; transaction_id: string; reason: string | null; details: string | null; status: string; created_at: string | null }
+interface ConversationLiteRow { id: string; product_id: string; buyer_id: string; seller_id: string }
 
 export const loadOperations = async (userId: string) => {
   const [purchaseResult, saleResult] = await Promise.all([
-    (supabase as any).from('transactions').select(SELECT).eq('buyer_id', userId).order('created_at', { ascending: false }).limit(100),
-    (supabase as any).from('transactions').select(SELECT).eq('seller_id', userId).order('created_at', { ascending: false }).limit(100),
+    supabaseUntyped.from('transactions').select(SELECT).eq('buyer_id', userId).order('created_at', { ascending: false }).limit(100),
+    supabaseUntyped.from('transactions').select(SELECT).eq('seller_id', userId).order('created_at', { ascending: false }).limit(100),
   ]);
 
   if (purchaseResult.error && saleResult.error) throw new Error('No se pudieron cargar las operaciones');
-  const purchases = (purchaseResult.data || []) as any[];
-  const sales = (saleResult.data || []) as any[];
+  const purchases = (purchaseResult.data || []) as TransactionRow[];
+  const sales = (saleResult.data || []) as TransactionRow[];
   const all = [...purchases, ...sales];
   if (all.length === 0) return { purchases: [] as Operation[], sales: [] as Operation[], partial: Boolean(purchaseResult.error || saleResult.error) };
 
@@ -59,19 +71,19 @@ export const loadOperations = async (userId: string) => {
     supabase.from('conversations').select('id,product_id,buyer_id,seller_id').in('product_id', productIds).or(`buyer_id.eq.${userId},seller_id.eq.${userId}`),
   ]);
 
-  const products = rowsFrom<any>(supporting[0]);
-  const profiles = rowsFrom<any>(supporting[1]);
-  const disputes = rowsFrom<any>(supporting[2]);
-  const reviews = rowsFrom<any>(supporting[3]);
-  const conversations = rowsFrom<any>(supporting[4]);
+  const products = rowsFrom<ProductLiteRow>(supporting[0]);
+  const profiles = rowsFrom<ProfileLiteRow>(supporting[1]);
+  const disputes = rowsFrom<DisputeLiteRow>(supporting[2]);
+  const reviews = rowsFrom<{ transaction_id: string }>(supporting[3]);
+  const conversations = rowsFrom<ConversationLiteRow>(supporting[4]);
   const productMap = new Map(products.map((row) => [row.id, row]));
   const profileMap = new Map(profiles.map((row) => [row.id, row]));
-  const disputeMap = new Map<string, any>();
+  const disputeMap = new Map<string, DisputeLiteRow>();
   disputes.forEach((row) => { if (row.transaction_id && !disputeMap.has(row.transaction_id)) disputeMap.set(row.transaction_id, row); });
   const reviewed = new Set(reviews.map((row) => row.transaction_id).filter(Boolean));
   const conversationMap = new Map(conversations.map((row) => [conversationKey(row.product_id, row.buyer_id, row.seller_id), row.id]));
 
-  const hydrate = (row: any, type: OperationType): Operation => ({
+  const hydrate = (row: TransactionRow, type: OperationType): Operation => ({
     ...row,
     product: productMap.get(row.product_id) || null,
     counterpartyName: profileMap.get(type === 'purchase' ? row.seller_id : row.buyer_id)?.full_name || (type === 'purchase' ? 'Vendedor' : 'Comprador'),

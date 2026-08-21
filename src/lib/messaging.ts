@@ -1,4 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
+import { queryFailed, rowsFrom } from '@/lib/query-helpers';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 
 export type MessagingProfile = {
   id: string;
@@ -41,10 +43,7 @@ export type MessagingConversation = {
 
 const ACTIVE_TRANSACTION_STATUSES = ['pending', 'pending_payment', 'paid', 'shipped', 'disputed', 'under_review'];
 const conversationKey = (productId: string, buyerId: string, sellerId: string) => `${productId}:${buyerId}:${sellerId}`;
-const rowsFrom = <T,>(result: PromiseSettledResult<any>): T[] =>
-  result.status === 'fulfilled' && !result.value.error ? (result.value.data || []) as T[] : [];
-const failed = (result: PromiseSettledResult<any>) =>
-  result.status === 'rejected' || (result.status === 'fulfilled' && Boolean(result.value.error));
+
 
 export const otherParticipant = (conversation: MessagingConversation, userId?: string | null) =>
   conversation.buyer_id === userId ? conversation.seller : conversation.buyer;
@@ -56,7 +55,7 @@ export const conversationNeedsAttention = (conversation: MessagingConversation) 
   Boolean(conversation.transactionStatus);
 
 export const loadMessagingOverview = async (userId: string, limit = 100) => {
-  const { data: conversationRows, error: conversationError } = await (supabase as any)
+  const { data: conversationRows, error: conversationError } = await supabaseUntyped
     .from('conversations')
     .select('id,product_id,buyer_id,seller_id,updated_at')
     .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
@@ -84,33 +83,33 @@ export const loadMessagingOverview = async (userId: string, limit = 100) => {
   const supporting = await Promise.allSettled([
     supabase.from('products').select('id,title,images,status,price,user_id').in('id', productIds),
     supabase.from('profiles').select('id,full_name,avatar_url').in('id', profileIds),
-    (supabase as any).from('messages').select('id,conversation_id,sender_id,content,created_at').in('conversation_id', conversationIds).order('created_at', { ascending: false }).limit(recentMessageLimit),
-    (supabase as any).from('messages').select('id,conversation_id').in('conversation_id', conversationIds).eq('read', false).neq('sender_id', userId).limit(5000),
-    (supabase as any).from('offers').select('id,conversation_id').in('conversation_id', conversationIds).eq('status', 'pending').limit(2000),
-    (supabase as any).from('transactions').select('id,product_id,buyer_id,seller_id,status,created_at').in('product_id', productIds).or(`buyer_id.eq.${userId},seller_id.eq.${userId}`).in('status', ACTIVE_TRANSACTION_STATUSES).order('created_at', { ascending: false }).limit(500),
+    supabaseUntyped.from('messages').select('id,conversation_id,sender_id,content,created_at').in('conversation_id', conversationIds).order('created_at', { ascending: false }).limit(recentMessageLimit),
+    supabaseUntyped.from('messages').select('id,conversation_id').in('conversation_id', conversationIds).eq('read', false).neq('sender_id', userId).limit(5000),
+    supabaseUntyped.from('offers').select('id,conversation_id').in('conversation_id', conversationIds).eq('status', 'pending').limit(2000),
+    supabaseUntyped.from('transactions').select('id,product_id,buyer_id,seller_id,status,created_at').in('product_id', productIds).or(`buyer_id.eq.${userId},seller_id.eq.${userId}`).in('status', ACTIVE_TRANSACTION_STATUSES).order('created_at', { ascending: false }).limit(500),
   ]);
 
-  const products = rowsFrom<any>(supporting[0]);
-  const profiles = rowsFrom<any>(supporting[1]);
-  const recentMessages = rowsFrom<any>(supporting[2]);
-  const unreadMessages = rowsFrom<any>(supporting[3]);
-  const pendingOffers = rowsFrom<any>(supporting[4]);
-  const transactions = rowsFrom<any>(supporting[5]);
+  const products = rowsFrom<{ id: string; title: string | null; images: string[] | null; status: string; price: number | null; user_id: string }>(supporting[0]);
+  const profiles = rowsFrom<{ id: string; full_name: string | null; avatar_url: string | null }>(supporting[1]);
+  const recentMessages = rowsFrom<{ id: string; conversation_id: string; sender_id: string; content: string | null; created_at: string }>(supporting[2]);
+  const unreadMessages = rowsFrom<{ id: string; conversation_id: string }>(supporting[3]);
+  const pendingOffers = rowsFrom<{ id: string; conversation_id: string }>(supporting[4]);
+  const transactions = rowsFrom<{ id: string; product_id: string; buyer_id: string; seller_id: string; status: string; created_at: string }>(supporting[5]);
 
   const transactionIds = [...new Set(transactions.map((row) => row.id).filter(Boolean))];
   const disputeResult = transactionIds.length > 0
     ? await Promise.allSettled([
-      (supabase as any).from('disputes').select('id,transaction_id,status').in('transaction_id', transactionIds).in('status', ['open', 'under_review']).limit(500),
+      supabaseUntyped.from('disputes').select('id,transaction_id,status').in('transaction_id', transactionIds).in('status', ['open', 'under_review']).limit(500),
     ])
     : [];
-  const disputes = disputeResult.length > 0 ? rowsFrom<any>(disputeResult[0]) : [];
+  const disputes = disputeResult.length > 0 ? rowsFrom<{ id: string; transaction_id: string; status: string }>(disputeResult[0]) : [];
 
   const productMap = new Map(products.map((row) => [row.id, row]));
   const profileMap = new Map(profiles.map((row) => [row.id, row]));
   const unreadMap = new Map<string, number>();
   const offerMap = new Map<string, number>();
   const lastMessageMap = new Map<string, MessagingPreview>();
-  const transactionMap = new Map<string, any>();
+  const transactionMap = new Map<string, { id: string; status: string }>();
   const disputedTransactions = new Set(disputes.map((row) => row.transaction_id).filter(Boolean));
 
   unreadMessages.forEach((row) => unreadMap.set(row.conversation_id, (unreadMap.get(row.conversation_id) || 0) + 1));
@@ -148,7 +147,7 @@ export const loadMessagingOverview = async (userId: string, limit = 100) => {
 
   return {
     conversations: hydrated,
-    partial: supporting.some(failed) || disputeResult.some(failed),
+    partial: supporting.some(queryFailed) || disputeResult.some(queryFailed),
   };
 };
 

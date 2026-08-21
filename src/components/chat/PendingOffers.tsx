@@ -1,6 +1,8 @@
+import { getErrorMessage } from '@/lib/errors';
 import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, HandCoins, RotateCcw, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useToast } from '@/hooks/use-toast';
 
 interface Offer {
@@ -43,7 +45,7 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
   const [counterNote, setCounterNote] = useState('');
 
   const fetchOffers = useCallback(async () => {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabaseUntyped
       .from('offers')
       .select('id, product_id, conversation_id, buyer_id, seller_id, created_by, amount, message, status, created_at')
       .eq('conversation_id', conversationId)
@@ -85,7 +87,7 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
 
   const acceptOfferAtomically = async (offer: Offer) => {
     await ensureProductAcceptsOffers(offer);
-    const { data: transactionId, error } = await (supabase as any).rpc('accept_offer', { p_offer_id: offer.id });
+    const { data: transactionId, error } = await supabaseUntyped.rpc('accept_offer', { p_offer_id: offer.id });
     if (error) throw error;
     return transactionId as string;
   };
@@ -106,7 +108,7 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
       if (status === 'accepted') {
         await acceptOfferAtomically(offer);
       } else {
-        const { error } = await (supabase as any)
+        const { error } = await supabaseUntyped
           .from('offers')
           .update({ status, updated_at: new Date().toISOString() })
           .eq('id', offer.id);
@@ -121,9 +123,9 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
       await sendChatMessage(content);
       await fetchOffers();
       toast({ title: status === 'accepted' ? 'Oferta aceptada y producto reservado' : 'Oferta rechazada' });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error updating offer:', error);
-      toast({ title: 'No se pudo actualizar la oferta', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+      toast({ title: 'No se pudo actualizar la oferta', description: getErrorMessage(error, 'Inténtalo de nuevo.'), variant: 'destructive' });
       await fetchOffers();
     } finally {
       setUpdatingId(null);
@@ -141,8 +143,8 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
       setCounterOfferId(offer.id);
       setCounterAmount('');
       setCounterNote('');
-    } catch (error: any) {
-      toast({ title: 'No se puede contraofertar', description: error?.message || 'El producto no está disponible.', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'No se puede contraofertar', description: getErrorMessage(error, 'El producto no está disponible.'), variant: 'destructive' });
       await fetchOffers();
     }
   };
@@ -155,8 +157,8 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
 
     try {
       await ensureProductAcceptsOffers(offer);
-    } catch (error: any) {
-      toast({ title: 'No se puede contraofertar', description: error?.message || 'El producto no está disponible.', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'No se puede contraofertar', description: getErrorMessage(error, 'El producto no está disponible.'), variant: 'destructive' });
       await fetchOffers();
       return;
     }
@@ -171,7 +173,7 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
     setUpdatingId(offer.id);
 
     try {
-      const { error: oldOfferError } = await (supabase as any)
+      const { error: oldOfferError } = await supabaseUntyped
         .from('offers')
         .update({ status: 'countered', updated_at: new Date().toISOString() })
         .eq('id', offer.id)
@@ -179,7 +181,7 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
 
       if (oldOfferError) throw oldOfferError;
 
-      const { error: counterError } = await (supabase as any).from('offers').insert({
+      const { error: counterError } = await supabaseUntyped.from('offers').insert({
         product_id: offer.product_id,
         conversation_id: offer.conversation_id,
         buyer_id: offer.buyer_id,
@@ -198,9 +200,9 @@ export const PendingOffers = ({ conversationId, currentUserId, sellerId, product
       setCounterNote('');
       await fetchOffers();
       toast({ title: 'Contraoferta enviada' });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error sending counteroffer:', error);
-      toast({ title: 'No se pudo enviar la contraoferta', description: error?.message || 'Revisa el SQL de contraofertas.', variant: 'destructive' });
+      toast({ title: 'No se pudo enviar la contraoferta', description: getErrorMessage(error, 'Revisa el SQL de contraofertas.'), variant: 'destructive' });
     } finally {
       setUpdatingId(null);
     }

@@ -36,6 +36,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -137,7 +138,7 @@ const SafetyCenter = () => {
     if (!user || !unblockTarget || unblocking) return;
     setUnblocking(true);
     try {
-      const { error } = await (supabase as any)
+      const { error } = await supabaseUntyped
         .from('user_blocks')
         .delete()
         .eq('blocker_id', user.id)

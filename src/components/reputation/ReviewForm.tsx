@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 
 interface ReviewFormProps {
   transactionId: string;
@@ -20,7 +21,7 @@ export default function ReviewForm({ transactionId, onSubmitted }: ReviewFormPro
   const submit = async () => {
     if (rating < 1 || rating > 5 || saving) return;
     setSaving(true);
-    const { error } = await (supabase as any).rpc('submit_transaction_review', {
+    const { error } = await supabaseUntyped.rpc('submit_transaction_review', {
       p_transaction_id: transactionId,
       p_rating: rating,
       p_review: review.trim() || null,

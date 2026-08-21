@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ArrowLeft, BarChart3, Eye, Loader2, MapPin, MousePointerClick, Package, Search, TrendingUp, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAdmin } from '@/hooks/useAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -134,16 +135,16 @@ const AdminGrowth = () => {
     setLoading(true);
 
     const [searchResult, clickedProductsResult, productClicksResult] = await Promise.all([
-      (supabase as any)
+      supabaseUntyped
         .from('search_analytics')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(500),
-      (supabase as any)
+      supabaseUntyped
         .from('growth_top_clicked_products')
         .select('*')
         .limit(10),
-      (supabase as any)
+      supabaseUntyped
         .from('product_clicks')
         .select('*')
         .order('created_at', { ascending: false })

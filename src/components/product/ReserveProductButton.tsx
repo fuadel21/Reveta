@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CalendarClock, Loader2, ShoppingCart, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -67,7 +68,7 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
 
     setLoadingReservation(true);
     try {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabaseUntyped
         .from('product_reservations')
         .select('id, buyer_id, seller_id, expires_at, status')
         .eq('product_id', productId)
@@ -126,7 +127,7 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
     setReserving(true);
 
     try {
-      const { data, error } = await (supabase as any).rpc('reserve_product_for_24h', {
+      const { data, error } = await supabaseUntyped.rpc('reserve_product_for_24h', {
         target_product_id: productId,
       });
 
@@ -165,7 +166,7 @@ export const ReserveProductButton = ({ productId, sellerId, disabled = false }: 
 
     setCancelling(true);
     try {
-      const { error } = await (supabase as any).rpc('cancel_product_reservation', {
+      const { error } = await supabaseUntyped.rpc('cancel_product_reservation', {
         target_reservation_id: reservation.id,
       });
 

@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 
 export type UnifiedSafetyStatus = 'open' | 'under_review' | 'resolved' | 'dismissed';
 export type UnifiedSafetyKind = 'user' | 'product';
@@ -193,7 +194,7 @@ const loadAdminNotes = async (reportIds: string[]) => {
   let failures = 0;
 
   for (const ids of chunksOf(Array.from(new Set(reportIds.filter(Boolean))))) {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabaseUntyped
       .from('safety_report_admin_notes')
       .select('report_id,notes')
       .in('report_id', ids);
@@ -304,18 +305,18 @@ const BLOCK_SELECT = 'blocker_id,blocked_id,created_at';
 
 export const loadSafetyCenter = async (userId: string): Promise<SafetyCenterData> => {
   const results = await Promise.allSettled([
-    (supabase as any).from('safety_reports').select(SAFETY_SELECT).eq('reporter_id', userId).order('created_at', { ascending: false }).limit(100),
-    (supabase as any).from('product_reports').select(PRODUCT_REPORT_SELECT).eq('reporter_id', userId).order('created_at', { ascending: false }).limit(100),
-    (supabase as any).from('user_blocks').select(BLOCK_SELECT).eq('blocker_id', userId).order('created_at', { ascending: false }).limit(100),
+    supabaseUntyped.from('safety_reports').select(SAFETY_SELECT).eq('reporter_id', userId).order('created_at', { ascending: false }).limit(100),
+    supabaseUntyped.from('product_reports').select(PRODUCT_REPORT_SELECT).eq('reporter_id', userId).order('created_at', { ascending: false }).limit(100),
+    supabaseUntyped.from('user_blocks').select(BLOCK_SELECT).eq('blocker_id', userId).order('created_at', { ascending: false }).limit(100),
     supabase.from('profiles').select('id,verified').eq('id', userId).maybeSingle(),
   ]);
 
-  const safetyRows = settledRows<RawSafetyReport>(results[0] as any);
-  const productReportRows = settledRows<RawProductReport>(results[1] as any);
-  const blockRows = settledRows<RawBlock>(results[2] as any);
+  const safetyRows = settledRows<RawSafetyReport>(results[0]);
+  const productReportRows = settledRows<RawProductReport>(results[1]);
+  const blockRows = settledRows<RawBlock>(results[2]);
   const profileResult = results[3];
   const verified = profileResult.status === 'fulfilled' && !profileResult.value.error
-    ? Boolean((profileResult.value.data as any)?.verified)
+    ? Boolean((profileResult.value.data as { verified?: boolean | null } | null)?.verified)
     : false;
 
   const profileIds = Array.from(new Set([
@@ -330,7 +331,7 @@ export const loadSafetyCenter = async (userId: string): Promise<SafetyCenterData
   ]));
 
   const related = await loadProfilesAndProducts(profileIds, productIds);
-  const failedSections = results.filter((result) => result.status !== 'fulfilled' || Boolean((result as any).value?.error)).length + related.failures;
+  const failedSections = results.filter((result) => result.status !== 'fulfilled' || (result.status === 'fulfilled' && Boolean(result.value.error))).length + related.failures;
 
   return {
     reports: normalizeReports(safetyRows, productReportRows, related.profilesById, related.productsById),
@@ -342,14 +343,14 @@ export const loadSafetyCenter = async (userId: string): Promise<SafetyCenterData
 
 export const loadAdminSafety = async (): Promise<AdminSafetyData> => {
   const results = await Promise.allSettled([
-    (supabase as any).from('safety_reports').select(SAFETY_SELECT).order('created_at', { ascending: false }).limit(1000),
-    (supabase as any).from('product_reports').select(PRODUCT_REPORT_SELECT).order('created_at', { ascending: false }).limit(1000),
-    (supabase as any).from('user_blocks').select(BLOCK_SELECT).order('created_at', { ascending: false }).limit(1000),
+    supabaseUntyped.from('safety_reports').select(SAFETY_SELECT).order('created_at', { ascending: false }).limit(1000),
+    supabaseUntyped.from('product_reports').select(PRODUCT_REPORT_SELECT).order('created_at', { ascending: false }).limit(1000),
+    supabaseUntyped.from('user_blocks').select(BLOCK_SELECT).order('created_at', { ascending: false }).limit(1000),
   ]);
 
-  const safetyRows = settledRows<RawSafetyReport>(results[0] as any);
-  const productReportRows = settledRows<RawProductReport>(results[1] as any);
-  const blockRows = settledRows<RawBlock>(results[2] as any);
+  const safetyRows = settledRows<RawSafetyReport>(results[0]);
+  const productReportRows = settledRows<RawProductReport>(results[1]);
+  const blockRows = settledRows<RawBlock>(results[2]);
   const notes = await loadAdminNotes(safetyRows.map((row) => row.id));
   const safetyRowsWithNotes = safetyRows.map((row) => ({
     ...row,
@@ -367,7 +368,7 @@ export const loadAdminSafety = async (): Promise<AdminSafetyData> => {
   ]));
 
   const related = await loadProfilesAndProducts(profileIds, productIds);
-  const failedSections = results.filter((result) => result.status !== 'fulfilled' || Boolean((result as any).value?.error)).length + related.failures + notes.failures;
+  const failedSections = results.filter((result) => result.status !== 'fulfilled' || (result.status === 'fulfilled' && Boolean(result.value.error))).length + related.failures + notes.failures;
 
   return {
     reports: normalizeReports(safetyRowsWithNotes, productReportRows, related.profilesById, related.productsById),

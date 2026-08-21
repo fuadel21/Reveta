@@ -11,7 +11,7 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
-// @ts-ignore
+// @ts-expect-error: _getIconUrl es una propiedad privada de leaflet sin tipos.
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl: markerIcon,
@@ -97,7 +97,7 @@ const ProductsMap = ({ products, userLocation, className }: ProductsMapProps) =>
 
   return (
     <div className={`rounded-xl overflow-hidden ${className} relative z-0`}>
-      {/* @ts-ignore */}
+      {/* @ts-expect-error: react-leaflet v4 y @types/leaflet divergen en props de centro/zoom. */}
       <MapContainer 
         center={initialCenter} 
         zoom={initialZoom} 
@@ -105,7 +105,7 @@ const ProductsMap = ({ products, userLocation, className }: ProductsMapProps) =>
         zoomControl={false}
       >
         <ChangeView center={initialCenter} zoom={initialZoom} />
-        {/* @ts-ignore */}
+        {/* @ts-expect-error: divergencia de tipos entre react-leaflet y @types/leaflet. */}
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -124,13 +124,13 @@ const ProductsMap = ({ products, userLocation, className }: ProductsMapProps) =>
           <Marker
             key={product.id}
             position={[product.latitude, product.longitude]}
-            // @ts-ignore
+            // @ts-expect-error: L.divIcon no coincide con el tipo MarkerOptions esperado.
             icon={createPriceIcon(product.price)}
             eventHandlers={{
               click: () => {},
             }}
           >
-            {/* @ts-ignore */}
+            {/* @ts-expect-error: Popup acepta className aunque los tipos no lo declaran. */}
             <Popup className="product-popup-custom">
               <div className="w-48 p-0">
                 {product.images?.[0] && (

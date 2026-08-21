@@ -1,8 +1,10 @@
+import { getErrorMessage } from '@/lib/errors';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, BellOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -22,7 +24,7 @@ const FollowSellerButton = ({ sellerId, onFollowersChange }: FollowSellerButtonP
 
   useEffect(() => {
     const loadFollowState = async () => {
-      const { count } = await (supabase as any)
+      const { count } = await supabaseUntyped
         .from('seller_followers')
         .select('id', { count: 'exact', head: true })
         .eq('seller_id', sellerId);
@@ -34,7 +36,7 @@ const FollowSellerButton = ({ sellerId, onFollowersChange }: FollowSellerButtonP
         return;
       }
 
-      const { data } = await (supabase as any)
+      const { data } = await supabaseUntyped
         .from('seller_followers')
         .select('id')
         .eq('seller_id', sellerId)
@@ -58,7 +60,7 @@ const FollowSellerButton = ({ sellerId, onFollowersChange }: FollowSellerButtonP
 
     try {
       if (isFollowing) {
-        const { error } = await (supabase as any)
+        const { error } = await supabaseUntyped
           .from('seller_followers')
           .delete()
           .eq('seller_id', sellerId)
@@ -69,7 +71,7 @@ const FollowSellerButton = ({ sellerId, onFollowersChange }: FollowSellerButtonP
         onFollowersChange?.(-1);
         toast({ title: 'Has dejado de seguir al vendedor' });
       } else {
-        const { error } = await (supabase as any)
+        const { error } = await supabaseUntyped
           .from('seller_followers')
           .insert({ seller_id: sellerId, follower_id: user.id });
 
@@ -78,8 +80,8 @@ const FollowSellerButton = ({ sellerId, onFollowersChange }: FollowSellerButtonP
         onFollowersChange?.(1);
         toast({ title: 'Ahora sigues a este vendedor' });
       }
-    } catch (error: any) {
-      toast({ title: 'No se pudo actualizar', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'No se pudo actualizar', description: getErrorMessage(error, 'Inténtalo de nuevo.'), variant: 'destructive' });
     } finally {
       setLoading(false);
     }

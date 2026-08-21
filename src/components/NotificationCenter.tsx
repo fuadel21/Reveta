@@ -20,7 +20,7 @@ interface NotificationData {
   type: string;
   title: string;
   message: string;
-  data: Record<string, any> | null;
+  data: Record<string, unknown> | null;
   read: boolean | null;
   created_at: string;
 }
@@ -61,7 +61,7 @@ const NotificationCenter = () => {
     fetchNotifications();
     const channel = supabase
       .channel(`notifications:${user.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, (payload: any) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, (payload) => {
         const newNotification = payload.new as NotificationData;
         setNotifications((current) => [newNotification, ...current].slice(0, 100));
         setUnreadCount((current) => current + 1);

@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 
 export type BuyerProduct = {
   id: string;
@@ -153,18 +154,18 @@ const settledData = <T,>(result: PromiseSettledResult<{ data?: T | null; error?:
 export const loadBuyerCenter = async (userId: string): Promise<BuyerCenterData> => {
   const recentIds = getRecentProductIds();
   const results = await Promise.allSettled([
-    (supabase as any).from('favorites').select('product_id,created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(200),
-    (supabase as any).from('offers').select('id,product_id,conversation_id,amount,status,created_at').eq('buyer_id', userId).order('created_at', { ascending: false }).limit(100),
+    supabaseUntyped.from('favorites').select('product_id,created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(200),
+    supabaseUntyped.from('offers').select('id,product_id,conversation_id,amount,status,created_at').eq('buyer_id', userId).order('created_at', { ascending: false }).limit(100),
     supabase.from('transactions').select('id,product_id,amount,status,payment_status,shipping_status,sendcloud_tracking_url,created_at').eq('buyer_id', userId).order('created_at', { ascending: false }).limit(100),
     supabase.from('conversations').select('id,product_id,updated_at').eq('buyer_id', userId).order('updated_at', { ascending: false }).limit(50),
-    (supabase as any).from('saved_searches').select('id,name,alerts_enabled,created_at,query,category_id').eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
+    supabaseUntyped.from('saved_searches').select('id,name,alerts_enabled,created_at,query,category_id').eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
   ]);
 
-  const favoriteRows = settledData<any[]>(results[0] as any, []);
-  const offers = settledData<BuyerOffer[]>(results[1] as any, []);
-  const transactions = settledData<BuyerTransaction[]>(results[2] as any, []);
-  const conversations = settledData<BuyerConversation[]>(results[3] as any, []);
-  const savedSearches = settledData<BuyerSavedSearch[]>(results[4] as any, []);
+  const favoriteRows = settledData<Array<{ product_id: string | null }>>(results[0], []);
+  const offers = settledData<BuyerOffer[]>(results[1], []);
+  const transactions = settledData<BuyerTransaction[]>(results[2], []);
+  const conversations = settledData<BuyerConversation[]>(results[3], []);
+  const savedSearches = settledData<BuyerSavedSearch[]>(results[4], []);
   const favoriteIds = favoriteRows.map((row) => String(row.product_id || '')).filter(Boolean);
 
   const relatedIds = Array.from(new Set([
@@ -193,7 +194,7 @@ export const loadBuyerCenter = async (userId: string): Promise<BuyerCenterData> 
     ...savedSearches.map((search) => search.category_id),
   ].filter((id): id is string => Boolean(id))));
 
-  let recommendationQuery: any = supabase
+  let recommendationQuery = supabase
     .from('products')
     .select(PRODUCT_FIELDS)
     .eq('status', 'active')
@@ -211,7 +212,7 @@ export const loadBuyerCenter = async (userId: string): Promise<BuyerCenterData> 
   const watchChanges = calculateWatchChanges(previousSnapshot, favorites);
   saveWatchSnapshot(userId, favorites, previousSnapshot);
 
-  const failedSections = results.filter((result) => result.status === 'rejected' || (result.status === 'fulfilled' && Boolean((result.value as any)?.error))).length;
+  const failedSections = results.filter((result) => result.status === 'rejected' || (result.status === 'fulfilled' && Boolean(result.value.error))).length;
 
   return {
     favorites,

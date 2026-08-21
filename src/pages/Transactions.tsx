@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/errors';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -41,7 +42,8 @@ const Transactions = () => {
 
   const fetchOperations = useCallback(async (manual = false) => {
     if (!user) return;
-    manual ? setRefreshing(true) : setLoading(true);
+    if (manual) setRefreshing(true);
+    else setLoading(true);
     try {
       const result = await loadOperations(user.id);
       setPurchases(result.purchases);
@@ -106,7 +108,7 @@ const Transactions = () => {
     setUpdatingId(operation.id);
     try {
       const now = new Date().toISOString();
-      const payload: any = { status: nextStatus };
+      const payload: { status: string; completed_at?: string; payment_provider?: string; payment_status?: string; paid_at?: string | null; completed_at?: string | null } = { status: nextStatus };
       if (['cancelled', 'completed'].includes(nextStatus)) payload.completed_at = now;
       if (nextStatus === 'paid') Object.assign(payload, { payment_provider: operation.payment_provider || 'in_person', payment_status: operation.payment_status || 'paid_in_person', paid_at: operation.paid_at || now, completed_at: null });
       if (nextStatus === 'shipped') Object.assign(payload, { shipping_status: 'shipped', completed_at: null });
@@ -127,8 +129,8 @@ const Transactions = () => {
       await sendMessage(operation, `${text} Producto: “${operation.product?.title || 'producto'}”.`);
       toast.success('Operación actualizada');
       await fetchOperations();
-    } catch (error: any) {
-      toast.error(error?.message || 'No se pudo actualizar la operación.');
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'No se pudo actualizar la operación.'));
     } finally { setUpdatingId(null); }
   };
 

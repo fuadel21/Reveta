@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/errors';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -31,6 +32,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import {
   clearRecentProducts,
   EMPTY_BUYER_CENTER,
@@ -82,7 +84,10 @@ const BuyerCenter = () => {
 
   const loadData = useCallback(async (manual = false, silent = false) => {
     if (!user) return;
-    if (!silent) manual ? setRefreshing(true) : setLoading(true);
+    if (!silent) {
+      if (manual) setRefreshing(true);
+      else setLoading(true);
+    }
     try {
       const next = await loadBuyerCenter(user.id);
       setData(next);
@@ -112,7 +117,7 @@ const BuyerCenter = () => {
       if (realtimeTimerRef.current) window.clearTimeout(realtimeTimerRef.current);
       realtimeTimerRef.current = window.setTimeout(() => void loadData(false, true), 450);
     };
-    const channel = (supabase as any)
+    const channel = supabaseUntyped
       .channel(`buyer-center-${user.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'favorites', filter: `user_id=eq.${user.id}` }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'offers', filter: `buyer_id=eq.${user.id}` }, scheduleRefresh)
@@ -151,7 +156,7 @@ const BuyerCenter = () => {
 
     setRemovingUnavailable(true);
     try {
-      const { error } = await (supabase as any).from('favorites').delete().eq('user_id', user.id).in('product_id', ids);
+      const { error } = await supabaseUntyped.from('favorites').delete().eq('user_id', user.id).in('product_id', ids);
       if (error) throw error;
       setData((current) => {
         const favorites = current.favorites.filter((product) => !ids.includes(product.id));
@@ -160,8 +165,8 @@ const BuyerCenter = () => {
         return { ...current, favorites, favoriteIds: favorites.map((product) => product.id), watchChanges };
       });
       toast({ title: 'Favoritos no disponibles eliminados' });
-    } catch (error: any) {
-      toast({ title: 'No se pudieron limpiar los favoritos', description: error?.message || 'Inténtalo de nuevo.', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'No se pudieron limpiar los favoritos', description: getErrorMessage(error, 'Inténtalo de nuevo.'), variant: 'destructive' });
     } finally {
       setRemovingUnavailable(false);
     }

@@ -68,19 +68,19 @@ serve(async (req) => {
         try {
           await webpush.sendNotification(pushSubscription, payload, { TTL: 86400 });
           return { id: sub.id, ok: true };
-        } catch (err: any) {
-          const status = err?.statusCode;
+        } catch (err) {
+          const status = (err as { statusCode?: number } | null)?.statusCode;
           // Subscription gone — clean it up
           if (status === 404 || status === 410) {
             await supabase.from("push_subscriptions").delete().eq("id", sub.id);
           }
-          console.error("Push send failed:", status, err?.body || err?.message);
+          console.error("Push send failed:", status, (err as { body?: unknown; message?: unknown } | null)?.body || (err as Error | null)?.message);
           return { id: sub.id, ok: false, status };
         }
       })
     );
 
-    const sent = results.filter((r) => r.status === "fulfilled" && (r as any).value.ok).length;
+    const sent = results.filter((r) => r.status === "fulfilled" && r.value.ok).length;
 
     return new Response(
       JSON.stringify({ success: true, sent, total: subscriptions.length }),

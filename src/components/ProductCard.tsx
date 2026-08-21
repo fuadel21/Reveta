@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/errors';
 import { useEffect, useState } from 'react';
 import { Heart, MapPin, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -84,11 +85,11 @@ const ProductCard = ({
           ? 'El producto se ha añadido a tus favoritos.'
           : 'El producto se ha eliminado de tus favoritos.',
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error toggling favorite:', error);
       toast({
         title: 'No se pudo actualizar el favorito',
-        description: error?.message || 'Inténtalo de nuevo.',
+        description: getErrorMessage(error, 'Inténtalo de nuevo.'),
         variant: 'destructive',
       });
     } finally {

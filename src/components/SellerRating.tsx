@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -25,7 +26,7 @@ const SellerRating = ({ sellerId, showCount = true, size = 'md' }: SellerRatingP
   const fetchReviewStats = async () => {
     if (!sellerId) return;
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabaseUntyped
       .from('reviews')
       .select('rating')
       .eq('reviewed_id', sellerId);

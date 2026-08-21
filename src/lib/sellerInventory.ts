@@ -1,4 +1,5 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped, type UntypedFilterBuilder } from '@/integrations/supabase/untyped';
+import { rowsFrom } from '@/lib/query-helpers';
 
 export type SellerProductMetrics = {
   favorites: number;
@@ -33,17 +34,16 @@ export const SELLER_PRODUCT_LIMIT = 200;
 const PAGE_SIZE = 1000;
 const EMPTY_METRICS: SellerProductMetrics = { favorites: 0, conversations: 0, offers: 0, reservations: 0, openTransactions: 0 };
 
-const rowsFrom = <T,>(result: PromiseSettledResult<any>): T[] => result.status === 'fulfilled' && !result.value.error ? (result.value.data || []) as T[] : [];
 
 const fetchRows = async (
   table: string,
   productIds: string[],
   select: string,
-  configure?: (query: any) => any,
+  configure?: (query: UntypedFilterBuilder) => UntypedFilterBuilder,
 ) => {
-  const rows: any[] = [];
+  const rows: unknown[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
-    let query = (supabase as any).from(table).select(select).in('product_id', productIds).range(from, from + PAGE_SIZE - 1);
+    let query = supabaseUntyped.from(table).select(select).in('product_id', productIds).range(from, from + PAGE_SIZE - 1);
     if (configure) query = configure(query);
     const { data, error } = await query;
     if (error) throw error;
@@ -61,7 +61,7 @@ const countByProduct = (rows: Array<{ product_id: string }>) => {
 };
 
 export const loadSellerInventory = async (userId: string) => {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabaseUntyped
     .from('products')
     .select('id,title,description,price,location,images,status,created_at,boosted_until,category_id,subcategory_id,condition,latitude,longitude')
     .eq('user_id', userId)
@@ -72,7 +72,7 @@ export const loadSellerInventory = async (userId: string) => {
   const products = data || [];
   if (products.length === 0) return { products: [] as SellerInventoryProduct[], partial: false };
 
-  const productIds = products.map((product: any) => product.id);
+  const productIds = products.map((product) => product.id);
   const supporting = await Promise.allSettled([
     fetchRows('favorites', productIds, 'product_id'),
     fetchRows('conversations', productIds, 'id,product_id,updated_at', (query) => query.order('updated_at', { ascending: false })),
@@ -81,11 +81,11 @@ export const loadSellerInventory = async (userId: string) => {
     fetchRows('transactions', productIds, 'product_id,status', (query) => query.in('status', OPEN_TRANSACTION_STATUSES)),
   ]);
 
-  const favorites = rowsFrom<Array<{ product_id: string }>[number]>(supporting[0]);
-  const conversations = rowsFrom<Array<{ id: string; product_id: string; updated_at: string | null }>[number]>(supporting[1]);
-  const offers = rowsFrom<Array<{ product_id: string }>[number]>(supporting[2]);
-  const reservations = rowsFrom<Array<{ product_id: string }>[number]>(supporting[3]);
-  const transactions = rowsFrom<Array<{ product_id: string }>[number]>(supporting[4]);
+  const favorites = rowsFrom<{ product_id: string }>(supporting[0]);
+  const conversations = rowsFrom<{ id: string; product_id: string; updated_at: string | null }>(supporting[1]);
+  const offers = rowsFrom<{ product_id: string }>(supporting[2]);
+  const reservations = rowsFrom<{ product_id: string }>(supporting[3]);
+  const transactions = rowsFrom<{ product_id: string }>(supporting[4]);
 
   const favoriteCounts = countByProduct(favorites);
   const conversationCounts = countByProduct(conversations);
@@ -101,7 +101,7 @@ export const loadSellerInventory = async (userId: string) => {
   });
 
   return {
-    products: products.map((product: any): SellerInventoryProduct => ({
+    products: products.map((product): SellerInventoryProduct => ({
       ...product,
       metrics: {
         ...EMPTY_METRICS,

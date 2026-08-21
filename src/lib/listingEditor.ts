@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 
 export const MAX_LISTING_IMAGES = 5;
 export const MAX_LISTING_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -144,7 +145,7 @@ export const getUnreferencedOwnedStoragePaths = async (urls: string[], userId: s
     .filter((candidate): candidate is { url: string; path: string } => Boolean(candidate.path));
 
   const checks = await Promise.allSettled(candidates.map(async (candidate) => {
-    let query = (supabase as any).from('products').select('id').contains('images', [candidate.url]).limit(1);
+    let query = supabaseUntyped.from('products').select('id').contains('images', [candidate.url]).limit(1);
     if (excludedProductId) query = query.neq('id', excludedProductId);
     const { data, error } = await query;
     if (error) throw error;

@@ -8,6 +8,7 @@ import BlockUserButton from '@/components/BlockUserButton';
 import ReserveProductButton from '@/components/product/ReserveProductButton';
 import ReputationSummary from '@/components/reputation/ReputationSummary';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { AlertTriangle, Award, CalendarDays, CheckCircle2, Clock3, MapPin, MessageCircle, ShoppingBag, Store, TrendingUp, Trophy } from 'lucide-react';
 
@@ -33,15 +34,15 @@ const SellerTrustCard = ({ seller, productId, isOwner = false, activeProductsCou
       const effectiveProductId = productId || routeProductId;
       const [{ count: soldProductsCount }, { data: reputation, error: reputationError }, { data: profileData }, productResult] = await Promise.all([
         supabase.from('products').select('id', { count: 'exact', head: true }).eq('user_id', seller.id).eq('status', 'sold'),
-        (supabase as any).from('user_reputation').select('average_rating, review_count').eq('user_id', seller.id).maybeSingle(),
-        (supabase as any).from('profiles').select('location').eq('id', seller.id).maybeSingle(),
+        supabaseUntyped.from('user_reputation').select('average_rating, review_count').eq('user_id', seller.id).maybeSingle(),
+        supabaseUntyped.from('profiles').select('location').eq('id', seller.id).maybeSingle(),
         effectiveProductId ? supabase.from('products').select('location').eq('id', effectiveProductId).maybeSingle() : Promise.resolve({ data: null, error: null }),
       ]);
       if (reputationError) console.error('Error loading seller reputation:', reputationError);
       setSoldCount(soldProductsCount || 0);
       setReviewStats({ totalReviews: reputation?.review_count || 0, averageRating: reputation?.average_rating || 0 });
       setSellerLocation(profileData?.location || null);
-      setProductLocation((productResult as any)?.data?.location || null);
+      setProductLocation((productResult as { data?: { location?: string | null } | null }).data?.location || null);
     };
     void fetchTrustStats();
   }, [seller?.id, productId, routeProductId]);

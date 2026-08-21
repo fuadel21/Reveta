@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -46,20 +47,20 @@ const Profile = () => {
   const fetchProfileData = async () => {
     if (!user) return;
     setLoading(true);
-    const { data: privateProfileData, error: privateProfileError } = await (supabase as any).rpc('get_private_profile');
+    const { data: privateProfileData, error: privateProfileError } = await supabaseUntyped.rpc('get_private_profile');
     if (privateProfileError) toast({ title: 'Error', description: 'No se pudo cargar tu perfil privado', variant: 'destructive' });
     const profileData = Array.isArray(privateProfileData) ? privateProfileData[0] : privateProfileData;
     if (profileData) setProfile(profileData as ProfileData);
     const [{ data: productsData, error: productsError }, { data: favoriteRows, error: favoritesError }, { data: reputationData, error: reputationError }] = await Promise.all([
       supabase.from('products').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
       supabase.from('favorites').select('products(*)').eq('user_id', user.id),
-      (supabase as any).from('user_reputation').select('average_rating, review_count').eq('user_id', user.id).maybeSingle(),
+      supabaseUntyped.from('user_reputation').select('average_rating, review_count').eq('user_id', user.id).maybeSingle(),
     ]);
     if (productsError) console.error('Error fetching profile products:', productsError);
     if (favoritesError) console.error('Error fetching favorites:', favoritesError);
     if (reputationError) console.error('Error fetching reputation:', reputationError);
     setProducts((productsData || []) as ProductData[]);
-    setFavorites((favoriteRows || []).map((item: any) => item.products).filter(Boolean) as ProductData[]);
+    setFavorites((favoriteRows || []).map((item) => item.products).filter(Boolean) as ProductData[]);
     setReputation((reputationData || null) as Reputation | null);
     setLoading(false);
   };

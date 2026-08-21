@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/lib/errors';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -27,6 +28,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -115,9 +117,9 @@ export const SellerReservationsPanel = () => {
     setLoading(true);
 
     try {
-      await (supabase as any).rpc('release_expired_product_reservations');
+      await supabaseUntyped.rpc('release_expired_product_reservations');
 
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabaseUntyped
         .from('product_reservations')
         .select('id, product_id, buyer_id, expires_at, status, product:products(id, title, images, status), buyer:profiles!product_reservations_buyer_id_fkey(id, full_name, avatar_url)')
         .eq('seller_id', user.id)
@@ -126,9 +128,9 @@ export const SellerReservationsPanel = () => {
 
       if (error) throw error;
       setReservations((data || []) as ReservationRow[]);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error fetching seller reservations:', error);
-      const message = String(error?.message || '');
+      const message = getErrorMessage(error, '');
       toast({
         title: 'No se pudieron cargar las reservas',
         description: message.includes('does not exist') || message.includes('schema cache')
@@ -146,7 +148,7 @@ export const SellerReservationsPanel = () => {
     setCancellingId(reservationId);
 
     try {
-      const { error } = await (supabase as any).rpc('cancel_product_reservation', {
+      const { error } = await supabaseUntyped.rpc('cancel_product_reservation', {
         target_reservation_id: reservationId,
       });
       if (error) throw error;

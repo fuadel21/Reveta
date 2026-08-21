@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseUntyped } from '@/integrations/supabase/untyped';
 import { useAuth } from './useAuth';
 
 interface BlockedUser {
@@ -34,7 +35,7 @@ export const useBlockedUsers = () => {
     }
 
     setLoading(true);
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabaseUntyped
       .from('user_blocks')
       .select('blocker_id,blocked_id,created_at')
       .eq('blocker_id', user.id)
@@ -69,7 +70,7 @@ export const useBlockedUsers = () => {
 
     if (blockedUserIds.has(blockedUserId)) return true;
 
-    const { error } = await (supabase as any)
+    const { error } = await supabaseUntyped
       .from('user_blocks')
       .upsert(
         {
@@ -95,7 +96,7 @@ export const useBlockedUsers = () => {
   const unblockUser = useCallback(async (blockedUserId: string) => {
     if (!user || !blockedUserId) return false;
 
-    const { error } = await (supabase as any)
+    const { error } = await supabaseUntyped
       .from('user_blocks')
       .delete()
       .eq('blocker_id', user.id)

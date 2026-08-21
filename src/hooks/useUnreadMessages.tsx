@@ -25,7 +25,7 @@ export const useUnreadMessages = () => {
           table: 'messages'
         },
         (payload) => {
-          const newMessage = payload.new as any;
+          const newMessage = payload.new as { sender_id: string; read: boolean };
           if (newMessage.sender_id !== user.id && !newMessage.read) {
             setUnreadCount((prev) => prev + 1);
           }

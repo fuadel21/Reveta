@@ -42,5 +42,8 @@ jobs:
       - name: Check SEO rules
         run: pnpm seo:check
 
+      - name: Lint
+        run: pnpm lint
+
       - name: Build production app
         run: pnpm build
